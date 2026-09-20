@@ -1,5 +1,6 @@
 import React from 'react';
-import { Truck, Plus, Building2, Sun, Moon, User, LogOut } from 'lucide-react';
+import { Plus, Building2, Sun, Moon, User, LogOut } from 'lucide-react';
+import logoDiscarga from '../assets/logo-discarga.png';
 
 interface NavbarProps {
   agencies: string[];
@@ -27,8 +28,8 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="w-full px-3 sm:px-5 lg:px-8">
         <div className="flex items-center justify-between h-[68px] gap-3">
           <div className="flex items-center space-x-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg ring-1 ring-white/10 shrink-0">
-              <Truck className="w-5.5 h-5.5 text-white" />
+            <div className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center shadow-lg ring-1 ring-white/10 shrink-0 overflow-hidden p-0.5">
+              <img src={logoDiscarga} alt="DISCARGA S.A." className="w-full h-full object-contain" />
             </div>
             <div className="min-w-0">
               <h1 className="font-bold text-base sm:text-lg leading-tight tracking-tight truncate">DISCARGA CONTROLER</h1>
