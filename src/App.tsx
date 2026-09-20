@@ -765,13 +765,31 @@ export default function App() {
   // Los registros que todavía no tengan agencia asignada (creados antes de este
   // campo) se mantienen siempre visibles para que se puedan corregir por Carga
   // Masiva de Excel, sin importar el filtro de agencia activo.
+  //
+  // Corrección: además del filtro de la barra superior, se aplica el permiso de
+  // agencia del usuario (canViewAgency). Antes, un usuario restringido a una sola
+  // agencia podía dejar el selector en "-- Todas las Agencias --" (disponible
+  // para todos) y ver igual los camiones/personal de agencias a las que no tenía
+  // acceso — el permiso solo se aplicaba a las Rutas, no a estos dos módulos.
   const visibleTrucks = useMemo(
-    () => trucks.filter((t) => selectedAgency === 'TODAS' || t.agencia === selectedAgency || !t.agencia),
-    [trucks, selectedAgency]
+    () =>
+      trucks.filter(
+        (t) =>
+          (selectedAgency === 'TODAS' || t.agencia === selectedAgency) &&
+          (!t.agencia || canViewAgency(t.agencia))
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [trucks, selectedAgency, currentUser]
   );
   const visibleStaff = useMemo(
-    () => staff.filter((s) => selectedAgency === 'TODAS' || s.agencia === selectedAgency || !s.agencia),
-    [staff, selectedAgency]
+    () =>
+      staff.filter(
+        (s) =>
+          (selectedAgency === 'TODAS' || s.agencia === selectedAgency) &&
+          (!s.agencia || canViewAgency(s.agencia))
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [staff, selectedAgency, currentUser]
   );
 
   // Rutas activas (no liquidadas) visibles para el usuario SIN aplicar el filtro de
