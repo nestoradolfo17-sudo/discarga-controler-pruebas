@@ -1,0 +1,6 @@
+{
+  "name": "DISCARGA CONTROLER",
+  "description": "Sistema de asignación, segmentación de viajes y liquidación operativa de rutas de distribución.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

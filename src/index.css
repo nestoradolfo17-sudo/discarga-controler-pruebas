@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+@media print {
+  @page {
+    size: letter landscape;
+    margin: 8mm 10mm;
+  }
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 100% !important;
+  }
+  header, nav, .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+    visibility: visible !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Ocultar el dashboard principal y elementos flotantes al imprimir el resumen diario */
+  body.printing-daily-summary main,
+  body:has(#dailySummaryModal) main,
+  body.printing-daily-summary #toast-container,
+  body:has(#dailySummaryModal) #toast-container {
+    display: none !important;
+  }
+
+  /* Ajustar modal a flujo estático continuo para impresión multipágina sin recortes */
+  #dailySummaryModal {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  #dailySummaryModal > div {
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  #dailySummaryModal div {
+    overflow: visible !important;
+  }
+
+  /* Asegurar que las tablas paginen correctamente y no corten filas */
+  #dailySummaryModal table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  #dailySummaryModal thead {
+    display: table-header-group !important;
+  }
+
+  #dailySummaryModal tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #dailySummaryModal tfoot {
+    display: table-footer-group !important;
+  }
+}
