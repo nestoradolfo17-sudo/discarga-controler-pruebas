@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Truck, Lock, User, LogIn, AlertCircle } from 'lucide-react';
+import { Lock, User, LogIn, AlertCircle } from 'lucide-react';
+import logoDiscarga from '../../assets/logo-discarga.png';
 
 interface LoginScreenProps {
   onLogin: (username: string, password: string) => boolean;
@@ -24,8 +25,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg ring-1 ring-white/10 mb-3">
-            <Truck className="w-7 h-7 text-white" />
+          <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-lg ring-1 ring-white/10 mb-3 overflow-hidden p-1">
+            <img src={logoDiscarga} alt="DISCARGA S.A." className="w-full h-full object-contain" />
           </div>
           <h1 className="text-white font-bold text-lg tracking-tight">DISCARGA CONTROLER</h1>
           <p className="text-slate-400 text-xs mt-0.5">Asignación, Segmentación y Liquidación Operativa</p>
