@@ -7,6 +7,19 @@ export function parseFlexibleDate(dateInput: any): Date | null {
   const str = String(dateInput).trim();
   if (!str) return null;
 
+  // Corrección: marcas de tiempo ISO con zona horaria explícita (por ejemplo
+  // "2026-09-20T04:08:23.456Z", el formato que genera new Date().toISOString()
+  // y que se usa para "Alta"/"Último acceso" de usuarios). Estas SÍ traen la
+  // hora en UTC de verdad, así que hay que dejar que el motor de JS las
+  // interprete de forma nativa. Antes caían en la rama YYYY-MM-DD de abajo,
+  // que toma los números de hora tal cual y los trata como si ya fueran hora
+  // local de Guatemala — eso adelantaba el reloj mostrado 6 horas (el
+  // desfase real entre UTC y America/Guatemala).
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+\-]\d{2}:?\d{2})$/.test(str)) {
+    const iso = new Date(str);
+    if (!isNaN(iso.getTime())) return iso;
+  }
+
   // DD/MM/YYYY or DD-MM-YYYY
   const dmyMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
   if (dmyMatch) {
