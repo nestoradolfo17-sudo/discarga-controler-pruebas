@@ -115,11 +115,14 @@ export const BatchTruckModal: React.FC<BatchTruckModalProps> = ({
   };
 
   // Stats
+  // Corrección: la carga masiva ya NO sobrescribe camiones existentes — las filas
+  // que coinciden con un camión ya cargado se omiten por completo (solo se agregan
+  // los realmente nuevos). Este contador ahora refleja cuántas filas se omitirán.
   const cleanKey = (val: string) => val.replace(/[\s\-_()]/g, '').toUpperCase();
   const newTrucksCount = previewTrucks.filter(
     (p) => !existingTrucks.some((e) => cleanKey(e.placa) === cleanKey(p.placa))
   ).length;
-  const updateTrucksCount = previewTrucks.length - newTrucksCount;
+  const skippedTrucksCount = previewTrucks.length - newTrucksCount;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -268,9 +271,12 @@ export const BatchTruckModal: React.FC<BatchTruckModalProps> = ({
                       {newTrucksCount} nuevos
                     </span>
                   )}
-                  {updateTrucksCount > 0 && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                      {updateTrucksCount} a actualizar
+                  {skippedTrucksCount > 0 && (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded font-semibold bg-amber-50 text-amber-800 border border-amber-200"
+                      title="Estos camiones ya existen en el sistema (coinciden por Placa o ID Camión) y no se modificarán: la carga masiva solo agrega camiones nuevos."
+                    >
+                      {skippedTrucksCount} ya existen (se omitirán)
                     </span>
                   )}
                 </div>
@@ -410,7 +416,9 @@ export const BatchTruckModal: React.FC<BatchTruckModalProps> = ({
                 className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition cursor-pointer flex items-center"
               >
                 <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
-                Cargar {previewTrucks.length} Camiones al Sistema
+                {skippedTrucksCount > 0
+                  ? `Agregar ${newTrucksCount} Camiones Nuevos (${skippedTrucksCount} se omitirán)`
+                  : `Cargar ${previewTrucks.length} Camiones al Sistema`}
               </button>
             )}
           </div>
