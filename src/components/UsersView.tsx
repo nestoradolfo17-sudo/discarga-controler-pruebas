@@ -47,16 +47,36 @@ const DEFAULT_PERMISSIONS: TablePermissions = {
   trucks: false,
   staff: false,
   batch: false,
+  canBulkUploadTrucks: false,
+  canManualAddTrucks: false,
+  canBulkUploadStaff: false,
+  canManualAddStaff: false,
 };
 
-const PERMISSION_LABELS: { key: keyof TablePermissions; label: string }[] = [
+// Corrección: los 4 permisos marcados con "grandfathered" son nuevos — los usuarios
+// creados antes de este cambio no tienen estos campos guardados en su registro
+// (quedan como undefined). Para no quitarles de golpe algo que ya podían hacer, se
+// tratan como "permitido" (true) mientras no se hayan guardado explícitamente en
+// false. Ver isPermEnabled/togglePermission más abajo.
+const PERMISSION_LABELS: { key: keyof TablePermissions; label: string; grandfathered?: boolean }[] = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'board', label: 'Tablero de Rutas' },
   { key: 'liquidated', label: 'Rutas Liquidadas' },
   { key: 'trucks', label: 'Camiones' },
   { key: 'staff', label: 'Personal' },
   { key: 'batch', label: 'Carga Masiva Excel' },
+  { key: 'canBulkUploadTrucks', label: 'Subir Excel Camiones', grandfathered: true },
+  { key: 'canManualAddTrucks', label: 'Agregar Camiones Manual', grandfathered: true },
+  { key: 'canBulkUploadStaff', label: 'Subir Excel Personal', grandfathered: true },
+  { key: 'canManualAddStaff', label: 'Agregar Personal Manual', grandfathered: true },
 ];
+
+// Devuelve si un permiso está habilitado para un usuario, respetando la
+// compatibilidad hacia atrás: un permiso "grandfathered" ausente (undefined, en
+// cuentas creadas antes de agregarlo) se considera permitido hasta que se
+// desactive explícitamente.
+const isPermEnabled = (user: AppUser, key: keyof TablePermissions, grandfathered?: boolean) =>
+  grandfathered ? user.permissions[key] !== false : !!user.permissions[key];
 
 export const UsersView: React.FC<UsersViewProps> = ({
   users,
@@ -131,7 +151,18 @@ export const UsersView: React.FC<UsersViewProps> = ({
       nombre: nombre.trim() || undefined,
       isAdmin,
       permissions: isAdmin
-        ? { dashboard: true, board: true, liquidated: true, trucks: true, staff: true, batch: true }
+        ? {
+            dashboard: true,
+            board: true,
+            liquidated: true,
+            trucks: true,
+            staff: true,
+            batch: true,
+            canBulkUploadTrucks: true,
+            canManualAddTrucks: true,
+            canBulkUploadStaff: true,
+            canManualAddStaff: true,
+          }
         : permissions,
       canDelete: isAdmin ? true : canDelete,
       agencyAccess: isAdmin ? 'all' : agencyAll ? 'all' : agencySelection,
@@ -148,9 +179,15 @@ export const UsersView: React.FC<UsersViewProps> = ({
     setAgencySelection([]);
   };
 
-  const togglePermission = (userId: string, key: keyof TablePermissions, user: AppUser) => {
+  const togglePermission = (
+    userId: string,
+    key: keyof TablePermissions,
+    user: AppUser,
+    grandfathered?: boolean
+  ) => {
     if (user.isAdmin) return; // Los administradores siempre tienen todos los permisos
-    onUpdateUser(userId, { permissions: { ...user.permissions, [key]: !user.permissions[key] } });
+    const current = isPermEnabled(user, key, grandfathered);
+    onUpdateUser(userId, { permissions: { ...user.permissions, [key]: !current } });
   };
 
   const toggleCanDelete = (userId: string, user: AppUser) => {
@@ -570,14 +607,14 @@ export const UsersView: React.FC<UsersViewProps> = ({
                         <span className="text-[11px] text-slate-400 italic">Acceso total</span>
                       ) : (
                         <div className="flex flex-wrap gap-1.5 max-w-xs">
-                          {PERMISSION_LABELS.map(({ key, label }) => (
+                          {PERMISSION_LABELS.map(({ key, label, grandfathered }) => (
                             <button
                               key={key}
                               type="button"
-                              onClick={() => togglePermission(u.id, key, u)}
+                              onClick={() => togglePermission(u.id, key, u, grandfathered)}
                               title={label}
                               className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border transition cursor-pointer ${
-                                u.permissions[key]
+                                isPermEnabled(u, key, grandfathered)
                                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                   : 'bg-slate-50 text-slate-400 border-slate-200'
                               }`}
