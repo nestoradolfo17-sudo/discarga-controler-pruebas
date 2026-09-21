@@ -431,7 +431,6 @@ export function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
   const headers = [
     "ID Ruta",
     "Agencia",
-    "Mercado",
     "Segmento",
     "Fecha de Ruta",
     "Fecha de Asignación",
@@ -482,7 +481,6 @@ export function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
     return [
       r.id,
       r.agencia || "Mercado Abierto",
-      r.mercado || "Mercado Abierto",
       r.segmento || "-",
       formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) || "",
       r.fechaAsignacion || asig?.fechaAsignacion || "-",
@@ -545,7 +543,6 @@ export function exportHistoricalToExcel(historicalRoutes: Route[], staffList: St
   const headers = [
     "ID Ruta",
     "Agencia",
-    "Mercado",
     "Segmento",
     "Fecha de Ruta",
     "Fecha de Asignación",
@@ -589,7 +586,6 @@ export function exportHistoricalToExcel(historicalRoutes: Route[], staffList: St
     return [
       r.id,
       r.agencia || "Mercado Abierto",
-      r.mercado || "Mercado Abierto",
       r.segmento || "-",
       formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) || "",
       r.fechaAsignacion || asig?.fechaAsignacion || "-",
