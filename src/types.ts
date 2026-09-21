@@ -62,6 +62,9 @@ export interface Truck {
   // este campo pueden no tenerlo ("Sin Agencia") hasta que se corrijan por Carga
   // Masiva de Excel (empareja por Placa / ID Camión).
   agencia?: string;
+  // Proveedor / empresa dueña del camión (por ejemplo, si es una unidad propia o de
+  // un proveedor de transporte tercerizado).
+  proveedor?: string;
   capacidad: string;
   ton?: number | string;
   bahias?: number | string;
