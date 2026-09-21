@@ -27,8 +27,13 @@ interface AssignModalProps {
   trucks: Truck[];
   staff: Staff[];
   activeRoutes?: Route[];
+  // Corrección: se agrega "fecha" a ambos callbacks porque el mismo ID de ruta
+  // puede repetirse en fechas distintas (ver src/utils/routeKey.ts) — sin esto, la
+  // asignación o el envío a piso podían terminar aplicándose también a otra fila
+  // con el mismo ID pero de otra fecha.
   onConfirmAssignment: (
     routeId: string,
+    fecha: string,
     assignment: {
       truckId: string;
       truckPlaca: string;
@@ -43,6 +48,7 @@ interface AssignModalProps {
   ) => void;
   onMoveToFloor: (
     routeId: string,
+    fecha: string,
     tomorrowDate: string,
     motivo?: string
   ) => void;
@@ -303,7 +309,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     e.preventDefault();
 
     if (isPiso) {
-      onMoveToFloor(route.id, tomorrowDate, motivoPiso);
+      onMoveToFloor(route.id, route.fecha, tomorrowDate, motivoPiso);
       return;
     }
 
@@ -334,7 +340,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     const selectedTruck = trucks.find((t) => t.id === truckId);
     if (!selectedTruck) return;
 
-    onConfirmAssignment(route.id, {
+    onConfirmAssignment(route.id, route.fecha, {
       truckId: selectedTruck.id,
       truckPlaca: selectedTruck.placa,
       driverName,
