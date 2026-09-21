@@ -29,20 +29,25 @@ import {
   Eye,
 } from 'lucide-react';
 import { AssignmentDetailModal } from './modals/AssignmentDetailModal';
+import { getRouteKey } from '../utils/routeKey';
 
 interface RoutesTableProps {
   routes: Route[];
   allRoutes: Route[];
   trucks?: Truck[];
   staff?: Staff[];
-  onOpenAssignModal: (routeId: string) => void;
-  onOpenLiquidateModal: (routeId: string) => void;
-  onOpenSplitRouteModal: (routeId: string) => void;
-  onOpenRevertSplitModal: (routeId: string) => void;
-  onViewSettlementReceipt: (routeId: string) => void;
+  // Corrección: el mismo ID de ruta puede repetirse en fechas distintas (ruta
+  // recurrente). Se agrega "fecha" a estos callbacks para identificar sin ambigüedad
+  // la fila exacta sobre la que se hizo clic (ver src/utils/routeKey.ts).
+  onOpenAssignModal: (routeId: string, fecha: string) => void;
+  onOpenLiquidateModal: (routeId: string, fecha: string) => void;
+  onOpenSplitRouteModal: (routeId: string, fecha: string) => void;
+  onOpenRevertSplitModal: (routeId: string, fecha: string) => void;
+  onViewSettlementReceipt: (routeId: string, fecha: string) => void;
   onViewConsolidatedReceipt: (parentRouteId: string) => void;
   onOpenNewRouteModal: () => void;
-  onMoveToFloor?: (routeId: string, tomorrowDate: string, motivo?: string) => void;
+  onMoveToFloor?: (routeId: string, fecha: string, tomorrowDate: string, motivo?: string) => void;
+  // routeIds aquí son claves compuestas ID+Fecha (ver getRouteKey), no solo el ID.
   onBulkMoveToFloor?: (routeIds: string[]) => void;
   onOpenDeleteModal?: (routeIds: string[]) => void;
 }
@@ -87,8 +92,8 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
 
   // Limpiar seleccionados que ya no existan en la lista de rutas
   React.useEffect(() => {
-    const validIds = new Set(routes.map((r) => String(r.id)));
-    setSelectedRouteIds((prev) => prev.filter((id) => validIds.has(id)));
+    const validKeys = new Set(routes.map((r) => getRouteKey(r)));
+    setSelectedRouteIds((prev) => prev.filter((key) => validKeys.has(key)));
   }, [routes]);
 
   const handleSort = (key: SortKey) => {
@@ -382,15 +387,15 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   aria-label="Seleccionar todas las rutas visibles"
                   checked={
                     sortedRoutes.length > 0 &&
-                    sortedRoutes.every((r) => selectedRouteIds.includes(String(r.id)))
+                    sortedRoutes.every((r) => selectedRouteIds.includes(getRouteKey(r)))
                   }
                   onChange={(e) => {
                     if (e.target.checked) {
-                      const allVisibleIds = sortedRoutes.map((r) => String(r.id));
-                      setSelectedRouteIds(Array.from(new Set([...selectedRouteIds, ...allVisibleIds])));
+                      const allVisibleKeys = sortedRoutes.map((r) => getRouteKey(r));
+                      setSelectedRouteIds(Array.from(new Set([...selectedRouteIds, ...allVisibleKeys])));
                     } else {
-                      const visibleIdSet = new Set(sortedRoutes.map((r) => String(r.id)));
-                      setSelectedRouteIds(selectedRouteIds.filter((id) => !visibleIdSet.has(id)));
+                      const visibleKeySet = new Set(sortedRoutes.map((r) => getRouteKey(r)));
+                      setSelectedRouteIds(selectedRouteIds.filter((key) => !visibleKeySet.has(key)));
                     }
                   }}
                   className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer w-3.5 h-3.5"
@@ -410,7 +415,8 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
           <tbody className="divide-y divide-slate-100 font-normal">
             {sortedRoutes.map((route, index) => {
               const isAbierta = route.estado === 'Abierta';
-              const isSelected = selectedRouteIds.includes(String(route.id));
+              const routeKey = getRouteKey(route);
+              const isSelected = selectedRouteIds.includes(routeKey);
               const canSplit = !route.isSplitRoute && route.estado === 'Pendiente';
               const isNearBottom = sortedRoutes.length >= 3 && index >= sortedRoutes.length - 2;
 
@@ -433,7 +439,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
 
               return (
                 <tr
-                  key={route.id}
+                  key={routeKey}
                   className={`transition-colors ${
                     isSelected
                       ? 'bg-rose-50/70 hover:bg-rose-50'
@@ -451,9 +457,9 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                       onChange={(e) => {
                         e.stopPropagation();
                         if (e.target.checked) {
-                          setSelectedRouteIds((prev) => [...prev, String(route.id)]);
+                          setSelectedRouteIds((prev) => [...prev, routeKey]);
                         } else {
-                          setSelectedRouteIds((prev) => prev.filter((id) => id !== String(route.id)));
+                          setSelectedRouteIds((prev) => prev.filter((key) => key !== routeKey));
                         }
                       }}
                       className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer w-3.5 h-3.5"
@@ -548,7 +554,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                           type="button"
                           onClick={() => {
                             setActiveDropdownId(null);
-                            onOpenLiquidateModal(route.id);
+                            onOpenLiquidateModal(route.id, route.fecha);
                           }}
                           title={
                             route.estado === 'Abierta'
@@ -583,14 +589,14 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                       </button>
                       <div className="relative inline-block text-left actions-dropdown-container">
                       <button
-                        id={`btnAcciones-${route.id}`}
+                        id={`btnAcciones-${routeKey}`}
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setActiveDropdownId(activeDropdownId === route.id ? null : route.id);
+                          setActiveDropdownId(activeDropdownId === routeKey ? null : routeKey);
                         }}
                         className={`inline-flex items-center justify-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-2xs border ${
-                          activeDropdownId === route.id
+                          activeDropdownId === routeKey
                             ? 'bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-200'
                             : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300 hover:border-slate-400'
                         }`}
@@ -599,12 +605,12 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                         <span>Acciones</span>
                         <ChevronDown
                           className={`w-3.5 h-3.5 transition-transform duration-150 ${
-                            activeDropdownId === route.id ? 'rotate-180 text-white' : 'text-slate-500'
+                            activeDropdownId === routeKey ? 'rotate-180 text-white' : 'text-slate-500'
                           }`}
                         />
                       </button>
 
-                      {activeDropdownId === route.id && (
+                      {activeDropdownId === routeKey && (
                         <div
                           className={`absolute left-0 ${
                             isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
@@ -622,7 +628,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                     type="button"
                                     onClick={() => {
                                       setActiveDropdownId(null);
-                                      onOpenAssignModal(route.id);
+                                      onOpenAssignModal(route.id, route.fecha);
                                     }}
                                     className="w-full text-left px-3 py-2 hover:bg-amber-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                   >
@@ -643,7 +649,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                       type="button"
                                       onClick={() => {
                                         setActiveDropdownId(null);
-                                        onOpenSplitRouteModal(route.id);
+                                        onOpenSplitRouteModal(route.id, route.fecha);
                                       }}
                                       className="w-full text-left px-3 py-2 hover:bg-purple-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                     >
@@ -665,7 +671,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                       type="button"
                                       onClick={() => {
                                         setActiveDropdownId(null);
-                                        onOpenRevertSplitModal(route.id);
+                                        onOpenRevertSplitModal(route.id, route.fecha);
                                       }}
                                       className="w-full text-left px-3 py-2 hover:bg-indigo-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                     >
@@ -692,7 +698,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                     type="button"
                                     onClick={() => {
                                       setActiveDropdownId(null);
-                                      onOpenAssignModal(route.id);
+                                      onOpenAssignModal(route.id, route.fecha);
                                     }}
                                     className="w-full text-left px-3 py-2 hover:bg-blue-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                   >
@@ -714,7 +720,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                       setActiveDropdownId(null);
                                       if (onMoveToFloor) {
                                         const tomorrowDate = getTomorrowGuatemalaDate(route.fecha);
-                                        onMoveToFloor(route.id, tomorrowDate, 'Ruta a Piso para despacho de mañana');
+                                        onMoveToFloor(route.id, route.fecha, tomorrowDate, 'Ruta a Piso para despacho de mañana');
                                       }
                                     }}
                                     className="w-full text-left px-3 py-2 hover:bg-amber-50/70 flex items-center gap-2.5 transition cursor-pointer group"
@@ -736,7 +742,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                       type="button"
                                       onClick={() => {
                                         setActiveDropdownId(null);
-                                        onOpenSplitRouteModal(route.id);
+                                        onOpenSplitRouteModal(route.id, route.fecha);
                                       }}
                                       className="w-full text-left px-3 py-2 hover:bg-purple-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                     >
@@ -758,7 +764,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                       type="button"
                                       onClick={() => {
                                         setActiveDropdownId(null);
-                                        onOpenRevertSplitModal(route.id);
+                                        onOpenRevertSplitModal(route.id, route.fecha);
                                       }}
                                       className="w-full text-left px-3 py-2 hover:bg-indigo-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                     >
@@ -793,7 +799,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setActiveDropdownId(null);
-                                  onOpenAssignModal(route.id);
+                                  onOpenAssignModal(route.id, route.fecha);
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-blue-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                               >
@@ -815,7 +821,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                   setActiveDropdownId(null);
                                   if (onMoveToFloor) {
                                     const tomorrowDate = getTomorrowGuatemalaDate(route.fecha);
-                                    onMoveToFloor(route.id, tomorrowDate, 'Ruta a Piso para despacho de mañana');
+                                    onMoveToFloor(route.id, route.fecha, tomorrowDate, 'Ruta a Piso para despacho de mañana');
                                   }
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-amber-50/70 flex items-center gap-2.5 transition cursor-pointer group"
@@ -847,7 +853,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setActiveDropdownId(null);
-                                  onOpenAssignModal(route.id);
+                                  onOpenAssignModal(route.id, route.fecha);
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-indigo-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                               >
@@ -869,7 +875,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                   setActiveDropdownId(null);
                                   if (onMoveToFloor) {
                                     const tomorrowDate = getTomorrowGuatemalaDate(route.fecha);
-                                    onMoveToFloor(route.id, tomorrowDate, 'Ruta a Piso para despacho de mañana');
+                                    onMoveToFloor(route.id, route.fecha, tomorrowDate, 'Ruta a Piso para despacho de mañana');
                                   }
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-amber-50/70 flex items-center gap-2.5 transition cursor-pointer group"
@@ -899,7 +905,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setActiveDropdownId(null);
-                                  onViewSettlementReceipt(route.id);
+                                  onViewSettlementReceipt(route.id, route.fecha);
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition cursor-pointer group"
                               >
@@ -947,7 +953,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setActiveDropdownId(null);
-                                  onOpenDeleteModal([String(route.id)]);
+                                  onOpenDeleteModal([routeKey]);
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-rose-50 flex items-center gap-2.5 transition cursor-pointer group"
                               >
