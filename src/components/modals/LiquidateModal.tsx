@@ -11,8 +11,12 @@ interface LiquidateModalProps {
   // abierta). El campo sigue siendo editable por si quien liquida físicamente
   // en la agencia es otra persona.
   defaultAuditor?: string;
+  // Corrección: se agrega "fecha" porque el mismo ID de ruta puede repetirse en
+  // fechas distintas (ver src/utils/routeKey.ts) — sin esto, liquidar una fila podía
+  // terminar liquidando también otra fila con el mismo ID pero de otra fecha.
   onConfirmLiquidation: (
     routeId: string,
+    fecha: string,
     data: {
       guiasExitosas: number;
       guiasRechazadas: number;
@@ -124,7 +128,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
     const finalDetalle = isRutaAbierta || !(devueltasNum === 0 && guiasRechazadas === 0) ? detalle : '';
     const finalMotivoDevolucion = [finalMotivos.join(', '), finalDetalle].filter(Boolean).join(', ');
 
-    onConfirmLiquidation(route.id, {
+    onConfirmLiquidation(route.id, route.fecha, {
       guiasExitosas,
       guiasRechazadas,
       cajasEntregadas: parseFloat(cajasEntregadas.toFixed(3)),
