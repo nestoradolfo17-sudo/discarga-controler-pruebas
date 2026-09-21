@@ -21,7 +21,9 @@ import {
   fetchSharedCollection,
   pushSharedCollection,
   subscribeToSharedCollection,
-  SyncIdHolder,
+  deleteSharedRecords,
+  SyncKeyFn,
+  SyncedRow,
   SyncableTable,
 } from './services/sync';
 import { TRUCK_REASON_REMUNERA, STAFF_REASON_REMUNERA } from './data/unavailableReasons';
@@ -42,6 +44,7 @@ import { SplitRouteModal } from './components/modals/SplitRouteModal';
 import { RevertSplitModal } from './components/modals/RevertSplitModal';
 import { AssignModal } from './components/modals/AssignModal';
 import { LiquidateModal } from './components/modals/LiquidateModal';
+import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiertaModal';
 import { ReceiptModal } from './components/modals/ReceiptModal';
 import { NewTruckModal } from './components/modals/NewTruckModal';
 import { NewStaffModal } from './components/modals/NewStaffModal';
@@ -135,13 +138,14 @@ export default function App() {
   // localStorage, un usuario por navegador). Esto evita que agregar la base de
   // datos compartida cambie el comportamiento de nadie que siga sin configurarla.
   const [isRemoteReady, setIsRemoteReady] = useState(!isSupabaseConfigured);
-  const routesSyncRef = useRef<SyncIdHolder & { json: string }>({ json: '', ids: null });
-  const historySyncRef = useRef<SyncIdHolder & { json: string }>({ json: '', ids: null });
-  const trucksSyncRef = useRef<SyncIdHolder & { json: string }>({ json: '', ids: null });
-  const staffSyncRef = useRef<SyncIdHolder & { json: string }>({ json: '', ids: null });
-  const usersSyncRef = useRef<SyncIdHolder & { json: string }>({ json: '', ids: null });
+  type SyncRef = { json: string; ids: Set<string> | null };
+  const routesSyncRef = useRef<SyncRef>({ json: '', ids: null });
+  const historySyncRef = useRef<SyncRef>({ json: '', ids: null });
+  const trucksSyncRef = useRef<SyncRef>({ json: '', ids: null });
+  const staffSyncRef = useRef<SyncRef>({ json: '', ids: null });
+  const usersSyncRef = useRef<SyncRef>({ json: '', ids: null });
   // Corrección: cada sincronización hacia Supabase de una colección primero sube
-  // los registros actuales y LUEGO borra en Supabase cualquier id que antes se
+  // los registros actuales y LUEGO borra en Supabase cualquier clave que antes se
   // conocía y ya no está presente (ver pushSharedCollection en services/sync.ts).
   // Si dos actualizaciones seguidas de la MISMA colección (por ejemplo, dos
   // acciones en el Tablero de Rutas hechas con pocos segundos de diferencia)
@@ -163,26 +167,57 @@ export default function App() {
   // lo que evita un ciclo infinito: al recibir por tiempo real un cambio que
   // este mismo navegador acaba de subir, el contenido ya coincide con lo
   // último sincronizado y no se vuelve a subir.
+  //
+  // Corrección: antes, la sincronización en cola leía `ref.current.ids` recién
+  // en el momento en que la operación de red se ejecutaba de verdad — y ese
+  // objeto podía haber sido sobrescrito mientras tanto por otra sincronización
+  // en cola o por un cambio en tiempo real de otro usuario, haciendo que se
+  // comparara (y se borrara) contra un conjunto de claves que no tenía nada que
+  // ver con este cambio específico. Ahora `previousKeys` se captura aquí mismo,
+  // de forma síncrona, en el mismo instante en que se decide subir el cambio —
+  // como valor independiente, no como referencia mutable — así que ninguna otra
+  // sincronización que se encole después puede "contaminarlo" retroactivamente.
   const pushIfChanged = useCallback(
-    <T extends { id: string }>(
+    <T,>(
       table: SyncableTable,
       items: T[],
-      ref: { current: SyncIdHolder & { json: string } },
+      getKey: SyncKeyFn<T>,
+      ref: { current: SyncRef },
       queueRef: { current: Promise<void> }
     ) => {
       if (!isSupabaseConfigured || !isRemoteReady) return;
       const json = JSON.stringify(items);
       if (json === ref.current.json) return;
-      ref.current.json = json;
+      const previousKeys = ref.current.ids;
+      const currentKeys = new Set(items.map(getKey));
+      ref.current = { json, ids: currentKeys };
       // Encadenada detrás de la sincronización anterior de esta misma colección
       // (ver el comentario de las *PushQueueRef arriba) para que nunca se
-      // ejecuten dos en paralelo compitiendo por el mismo registro de IDs.
+      // ejecuten dos en paralelo compitiendo por el mismo registro de claves.
       queueRef.current = queueRef.current
         .catch(() => {})
-        .then(() => pushSharedCollection(table, items, ref.current));
+        .then(() => pushSharedCollection(table, items, getKey, previousKeys));
     },
     [isRemoteReady]
   );
+
+  // Claves de sincronización por tabla (ver SyncKeyFn en services/sync.ts). Todas
+  // usan el "id" del objeto tal cual, EXCEPTO Rutas e Historial: ahí se usa la
+  // clave compuesta id+fecha (getRouteKey) porque el mismo número de ruta puede
+  // repetirse legítimamente en fechas distintas.
+  //
+  // Corrección crítica: antes Rutas/Historial se guardaban en Supabase usando
+  // solo el número de ruta ("id") como clave de la fila. Como ese número se
+  // repite día a día (rutas recurrentes cargadas por Excel), dos rutas activas
+  // el mismo momento pero de fechas distintas competían por la MISMA fila en
+  // Supabase: guardar una sobrescribía silenciosamente a la otra, y al
+  // eliminarla/depurarla (por ejemplo, al importar el Excel del día siguiente)
+  // se borraba la fila compartida, afectando a la ruta de la OTRA fecha también.
+  // Esto ocurría aunque el resto de la aplicación ya identificara cada ruta
+  // correctamente por id+fecha en memoria — el problema estaba únicamente en
+  // cómo se guardaba/borraba en la base de datos compartida.
+  const routeSyncKey: SyncKeyFn<Route> = getRouteKey;
+  const defaultSyncKey = <T extends { id: string }>(item: T) => item.id;
 
   // Carga inicial desde Supabase (una sola vez al montar). Si alguna colección
   // llega vacía (primera vez que esta app se conecta a la base de datos), se
@@ -211,36 +246,62 @@ export default function App() {
         // siembra se subía a Supabase. El problema es que, si la lectura fallaba
         // habiendo ya datos reales compartidos, el navegador quedaba "creyendo" que
         // esa siembra local era el estado real; en cuanto alguien hacía cualquier
-        // cambio después, la sincronización comparaba contra ese set de IDs
+        // cambio después, la sincronización comparaba contra ese set de claves
         // equivocado y terminaba BORRANDO en Supabase las rutas/camiones/personal
         // reales que no estuvieran en la siembra accidental. Ahora, si la lectura
         // falla, no se toca nada: se sigue mostrando lo que ya había en
         // memoria/localStorage y no se sube ni se borra nada hasta lograr una
         // lectura real y confiable (en la siguiente recarga).
-        function reconcileInitialLoad<T extends { id: string }>(
+        function reconcileInitialLoad<T>(
           table: SyncableTable,
-          remoteList: T[] | null,
+          remoteRows: SyncedRow<T>[] | null,
           localList: T[],
           setter: (list: T[]) => void,
-          ref: { current: SyncIdHolder & { json: string } }
+          ref: { current: SyncRef },
+          getKey: SyncKeyFn<T>
         ) {
-          if (remoteList === null) {
+          if (remoteRows === null) {
             console.error(
               `No se pudo leer "${table}" de Supabase; se mantiene el estado local sin sincronizar por ahora.`
             );
             return;
           }
+          const remoteList = remoteRows.map((row) => row.data);
           const finalList = remoteList.length > 0 ? remoteList : localList;
           setter(finalList);
-          ref.current = { json: JSON.stringify(finalList), ids: new Set(finalList.map((item) => item.id)) };
-          if (remoteList.length === 0) void pushSharedCollection(table, finalList, { ids: null });
+          const finalKeys = new Set(finalList.map(getKey));
+          ref.current = { json: JSON.stringify(finalList), ids: finalKeys };
+          if (remoteList.length === 0) {
+            void pushSharedCollection(table, finalList, getKey, null);
+            return;
+          }
+          // Corrección: limpieza única de filas guardadas con un esquema de clave
+          // anterior (ver el comentario sobre routeSyncKey más arriba). Si una fila
+          // remota fue guardada bajo una clave que ya no coincide con la que hoy se
+          // calcularía para esos mismos datos (por ejemplo, el número de ruta solo,
+          // sin la fecha), se re-sube esa colección bajo la clave correcta y luego
+          // se elimina la fila vieja. En cargas siguientes esto ya no encuentra nada
+          // que migrar (es una operación segura de repetir).
+          const legacyKeys = remoteRows.filter((row) => !finalKeys.has(row.key)).map((row) => row.key);
+          if (legacyKeys.length > 0) {
+            void pushSharedCollection(table, finalList, getKey, null).then(() =>
+              deleteSharedRecords(table, legacyKeys)
+            );
+          }
         }
 
-        reconcileInitialLoad('app_routes', remoteRoutes, routes, setRoutes, routesSyncRef);
-        reconcileInitialLoad('app_historical_routes', remoteHistory, historicalRoutes, setHistoricalRoutes, historySyncRef);
-        reconcileInitialLoad('app_trucks', remoteTrucks, trucks, setTrucks, trucksSyncRef);
-        reconcileInitialLoad('app_staff', remoteStaff, staff, setStaff, staffSyncRef);
-        reconcileInitialLoad('app_users', remoteUsers, users, setUsers, usersSyncRef);
+        reconcileInitialLoad('app_routes', remoteRoutes, routes, setRoutes, routesSyncRef, routeSyncKey);
+        reconcileInitialLoad(
+          'app_historical_routes',
+          remoteHistory,
+          historicalRoutes,
+          setHistoricalRoutes,
+          historySyncRef,
+          routeSyncKey
+        );
+        reconcileInitialLoad('app_trucks', remoteTrucks, trucks, setTrucks, trucksSyncRef, defaultSyncKey);
+        reconcileInitialLoad('app_staff', remoteStaff, staff, setStaff, staffSyncRef, defaultSyncKey);
+        reconcileInitialLoad('app_users', remoteUsers, users, setUsers, usersSyncRef, defaultSyncKey);
       } catch (e) {
         console.error('Error cargando datos compartidos de Supabase:', e);
       } finally {
@@ -265,38 +326,38 @@ export default function App() {
       subscribeToSharedCollection<Route>('app_routes', (updater) => {
         setRoutes((prev) => {
           const next = updater(prev);
-          routesSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map((r) => r.id)) };
+          routesSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map(routeSyncKey)) };
           return next;
         });
-      }),
+      }, routeSyncKey),
       subscribeToSharedCollection<Route>('app_historical_routes', (updater) => {
         setHistoricalRoutes((prev) => {
           const next = updater(prev);
-          historySyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map((r) => r.id)) };
+          historySyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map(routeSyncKey)) };
           return next;
         });
-      }),
+      }, routeSyncKey),
       subscribeToSharedCollection<Truck>('app_trucks', (updater) => {
         setTrucks((prev) => {
           const next = updater(prev);
-          trucksSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map((t) => t.id)) };
+          trucksSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map(defaultSyncKey)) };
           return next;
         });
-      }),
+      }, defaultSyncKey),
       subscribeToSharedCollection<Staff>('app_staff', (updater) => {
         setStaff((prev) => {
           const next = updater(prev);
-          staffSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map((s) => s.id)) };
+          staffSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map(defaultSyncKey)) };
           return next;
         });
-      }),
+      }, defaultSyncKey),
       subscribeToSharedCollection<AppUser>('app_users', (updater) => {
         setUsers((prev) => {
           const next = updater(prev);
-          usersSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map((u) => u.id)) };
+          usersSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map(defaultSyncKey)) };
           return next;
         });
-      }),
+      }, defaultSyncKey),
     ];
 
     return () => {
@@ -310,7 +371,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    pushIfChanged('app_users', users, usersSyncRef, usersPushQueueRef);
+    pushIfChanged('app_users', users, defaultSyncKey, usersSyncRef, usersPushQueueRef);
   }, [users, pushIfChanged]);
 
   const handleLogin = (username: string, password: string): boolean => {
@@ -507,6 +568,9 @@ export default function App() {
   const [revertSplitTarget, setRevertSplitTarget] = useState<Route | null>(null);
   const [assignTarget, setAssignTarget] = useState<Route | null>(null);
   const [liquidateTarget, setLiquidateTarget] = useState<Route | null>(null);
+  // Ruta seleccionada para registrar su "Liquidación Final" (cierre del pendiente
+  // de validar caja/boleta de una liquidación previa en estado Caja Abierta).
+  const [finalizeCajaAbiertaTarget, setFinalizeCajaAbiertaTarget] = useState<Route | null>(null);
   const [receiptTarget, setReceiptTarget] = useState<Route | null>(null);
   const [receiptConsolidatedSiblings, setReceiptConsolidatedSiblings] = useState<Route[] | undefined>(undefined);
   const [isNewTruckModalOpen, setIsNewTruckModalOpen] = useState(false);
@@ -529,7 +593,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    pushIfChanged('app_routes', routes, routesSyncRef, routesPushQueueRef);
+    pushIfChanged('app_routes', routes, routeSyncKey, routesSyncRef, routesPushQueueRef);
   }, [routes, pushIfChanged]);
 
   useEffect(() => {
@@ -538,7 +602,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    pushIfChanged('app_trucks', trucks, trucksSyncRef, trucksPushQueueRef);
+    pushIfChanged('app_trucks', trucks, defaultSyncKey, trucksSyncRef, trucksPushQueueRef);
   }, [trucks, pushIfChanged]);
 
   useEffect(() => {
@@ -547,7 +611,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    pushIfChanged('app_staff', staff, staffSyncRef, staffPushQueueRef);
+    pushIfChanged('app_staff', staff, defaultSyncKey, staffSyncRef, staffPushQueueRef);
   }, [staff, pushIfChanged]);
 
   useEffect(() => {
@@ -556,7 +620,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    pushIfChanged('app_historical_routes', historicalRoutes, historySyncRef, historyPushQueueRef);
+    pushIfChanged('app_historical_routes', historicalRoutes, routeSyncKey, historySyncRef, historyPushQueueRef);
   }, [historicalRoutes, pushIfChanged]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -1629,6 +1693,8 @@ export default function App() {
       // definitivo, pero queda marcada como pendiente de validar la caja/boleta.
       isCajaAbierta?: boolean;
       motivoCajaAbierta?: CajaAbiertaReason;
+      // Comentario libre y opcional, disponible para las 3 modalidades de cierre.
+      comentario?: string;
     }
   ) => {
     const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
@@ -1714,6 +1780,7 @@ export default function App() {
         motivoDetalle: data.motivoDetalle,
         auditor: data.auditor,
         tipoAsignacion: currentTripTipo,
+        comentario: data.comentario,
       };
 
       const updatedRoute: Route = {
@@ -1773,10 +1840,21 @@ export default function App() {
         // "auditor" (que sigue siendo texto libre a propósito).
         liquidadoPorUsuario: currentUser?.username,
         fechaLiquidacion: fechaHoraLiquidacion,
+        comentario: data.comentario,
         // Nuevo estado "Caja Abierta": la ruta queda liquidada normalmente, pero
         // marcada como pendiente de validar la caja/boleta del punto de venta.
         cajaAbierta: !!data.isCajaAbierta,
         motivoCajaAbierta: data.motivoCajaAbierta,
+        // Primer registro del historial de status: se guarda la fecha exacta del
+        // status inicial con el que queda esta liquidación (Liquidada o Caja
+        // Abierta), para poder mostrar más adelante una línea de tiempo completa
+        // en el Tablero de Rutas Liquidadas (ver Liquidación Final más abajo).
+        historialEstados: [
+          {
+            estado: data.isCajaAbierta ? 'Caja Abierta' : 'Liquidada',
+            fecha: fechaHoraLiquidacion,
+          },
+        ],
       },
     };
 
@@ -1827,6 +1905,51 @@ export default function App() {
 
     // Open receipt modal
     handleViewSettlementReceipt(routeId, updatedRoute);
+  };
+
+  // Registra la "Liquidación Final" de una ruta que había quedado en Caja
+  // Abierta (pendiente de validar la caja/boleta del punto de venta). No toca
+  // ningún dato operativo ya liquidado (cajas, paradas, motivo, auditor, etc.):
+  // solo marca el pendiente como resuelto y agrega la fecha + comentario de
+  // cierre al historial de estados, para trazabilidad en el Tablero de Rutas
+  // Liquidadas. Busca la ruta tanto en "routes" (por si sigue vigente en el
+  // tablero activo) como en "historicalRoutes" (donde vive de forma permanente
+  // una vez que el día se cierra y se archiva), y actualiza ambas listas donde
+  // corresponda para que el cambio se refleje sin importar de cuál venga.
+  const handleFinalizeCajaAbierta = (routeId: string, fecha: string, comentarioFinal?: string) => {
+    const target =
+      routes.find((r) => routeMatchesKey(r, routeId, fecha)) ||
+      historicalRoutes.find((r) => routeMatchesKey(r, routeId, fecha));
+
+    if (!target || !target.liquidacion?.cajaAbierta) {
+      showToast('No se encontró una liquidación en Caja Abierta pendiente para esta ruta', 'error');
+      return;
+    }
+    if (target.liquidacion.cajaAbiertaResuelta) {
+      showToast('Esta ruta ya tiene registrada su Liquidación Final', 'info');
+      setFinalizeCajaAbiertaTarget(null);
+      return;
+    }
+
+    const fechaFinal = formatDateTimeToGuatemala(new Date());
+    const updatedRoute: Route = {
+      ...target,
+      liquidacion: {
+        ...target.liquidacion,
+        cajaAbiertaResuelta: true,
+        fechaLiquidacionFinal: fechaFinal,
+        comentarioLiquidacionFinal: comentarioFinal,
+        historialEstados: [
+          ...(target.liquidacion.historialEstados || []),
+          { estado: 'Liquidación Final', fecha: fechaFinal },
+        ],
+      },
+    };
+
+    setRoutes((prev) => prev.map((r) => (routeMatchesKey(r, routeId, fecha) ? updatedRoute : r)));
+    setHistoricalRoutes((prev) => prev.map((r) => (routeMatchesKey(r, routeId, fecha) ? updatedRoute : r)));
+    setFinalizeCajaAbiertaTarget(null);
+    showToast(`Ruta ${routeId}: Liquidación Final registrada. Caja Abierta resuelta.`, 'success');
   };
 
   const handleCommitBatchRoutes = (importedRoutes: Route[]) => {
@@ -2380,6 +2503,7 @@ export default function App() {
             onViewConsolidatedReceipt={(parentRouteId) =>
               handleViewConsolidatedReceipt(parentRouteId)
             }
+            onOpenFinalizeCajaAbierta={(routeObj) => setFinalizeCajaAbiertaTarget(routeObj)}
             onShowToast={showToast}
           />
         )}
@@ -2526,6 +2650,13 @@ export default function App() {
         route={liquidateTarget}
         defaultAuditor={currentUser?.nombre || currentUser?.username || ''}
         onConfirmLiquidation={handleConfirmLiquidation}
+      />
+
+      <FinalizeCajaAbiertaModal
+        isOpen={!!finalizeCajaAbiertaTarget}
+        onClose={() => setFinalizeCajaAbiertaTarget(null)}
+        route={finalizeCajaAbiertaTarget}
+        onConfirmFinalize={handleFinalizeCajaAbierta}
       />
 
       <ReceiptModal
