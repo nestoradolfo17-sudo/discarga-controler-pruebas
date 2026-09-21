@@ -9,7 +9,7 @@ export const INITIAL_USERS: AppUser[] = [
     username: 'admin',
     password: '1605',
     isAdmin: true,
-    permissions: { dashboard: true, board: true, liquidated: true, trucks: true, staff: true, batch: true },
+    permissions: { dashboard: true, board: true, liquidated: true, trucks: true, staff: true, batch: true, canBulkUploadTrucks: true, canManualAddTrucks: true, canBulkUploadStaff: true, canManualAddStaff: true },
     canDelete: true,
     agencyAccess: 'all',
     createdAt: new Date().toISOString(),
