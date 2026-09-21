@@ -26,7 +26,10 @@ interface AssignmentDetailModalProps {
   allRoutes?: Route[];
   trucks?: Truck[];
   staff?: Staff[];
-  onOpenAssignModal?: (routeId: string) => void;
+  // Corrección: se agrega "fecha" porque el mismo ID de ruta puede repetirse en
+  // fechas distintas (ver src/utils/routeKey.ts) — sin esto, "Asignar Ahora" podía
+  // terminar abriendo el modal de asignación de la fila equivocada.
+  onOpenAssignModal?: (routeId: string, fecha: string) => void;
 }
 
 export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
@@ -318,7 +321,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
                   type="button"
                   onClick={() => {
                     onClose();
-                    onOpenAssignModal(route.id);
+                    onOpenAssignModal(route.id, route.fecha);
                   }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
                 >
@@ -382,7 +385,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
                 type="button"
                 onClick={() => {
                   onClose();
-                  onOpenAssignModal(route.id);
+                  onOpenAssignModal(route.id, route.fecha);
                 }}
                 className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold transition cursor-pointer text-xs border border-blue-200"
               >
