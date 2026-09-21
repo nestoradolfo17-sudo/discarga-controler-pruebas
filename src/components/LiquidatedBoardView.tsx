@@ -246,7 +246,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             <tr>
               <th scope="col" className="px-5 py-4">ID Ruta</th>
               <th scope="col" className="px-5 py-4">Estado</th>
-              <th scope="col" className="px-5 py-4">Agencia, Mercado y Segmento</th>
+              <th scope="col" className="px-5 py-4">Agencia y Segmento</th>
               <th scope="col" className="px-5 py-4">Fecha Ruta & Cierre</th>
               <th scope="col" className="px-5 py-4">Camión (Placa)</th>
               <th scope="col" className="px-5 py-4 min-w-[200px]">Tripulación</th>
@@ -333,12 +333,11 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                     </span>
                   </td>
 
-                  {/* Agencia, Mercado y Segmento */}
+                  {/* Agencia y Segmento */}
                   <td className="px-5 py-4 text-xs sm:text-sm">
                     <div className="font-semibold text-blue-700">{r.agencia}</div>
-                    <div className="text-[11px] text-slate-500">{r.mercado || 'Mercado Abierto'}</div>
                     {r.segmento && (
-                      <div className="text-[11px] text-slate-400">{r.segmento}</div>
+                      <div className="text-[11px] text-slate-500">{r.segmento}</div>
                     )}
                   </td>
 
