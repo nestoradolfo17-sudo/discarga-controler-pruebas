@@ -10,6 +10,7 @@ interface NewTruckModalProps {
     idCamion: string;
     placa: string;
     agencia: string;
+    proveedor: string;
     ton: string;
     bahias: string;
     capacidad: string;
@@ -25,6 +26,7 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
   const [idCamion, setIdCamion] = useState('');
   const [placa, setPlaca] = useState('');
   const [agencia, setAgencia] = useState(defaultAgencia || AGENCIA_LOCATION_OPTIONS[0]);
+  const [proveedor, setProveedor] = useState('');
   const [ton, setTon] = useState('');
   const [bahias, setBahias] = useState('');
   const [capacidad, setCapacidad] = useState('');
@@ -45,12 +47,14 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
       idCamion: idCamion.trim(),
       placa: placa.trim().toUpperCase(),
       agencia,
+      proveedor: proveedor.trim(),
       ton: ton.trim(),
       bahias: bahias.trim(),
       capacidad: capacidad.trim() || '0',
     });
     setIdCamion('');
     setPlaca('');
+    setProveedor('');
     setTon('');
     setBahias('');
     setCapacidad('');
@@ -110,6 +114,17 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Proveedor</label>
+            <input
+              type="text"
+              value={proveedor}
+              onChange={(e) => setProveedor(e.target.value)}
+              placeholder="Ej: Unidad Propia / Transportes XYZ"
+              className="w-full p-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-3">
