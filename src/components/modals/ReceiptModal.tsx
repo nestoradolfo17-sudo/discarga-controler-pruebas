@@ -366,10 +366,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                       <strong className="text-slate-800">{route.agencia || '-'}</strong>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Canal / Mercado:</span>
-                      <strong className="text-slate-800">{route.mercado || 'Mercado Abierto'}</strong>
-                    </div>
-                    <div>
                       <span className="text-[10px] text-slate-400 uppercase font-semibold block">Segmento:</span>
                       <strong className="text-slate-800">{route.segmento || '-'}</strong>
                     </div>
