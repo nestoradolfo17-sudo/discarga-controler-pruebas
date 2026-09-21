@@ -21,6 +21,15 @@ interface ResourcesViewProps {
   onDeleteStaffMembers?: (staffIds: string[]) => void;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   canDelete?: boolean;
+  // Corrección: permisos independientes para poder subir Excel masivo o agregar
+  // manualmente Camiones/Personal, sin dar permiso para editar lo ya cargado (la
+  // carga masiva en sí ya nunca sobrescribe registros existentes, ver App.tsx).
+  // Opcionales y con default true para no afectar pantallas/usos existentes que no
+  // pasen estos props (compatibilidad hacia atrás).
+  canBulkUploadTrucks?: boolean;
+  canManualAddTrucks?: boolean;
+  canBulkUploadStaff?: boolean;
+  canManualAddStaff?: boolean;
 }
 
 export const ResourcesView: React.FC<ResourcesViewProps> = ({
@@ -38,6 +47,10 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
   onDeleteStaffMembers,
   onShowToast,
   canDelete = true,
+  canBulkUploadTrucks = true,
+  canManualAddTrucks = true,
+  canBulkUploadStaff = true,
+  canManualAddStaff = true,
 }) => {
   const [isBatchStaffModalOpen, setIsBatchStaffModalOpen] = useState(false);
   const [isBatchTruckModalOpen, setIsBatchTruckModalOpen] = useState(false);
@@ -106,23 +119,27 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
               <Download className="w-3.5 h-3.5 mr-1 text-blue-600" />
               Descargar Plantilla
             </button>
-            <button
-              type="button"
-              id="btn-subir-excel-camiones"
-              onClick={() => setIsBatchTruckModalOpen(true)}
-              className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center shadow-2xs"
-              title="Cargar camiones masivamente desde archivo Excel"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 mr-1" />
-              Subir Excel
-            </button>
-            <button
-              id="btn-agregar-camion"
-              onClick={onOpenNewTruckModal}
-              className="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-slate-800 transition cursor-pointer flex items-center"
-            >
-              + Agregar Camión
-            </button>
+            {canBulkUploadTrucks && (
+              <button
+                type="button"
+                id="btn-subir-excel-camiones"
+                onClick={() => setIsBatchTruckModalOpen(true)}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center shadow-2xs"
+                title="Cargar camiones masivamente desde archivo Excel"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 mr-1" />
+                Subir Excel
+              </button>
+            )}
+            {canManualAddTrucks && (
+              <button
+                id="btn-agregar-camion"
+                onClick={onOpenNewTruckModal}
+                className="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-slate-800 transition cursor-pointer flex items-center"
+              >
+                + Agregar Camión
+              </button>
+            )}
           </div>
         </div>
         {canDelete && selectedTruckIds.size > 0 && (
@@ -284,24 +301,28 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
               <Download className="w-3.5 h-3.5 mr-1 text-emerald-600" />
               Descargar Plantilla
             </button>
-            <button
-              type="button"
-              id="btn-subir-excel-personal"
-              onClick={() => setIsBatchStaffModalOpen(true)}
-              className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center shadow-2xs"
-              title="Cargar personal masivamente desde archivo Excel"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 mr-1" />
-              Subir Excel
-            </button>
-            <button
-              id="btn-agregar-personal"
-              onClick={onOpenNewStaffModal}
-              className="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-slate-800 transition cursor-pointer flex items-center"
-            >
-              <UserPlus className="w-3.5 h-3.5 mr-1" />
-              Agregar Personal
-            </button>
+            {canBulkUploadStaff && (
+              <button
+                type="button"
+                id="btn-subir-excel-personal"
+                onClick={() => setIsBatchStaffModalOpen(true)}
+                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center shadow-2xs"
+                title="Cargar personal masivamente desde archivo Excel"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 mr-1" />
+                Subir Excel
+              </button>
+            )}
+            {canManualAddStaff && (
+              <button
+                id="btn-agregar-personal"
+                onClick={onOpenNewStaffModal}
+                className="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-slate-800 transition cursor-pointer flex items-center"
+              >
+                <UserPlus className="w-3.5 h-3.5 mr-1" />
+                Agregar Personal
+              </button>
+            )}
           </div>
         </div>
         {canDelete && selectedStaffIds.size > 0 && (
