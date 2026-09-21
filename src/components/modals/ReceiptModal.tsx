@@ -423,9 +423,37 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   </div>
 
                   {liq.cajaAbierta && (
-                    <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-2.5 text-amber-900 font-sans">
-                      <strong className="uppercase tracking-wide">Caja Abierta — Pendiente de Validar</strong>
-                      {liq.motivoCajaAbierta && <span>: {liq.motivoCajaAbierta}</span>}
+                    <div
+                      className={`border-2 rounded-lg p-2.5 font-sans ${
+                        liq.cajaAbiertaResuelta
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                          : 'bg-amber-50 border-amber-300 text-amber-900'
+                      }`}
+                    >
+                      {liq.cajaAbiertaResuelta ? (
+                        <>
+                          <strong className="uppercase tracking-wide">Caja Abierta — Validada (Liquidación Final)</strong>
+                          {liq.fechaLiquidacionFinal && (
+                            <div className="text-[11px] mt-0.5">
+                              Fecha de Liquidación Final: {formatDateTimeToGuatemala(liq.fechaLiquidacionFinal)}
+                            </div>
+                          )}
+                          {liq.comentarioLiquidacionFinal && (
+                            <div className="text-[11px] mt-0.5 italic">"{liq.comentarioLiquidacionFinal}"</div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <strong className="uppercase tracking-wide">Caja Abierta — Pendiente de Validar</strong>
+                          {liq.motivoCajaAbierta && <span>: {liq.motivoCajaAbierta}</span>}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {liq.comentario && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 font-sans text-[11px] italic">
+                      <strong className="not-italic text-slate-800">Comentario:</strong> "{liq.comentario}"
                     </div>
                   )}
 
