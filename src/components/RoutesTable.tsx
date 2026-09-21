@@ -50,6 +50,7 @@ type SortKey =
   | 'id'
   | 'agencia'
   | 'mercado'
+  | 'segmento'
   | 'fecha'
   | 'horas'
   | 'carga'
@@ -125,6 +126,11 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
             undefined,
             { sensitivity: 'base' }
           );
+          break;
+        case 'segmento':
+          comparison = (a.segmento || '').localeCompare(b.segmento || '', undefined, {
+            sensitivity: 'base',
+          });
           break;
         case 'fecha': {
           const fA = a.fechaOriginalRuta || a.fecha || a.fechaCarga || '';
@@ -378,6 +384,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
               {renderSortHeader('id', 'ID', 'whitespace-nowrap')}
               {renderSortHeader('agencia', 'Agencia')}
               {renderSortHeader('mercado', 'Mercado')}
+              {renderSortHeader('segmento', 'Segmento')}
               {renderSortHeader('fecha', 'Fecha')}
               {renderSortHeader('carga', 'Carga')}
               <th scope="col" className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-center w-24 whitespace-nowrap">Acciones</th>
@@ -468,6 +475,11 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   {/* Mercado */}
                   <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-slate-700 text-xs font-medium whitespace-nowrap">
                     {route.mercado || 'Mercado Abierto'}
+                  </td>
+
+                  {/* Segmento */}
+                  <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-slate-700 text-xs font-medium whitespace-nowrap">
+                    {route.segmento || '-'}
                   </td>
 
                   {/* Fecha */}
