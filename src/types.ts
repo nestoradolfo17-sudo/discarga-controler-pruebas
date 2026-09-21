@@ -54,6 +54,14 @@ export type MotivoDevolucionReason =
   | 'Fuera de Horario / Retraso'
   | 'Cliente Rechaza Pedido';
 
+// Catálogo de motivos por los que la Caja (POS) de una ruta liquidada queda
+// pendiente de validar (nuevo estado "Caja Abierta" del módulo de Liquidación).
+// Es independiente del catálogo de Motivos de Devolución de arriba: estos NO
+// tienen que ver con la mercadería entregada/devuelta, sino con el cierre de
+// caja/boleta del punto de venta al momento de liquidar. Ver
+// '../data/motivosCajaAbierta' para el catálogo con íconos.
+export type CajaAbiertaReason = 'PIN de Abasto' | 'Pendiente Validación de Boleta' | 'Fuera POS';
+
 export interface Truck {
   id: string;
   idCamion?: string;
@@ -130,6 +138,12 @@ export interface RouteLiquidation {
   liquidadoPorUsuario?: string;
   fechaLiquidacion: string;
   horaLiquidacion?: string;
+  // Nuevo estado "Caja Abierta": la ruta se liquida normalmente (libera piloto,
+  // auxiliares y camión, y pasa al Tablero de Rutas Liquidadas), pero queda
+  // marcada como pendiente de validar la caja/boleta del punto de venta hasta
+  // que se resuelva. Ver CajaAbiertaReason en este mismo archivo.
+  cajaAbierta?: boolean;
+  motivoCajaAbierta?: CajaAbiertaReason;
 }
 
 export interface RouteDispatchRecord {
