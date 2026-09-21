@@ -117,6 +117,17 @@ export interface RouteAssignment {
   tipoAsignacion?: AssignmentType;
 }
 
+// Registro de un cambio de status dentro del ciclo de vida de una liquidación
+// (por ejemplo: "Liquidada" o "Caja Abierta" al momento de liquidar, y más
+// adelante "Liquidación Final" cuando se resuelve una Caja Abierta pendiente),
+// junto con la fecha exacta en que ocurrió. Se guarda como lista ordenada
+// (se agrega al final conforme ocurre cada paso) para poder mostrar en el
+// Tablero de Rutas Liquidadas una línea de tiempo clara de todo el proceso.
+export interface RouteLiquidationStatusEntry {
+  estado: string;
+  fecha: string;
+}
+
 export interface RouteLiquidation {
   guiasExitosas: number;
   guiasRechazadas: number;
@@ -138,12 +149,27 @@ export interface RouteLiquidation {
   liquidadoPorUsuario?: string;
   fechaLiquidacion: string;
   horaLiquidacion?: string;
+  // Comentario libre y opcional que se captura en el momento de liquidar (las 3
+  // modalidades: Liquidada, Ruta Abierta y Caja Abierta), para dejar contexto
+  // adicional que no encaja en los campos estructurados (motivo, auditor, etc.).
+  comentario?: string;
   // Nuevo estado "Caja Abierta": la ruta se liquida normalmente (libera piloto,
   // auxiliares y camión, y pasa al Tablero de Rutas Liquidadas), pero queda
   // marcada como pendiente de validar la caja/boleta del punto de venta hasta
   // que se resuelva. Ver CajaAbiertaReason en este mismo archivo.
   cajaAbierta?: boolean;
   motivoCajaAbierta?: CajaAbiertaReason;
+  // Liquidación Final: para una ruta que quedó en Caja Abierta, esta opción
+  // (disponible desde el Tablero de Rutas Liquidadas) permite cerrar
+  // definitivamente el pendiente de validación una vez resuelto, sin alterar
+  // los datos operativos ya liquidados (cajas, paradas, motivo, etc.).
+  cajaAbiertaResuelta?: boolean;
+  fechaLiquidacionFinal?: string;
+  comentarioLiquidacionFinal?: string;
+  // Historial ordenado de los status por los que ha pasado esta liquidación
+  // (ver RouteLiquidationStatusEntry arriba), para mostrarlo en el Tablero de
+  // Rutas Liquidadas.
+  historialEstados?: RouteLiquidationStatusEntry[];
 }
 
 export interface RouteDispatchRecord {
@@ -162,6 +188,9 @@ export interface RouteDispatchRecord {
   motivoDevolucion: string;
   auditor: string;
   tipoAsignacion?: AssignmentType;
+  // Comentario libre y opcional capturado al registrar el retorno (misma
+  // captura que el campo de comentario del modal de liquidación).
+  comentario?: string;
 }
 
 export interface Route {
