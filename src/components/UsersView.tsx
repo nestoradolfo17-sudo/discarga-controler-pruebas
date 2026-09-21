@@ -53,11 +53,18 @@ const DEFAULT_PERMISSIONS: TablePermissions = {
   canManualAddStaff: false,
 };
 
-// Corrección: los 4 permisos marcados con "grandfathered" son nuevos — los usuarios
+// Corrección: los permisos marcados con "grandfathered" son nuevos — los usuarios
 // creados antes de este cambio no tienen estos campos guardados en su registro
 // (quedan como undefined). Para no quitarles de golpe algo que ya podían hacer, se
 // tratan como "permitido" (true) mientras no se hayan guardado explícitamente en
 // false. Ver isPermEnabled/togglePermission más abajo.
+//
+// Corrección: "Agregar Camiones/Personal Manual" ya NO aparece aquí como permiso
+// aparte — si el usuario puede ver Camiones/Personal (permisos "Camiones"/
+// "Personal" de abajo), automáticamente puede agregar de forma manual en esa
+// tabla. Solo queda como permiso independiente la carga masiva por Excel: si NO
+// se le da ese permiso, el usuario simplemente se queda con agregar manual (ver
+// canManualAddTrucks/canManualAddStaff en App.tsx).
 const PERMISSION_LABELS: { key: keyof TablePermissions; label: string; grandfathered?: boolean }[] = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'board', label: 'Tablero de Rutas' },
@@ -66,9 +73,7 @@ const PERMISSION_LABELS: { key: keyof TablePermissions; label: string; grandfath
   { key: 'staff', label: 'Personal' },
   { key: 'batch', label: 'Carga Masiva Excel' },
   { key: 'canBulkUploadTrucks', label: 'Subir Excel Camiones', grandfathered: true },
-  { key: 'canManualAddTrucks', label: 'Agregar Camiones Manual', grandfathered: true },
   { key: 'canBulkUploadStaff', label: 'Subir Excel Personal', grandfathered: true },
-  { key: 'canManualAddStaff', label: 'Agregar Personal Manual', grandfathered: true },
 ];
 
 // Devuelve si un permiso está habilitado para un usuario, respetando la
