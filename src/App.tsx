@@ -731,6 +731,7 @@ export default function App() {
         String(r.id).toLowerCase().includes(q) ||
         String(r.agencia || '').toLowerCase().includes(q) ||
         String(r.mercado || '').toLowerCase().includes(q) ||
+        String(r.segmento || '').toLowerCase().includes(q) ||
         (r.fecha && String(r.fecha).toLowerCase().includes(q)) ||
         (asig && asig.camionPlaca.toLowerCase().includes(q)) ||
         (asig && asig.conductor.toLowerCase().includes(q)) ||
