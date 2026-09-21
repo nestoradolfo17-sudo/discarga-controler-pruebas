@@ -179,31 +179,44 @@ export default function App() {
         ]);
         if (cancelled) return;
 
-        const finalRoutes = remoteRoutes && remoteRoutes.length > 0 ? remoteRoutes : routes;
-        const finalHistory = remoteHistory && remoteHistory.length > 0 ? remoteHistory : historicalRoutes;
-        const finalTrucks = remoteTrucks && remoteTrucks.length > 0 ? remoteTrucks : trucks;
-        const finalStaff = remoteStaff && remoteStaff.length > 0 ? remoteStaff : staff;
-        const finalUsers = remoteUsers && remoteUsers.length > 0 ? remoteUsers : users;
+        // Corrección: fetchSharedCollection devuelve `null` cuando la lectura falla
+        // (red/Supabase momentáneamente inalcanzable — algo común justo en una carga
+        // en frío, como un Ctrl+F5 o una ventana de incógnito recién abierta tras un
+        // deploy) y devuelve `[]` cuando la tabla de verdad está vacía. Antes ambos
+        // casos se trataban igual: se sembraba con los datos locales/de ejemplo y esa
+        // siembra se subía a Supabase. El problema es que, si la lectura fallaba
+        // habiendo ya datos reales compartidos, el navegador quedaba "creyendo" que
+        // esa siembra local era el estado real; en cuanto alguien hacía cualquier
+        // cambio después, la sincronización comparaba contra ese set de IDs
+        // equivocado y terminaba BORRANDO en Supabase las rutas/camiones/personal
+        // reales que no estuvieran en la siembra accidental. Ahora, si la lectura
+        // falla, no se toca nada: se sigue mostrando lo que ya había en
+        // memoria/localStorage y no se sube ni se borra nada hasta lograr una
+        // lectura real y confiable (en la siguiente recarga).
+        function reconcileInitialLoad<T extends { id: string }>(
+          table: SyncableTable,
+          remoteList: T[] | null,
+          localList: T[],
+          setter: (list: T[]) => void,
+          ref: { current: SyncIdHolder & { json: string } }
+        ) {
+          if (remoteList === null) {
+            console.error(
+              `No se pudo leer "${table}" de Supabase; se mantiene el estado local sin sincronizar por ahora.`
+            );
+            return;
+          }
+          const finalList = remoteList.length > 0 ? remoteList : localList;
+          setter(finalList);
+          ref.current = { json: JSON.stringify(finalList), ids: new Set(finalList.map((item) => item.id)) };
+          if (remoteList.length === 0) void pushSharedCollection(table, finalList, { ids: null });
+        }
 
-        setRoutes(finalRoutes);
-        setHistoricalRoutes(finalHistory);
-        setTrucks(finalTrucks);
-        setStaff(finalStaff);
-        setUsers(finalUsers);
-
-        routesSyncRef.current = { json: JSON.stringify(finalRoutes), ids: new Set(finalRoutes.map((r) => r.id)) };
-        historySyncRef.current = { json: JSON.stringify(finalHistory), ids: new Set(finalHistory.map((r) => r.id)) };
-        trucksSyncRef.current = { json: JSON.stringify(finalTrucks), ids: new Set(finalTrucks.map((t) => t.id)) };
-        staffSyncRef.current = { json: JSON.stringify(finalStaff), ids: new Set(finalStaff.map((s) => s.id)) };
-        usersSyncRef.current = { json: JSON.stringify(finalUsers), ids: new Set(finalUsers.map((u) => u.id)) };
-
-        const emptyIdHolder: SyncIdHolder = { ids: null };
-        if (!remoteRoutes || remoteRoutes.length === 0) void pushSharedCollection('app_routes', finalRoutes, emptyIdHolder);
-        if (!remoteHistory || remoteHistory.length === 0)
-          void pushSharedCollection('app_historical_routes', finalHistory, { ids: null });
-        if (!remoteTrucks || remoteTrucks.length === 0) void pushSharedCollection('app_trucks', finalTrucks, { ids: null });
-        if (!remoteStaff || remoteStaff.length === 0) void pushSharedCollection('app_staff', finalStaff, { ids: null });
-        if (!remoteUsers || remoteUsers.length === 0) void pushSharedCollection('app_users', finalUsers, { ids: null });
+        reconcileInitialLoad('app_routes', remoteRoutes, routes, setRoutes, routesSyncRef);
+        reconcileInitialLoad('app_historical_routes', remoteHistory, historicalRoutes, setHistoricalRoutes, historySyncRef);
+        reconcileInitialLoad('app_trucks', remoteTrucks, trucks, setTrucks, trucksSyncRef);
+        reconcileInitialLoad('app_staff', remoteStaff, staff, setStaff, staffSyncRef);
+        reconcileInitialLoad('app_users', remoteUsers, users, setUsers, usersSyncRef);
       } catch (e) {
         console.error('Error cargando datos compartidos de Supabase:', e);
       } finally {
