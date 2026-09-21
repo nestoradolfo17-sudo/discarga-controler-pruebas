@@ -57,7 +57,7 @@ export interface RouteSummaryMetric {
   id: string;
   route: Route;
   agencia: string;
-  mercado: string;
+  segmento: string;
   // 1. Fecha Planificada
   fechaPlanificadaStr: string;
   fechaPlanificadaDate: Date | null;
@@ -317,7 +317,7 @@ function buildRouteSummaryMetric(r: Route, fechaHoyStr?: string): RouteSummaryMe
     id: String(r.id),
     route: r,
     agencia: r.agencia || 'Mercado Abierto',
-    mercado: r.mercado || 'Principal',
+    segmento: r.segmento || '-',
     fechaPlanificadaStr,
     fechaPlanificadaDate: baseDate,
     fechaDespachadaStr,
@@ -402,7 +402,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
       return (
         m.id.toLowerCase().includes(q) ||
         m.agencia.toLowerCase().includes(q) ||
-        m.mercado.toLowerCase().includes(q) ||
+        m.segmento.toLowerCase().includes(q) ||
         m.fechaPlanificadaStr.toLowerCase().includes(q) ||
         m.fechaDespachadaStr.toLowerCase().includes(q) ||
         (m.motivoPiso && m.motivoPiso.toLowerCase().includes(q))
@@ -798,7 +798,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               </div>
               <p className="text-xs text-slate-400 print:text-slate-600 print:text-[11px] mt-0.5">
                 {mode === 'inicio'
-                  ? 'DISCARGA CONTROLER • Control de salida: No. Ruta, Fecha planificada, Fecha despachada, Horas transcurridas, Indicador de retraso, Cajas físicas, Paradas, Agencia y Mercado'
+                  ? 'DISCARGA CONTROLER • Control de salida: No. Ruta, Fecha planificada, Fecha despachada, Horas transcurridas, Indicador de retraso, Cajas físicas, Paradas, Agencia y Segmento'
                   : 'DISCARGA CONTROLER • Cierre operativo: Comparativo de lo planificado vs ejecución real, efectividad de cajas entregadas, devoluciones y horas transcurridas'}
               </p>
             </div>
@@ -1366,7 +1366,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Buscar ruta, agencia, mercado..."
+                  placeholder="Buscar ruta, agencia, segmento..."
                   className="w-full pl-8 pr-2.5 py-1 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium shadow-2xs"
                 />
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
@@ -1386,7 +1386,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         {/* 6. CAJAS FÍSICAS (Planificadas en inicio / Ejecutadas en fin)  */}
         {/* 7. PARADAS (Planificadas en inicio / Ejecutadas en fin)       */}
         {/* 8. Agencia                                                    */}
-        {/* 9. Mercado                                                    */}
+        {/* 9. Segmento                                                   */}
         {/* ============================================================== */}
         {/* ============================================================== */}
         {/* CONTENEDOR PRINCIPAL: RESUMEN DE TOTALES Y TABLA DETALLADA    */}
@@ -2306,8 +2306,8 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       {/* 8. Agencia */}
                       <th className="px-3.5 py-3 whitespace-nowrap">Agencia</th>
 
-                      {/* 9. Mercado */}
-                      <th className="px-3.5 py-3 whitespace-nowrap">Mercado</th>
+                      {/* 9. Segmento */}
+                      <th className="px-3.5 py-3 whitespace-nowrap">Segmento</th>
 
                       {/* Columna de estado en Fin de Día */}
                       {mode === 'fin' && (
@@ -2480,11 +2480,11 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                             </span>
                           </td>
 
-                          {/* 9. MERCADO */}
+                          {/* 9. SEGMENTO */}
                           <td className="px-3.5 py-3 whitespace-nowrap text-slate-700 font-medium">
                             <span className="inline-flex items-center">
                               <MapPin className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                              {item.mercado}
+                              {item.segmento}
                             </span>
                           </td>
 
