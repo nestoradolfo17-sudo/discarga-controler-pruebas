@@ -117,6 +117,10 @@ export const BatchStaffModal: React.FC<BatchStaffModalProps> = ({
   };
 
   // Stats
+  // Corrección: la carga masiva ya NO sobrescribe colaboradores existentes — las
+  // filas que coinciden con un colaborador ya cargado se omiten por completo (solo
+  // se agregan los realmente nuevos). Este contador ahora refleja cuántas filas se
+  // omitirán.
   const newStaffCount = previewStaff.filter(
     (p) =>
       !existingStaff.some(
@@ -125,7 +129,7 @@ export const BatchStaffModal: React.FC<BatchStaffModalProps> = ({
           e.nombre.trim().toLowerCase() === p.nombre.trim().toLowerCase()
       )
   ).length;
-  const updateStaffCount = previewStaff.length - newStaffCount;
+  const skippedStaffCount = previewStaff.length - newStaffCount;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -274,9 +278,12 @@ export const BatchStaffModal: React.FC<BatchStaffModalProps> = ({
                       {newStaffCount} nuevos
                     </span>
                   )}
-                  {updateStaffCount > 0 && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                      {updateStaffCount} a actualizar
+                  {skippedStaffCount > 0 && (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded font-semibold bg-amber-50 text-amber-800 border border-amber-200"
+                      title="Estos colaboradores ya existen en el sistema (coinciden por DPI o Nombre) y no se modificarán: la carga masiva solo agrega colaboradores nuevos."
+                    >
+                      {skippedStaffCount} ya existen (se omitirán)
                     </span>
                   )}
                 </div>
@@ -421,7 +428,9 @@ export const BatchStaffModal: React.FC<BatchStaffModalProps> = ({
                 className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition cursor-pointer flex items-center"
               >
                 <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
-                Cargar {previewStaff.length} Colaboradores al Sistema
+                {skippedStaffCount > 0
+                  ? `Agregar ${newStaffCount} Colaboradores Nuevos (${skippedStaffCount} se omitirán)`
+                  : `Cargar ${previewStaff.length} Colaboradores al Sistema`}
               </button>
             )}
           </div>
