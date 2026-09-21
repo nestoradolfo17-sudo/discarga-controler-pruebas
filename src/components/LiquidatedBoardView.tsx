@@ -11,6 +11,9 @@ interface LiquidatedBoardViewProps {
   allAgencies: string[];
   onViewSettlementReceipt: (routeId: string, route?: Route) => void;
   onViewConsolidatedReceipt: (parentRouteId: string) => void;
+  // Abre el modal de "Liquidación Final" para cerrar el pendiente de validar
+  // caja/boleta de una ruta que quedó en estado Caja Abierta.
+  onOpenFinalizeCajaAbierta?: (route: Route) => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -21,6 +24,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
   allAgencies,
   onViewSettlementReceipt,
   onViewConsolidatedReceipt,
+  onOpenFinalizeCajaAbierta,
   onShowToast,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -73,7 +77,8 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
           String(asig.auxiliar3 || '').toLowerCase().includes(q) ||
           String(liq.auditor || '').toLowerCase().includes(q) ||
           String(liq.motivoDevolucion || '').toLowerCase().includes(q) ||
-          String(liq.motivoCajaAbierta || '').toLowerCase().includes(q);
+          String(liq.motivoCajaAbierta || '').toLowerCase().includes(q) ||
+          String(liq.comentario || '').toLowerCase().includes(q);
         if (!match) return false;
       }
 
@@ -110,9 +115,10 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
 
   // Corrección: conteo de rutas liquidadas con el nuevo estado "Caja Abierta"
   // (pendientes de validar caja/boleta), para que se note de un vistazo cuántas
-  // quedan por resolver sin tener que revisar fila por fila.
+  // quedan por resolver sin tener que revisar fila por fila. Solo cuenta las que
+  // AÚN no tienen registrada su Liquidación Final (ver cajaAbiertaResuelta).
   const cajaAbiertaCount = useMemo(
-    () => filteredList.filter((r) => r.liquidacion?.cajaAbierta).length,
+    () => filteredList.filter((r) => r.liquidacion?.cajaAbierta && !r.liquidacion?.cajaAbiertaResuelta).length,
     [filteredList]
   );
 
@@ -348,14 +354,24 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                   <td className="px-5 py-4">
                     {liq.cajaAbierta ? (
                       <div className="space-y-1">
-                        <span
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300"
-                          title="Ruta liquidada, pero pendiente de validar la caja/boleta del punto de venta"
-                        >
-                          <Lock className="w-4 h-4 text-amber-600 shrink-0" />
-                          <span>Caja Abierta</span>
-                        </span>
-                        {liq.motivoCajaAbierta && (
+                        {liq.cajaAbiertaResuelta ? (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            title="Caja Abierta ya validada (Liquidación Final registrada)"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Caja Abierta (Validada)</span>
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300"
+                            title="Ruta liquidada, pero pendiente de validar la caja/boleta del punto de venta"
+                          >
+                            <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>Caja Abierta</span>
+                          </span>
+                        )}
+                        {liq.motivoCajaAbierta && !liq.cajaAbiertaResuelta && (
                           <span className="block text-[10px] text-amber-700 font-medium">
                             {liq.motivoCajaAbierta}
                           </span>
@@ -366,6 +382,20 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                         <span>Liquidada</span>
                       </span>
+                    )}
+
+                    {/* Historial de Estados: línea de tiempo ordenada con la fecha de
+                        cada proceso realizado (Liquidada/Caja Abierta al momento de
+                        liquidar, y Liquidación Final cuando se resuelve). */}
+                    {liq.historialEstados && liq.historialEstados.length > 0 && (
+                      <div className="mt-1.5 space-y-0.5 border-l-2 border-slate-200 pl-2">
+                        {liq.historialEstados.map((h, idx) => (
+                          <div key={idx} className="text-[10px] text-slate-500 leading-tight">
+                            <span className="font-semibold text-slate-600">{h.estado}:</span>{' '}
+                            <span className="font-mono">{formatDateTimeToGuatemala(h.fecha)}</span>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </td>
 
@@ -494,11 +524,37 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                         Sistema: {liq.liquidadoPorUsuario}
                       </div>
                     )}
+                    {liq.comentario && (
+                      <div
+                        className="text-[10px] text-slate-500 italic mt-1 max-w-[220px] whitespace-normal"
+                        title="Comentario registrado al liquidar"
+                      >
+                        "{liq.comentario}"
+                      </div>
+                    )}
+                    {liq.cajaAbiertaResuelta && liq.comentarioLiquidacionFinal && (
+                      <div
+                        className="text-[10px] text-emerald-700 italic mt-1 max-w-[220px] whitespace-normal"
+                        title="Comentario de la Liquidación Final"
+                      >
+                        Final: "{liq.comentarioLiquidacionFinal}"
+                      </div>
+                    )}
                   </td>
 
                   {/* Acciones */}
                   <td className="px-5 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {liq.cajaAbierta && !liq.cajaAbiertaResuelta && onOpenFinalizeCajaAbierta && (
+                        <button
+                          onClick={() => onOpenFinalizeCajaAbierta(r)}
+                          title="Registrar Liquidación Final: cierra el pendiente de validar caja/boleta"
+                          className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs sm:text-sm font-semibold transition inline-flex items-center cursor-pointer shadow-xs"
+                        >
+                          <Lock className="w-4 h-4 mr-1 text-amber-700" />
+                          Liquidación Final
+                        </button>
+                      )}
                       {allSiblingsSettled && parentId && (
                         <button
                           onClick={() => onViewConsolidatedReceipt(parentId)}
