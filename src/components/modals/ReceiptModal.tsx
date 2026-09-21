@@ -422,6 +422,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                     </div>
                   </div>
 
+                  {liq.cajaAbierta && (
+                    <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-2.5 text-amber-900 font-sans">
+                      <strong className="uppercase tracking-wide">Caja Abierta — Pendiente de Validar</strong>
+                      {liq.motivoCajaAbierta && <span>: {liq.motivoCajaAbierta}</span>}
+                    </div>
+                  )}
+
                   <div className="space-y-2 mt-4">
                     <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-200 pb-1">
                       Balance Operativo de Carga y Paradas
