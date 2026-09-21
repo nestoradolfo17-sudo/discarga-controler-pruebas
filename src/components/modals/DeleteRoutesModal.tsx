@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Route } from '../../types';
 import { X, Trash2, Lock, AlertTriangle, KeyRound, Eye, EyeOff, ShieldAlert } from 'lucide-react';
+import { getRouteKey } from '../../utils/routeKey';
 
 interface DeleteRoutesModalProps {
   isOpen: boolean;
   onClose: () => void;
+  // Corrección: routeIds ahora son claves compuestas ID+Fecha (ver
+  // src/utils/routeKey.ts), no solo el ID — el mismo ID de ruta puede repetirse en
+  // fechas distintas, así que identificar solo por ID podía terminar seleccionando
+  // (y eliminando) también otra fila con el mismo ID pero de otra fecha.
   routeIds: string[];
   routes: Route[];
   onConfirmDelete: (routeIds: string[]) => void;
@@ -37,7 +42,7 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
 
   if (!isOpen || routeIds.length === 0) return null;
 
-  const routesToDelete = routes.filter((r) => routeIds.includes(String(r.id)));
+  const routesToDelete = routes.filter((r) => routeIds.includes(getRouteKey(r)));
   const isMultiple = routeIds.length > 1;
   const hasLiquidadas = routesToDelete.some((r) => r.estado === 'Liquidada');
   const isHighRisk = isMultiple || hasLiquidadas;
@@ -74,7 +79,7 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-1.5">
-                {isMultiple ? `Eliminar ${routeIds.length} Rutas Seleccionadas` : `Eliminar Ruta ${routeIds[0]}`}
+                {isMultiple ? `Eliminar ${routeIds.length} Rutas Seleccionadas` : `Eliminar Ruta ${routesToDelete[0]?.id ?? routeIds[0]}`}
               </h3>
               <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1 mt-0.5">
                 <Lock className="w-3 h-3" />
@@ -101,7 +106,7 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
           <p className="text-[11px] leading-relaxed text-rose-900">
             {isMultiple
               ? `Está a punto de eliminar ${routeIds.length} registros del tablero de rutas. Esta acción no se puede deshacer.`
-              : `Está a punto de eliminar la ruta ${routeIds[0]} del tablero de rutas. Esta acción no se puede deshacer.`}
+              : `Está a punto de eliminar la ruta ${routesToDelete[0]?.id ?? routeIds[0]} del tablero de rutas. Esta acción no se puede deshacer.`}
           </p>
         </div>
 
