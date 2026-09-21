@@ -1796,7 +1796,6 @@ export default function App() {
   };
 
   const handleCreateTruck = (truckData: {
-    idCamion: string;
     placa: string;
     agencia: string;
     proveedor: string;
@@ -1805,10 +1804,12 @@ export default function App() {
     capacidad: string;
   }) => {
     // Corrección: antes el ID interno del camión se generaba como `T-${Date.now()}`,
-    // sin relación visible con el vehículo. Ahora se arma a partir de la Placa que
-    // el usuario ya escribió en el formulario, como pidió: "TR-" + Placa. Como esto
-    // hace que el ID dependa directamente de la Placa, se valida que no exista ya
-    // un camión con esa misma Placa (evitaría dos registros con el mismo ID).
+    // sin relación visible con el vehículo, y además se pedía escribir un "ID
+    // Camión" aparte a mano. Ahora ya no se pide: el ID se genera solo a partir de
+    // la Placa ("TR-" + Placa) y ese mismo valor se usa también como "ID Camión"
+    // para que se vea en el consolidado de Camiones. Como el ID depende
+    // directamente de la Placa, se valida que no exista ya un camión con esa
+    // misma Placa (evitaría dos registros con el mismo ID).
     const newTruckId = `TR-${truckData.placa}`;
     if (trucks.some((t) => t.id === newTruckId || t.placa === truckData.placa)) {
       showToast(`Ya existe un camión registrado con la placa ${truckData.placa}.`, 'error');
@@ -1817,7 +1818,7 @@ export default function App() {
 
     const newT: Truck = {
       id: newTruckId,
-      idCamion: truckData.idCamion || undefined,
+      idCamion: newTruckId,
       placa: truckData.placa,
       agencia: truckData.agencia,
       proveedor: truckData.proveedor || undefined,
