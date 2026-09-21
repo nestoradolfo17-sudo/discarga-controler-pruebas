@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Route, MotivoDevolucionReason } from '../../types';
-import { X, CheckCircle, ClipboardCheck, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Route, MotivoDevolucionReason, CajaAbiertaReason } from '../../types';
+import { X, CheckCircle, ClipboardCheck, RotateCcw, AlertTriangle, Lock } from 'lucide-react';
 import { MOTIVO_DEVOLUCION_OPTIONS, MOTIVO_REVISITA } from '../../data/motivosDevolucion';
+import { CAJA_ABIERTA_OPTIONS } from '../../data/motivosCajaAbierta';
 
 interface LiquidateModalProps {
   isOpen: boolean;
@@ -27,6 +28,10 @@ interface LiquidateModalProps {
       motivoDetalle?: string;
       auditor: string;
       isRutaAbierta?: boolean;
+      // Nuevo estado "Caja Abierta": la ruta se liquida igual que un cierre
+      // definitivo, pero queda marcada como pendiente de validar la caja/boleta.
+      isCajaAbierta?: boolean;
+      motivoCajaAbierta?: CajaAbiertaReason;
     }
   ) => void;
 }
@@ -44,7 +49,9 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   const [motivosSeleccionados, setMotivosSeleccionados] = useState<MotivoDevolucionReason[]>([]);
   const [motivoDetalle, setMotivoDetalle] = useState('');
   const [auditor, setAuditor] = useState('Operador de Agencia');
-  const [tipoResolucion, setTipoResolucion] = useState<'liquidada' | 'abierta'>('liquidada');
+  const [tipoResolucion, setTipoResolucion] = useState<'liquidada' | 'abierta' | 'cajaAbierta'>('liquidada');
+  const [motivoCajaAbierta, setMotivoCajaAbierta] = useState<CajaAbiertaReason | null>(null);
+  const [cajaAbiertaError, setCajaAbiertaError] = useState('');
 
   useEffect(() => {
     if (isOpen && route) {
@@ -58,6 +65,8 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       setAuditor(defaultAuditor?.trim() || 'Operador de Agencia');
       // If already marked as Abierta, default to abierta
       setTipoResolucion(route.estado === 'Abierta' ? 'abierta' : 'liquidada');
+      setMotivoCajaAbierta(null);
+      setCajaAbiertaError('');
     }
   }, [isOpen, route, defaultAuditor]);
 
@@ -109,6 +118,12 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const isCajaAbierta = tipoResolucion === 'cajaAbierta';
+    if (isCajaAbierta && !motivoCajaAbierta) {
+      setCajaAbiertaError('Selecciona el motivo por el que la caja queda pendiente de validar.');
+      return;
+    }
+    setCajaAbiertaError('');
     const isRutaAbierta = tipoResolucion === 'abierta';
     let finalMotivos = [...motivosSeleccionados];
     const detalle = motivoDetalle.trim();
@@ -138,6 +153,8 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       motivoDetalle: finalDetalle || undefined,
       auditor: auditor.trim() || 'Auditor de Agencia',
       isRutaAbierta,
+      isCajaAbierta,
+      motivoCajaAbierta: isCajaAbierta ? motivoCajaAbierta ?? undefined : undefined,
     });
   };
 
@@ -344,7 +361,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
             <label className="block font-bold text-slate-800 text-xs">
               Modalidad de Cierre / Resolución de la Ruta *
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div
                 onClick={() => setTipoResolucion('liquidada')}
                 className={`p-3 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between ${
@@ -406,7 +423,68 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                   </p>
                 </div>
               </div>
+
+              <div
+                onClick={() => setTipoResolucion('cajaAbierta')}
+                className={`p-3 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                  tipoResolucion === 'cajaAbierta'
+                    ? 'border-amber-500 bg-amber-50/70 shadow-xs ring-1 ring-amber-200'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-900 text-xs flex items-center">
+                      <Lock className="w-3.5 h-3.5 text-amber-600 mr-1.5" />
+                      Caja Abierta (Pendiente de Validar)
+                    </span>
+                    <input
+                      type="radio"
+                      name="tipoResolucion"
+                      checked={tipoResolucion === 'cajaAbierta'}
+                      onChange={() => setTipoResolucion('cajaAbierta')}
+                      className="cursor-pointer"
+                    />
+                  </div>
+                  <p className="text-[11px] text-amber-900 mt-1 leading-relaxed">
+                    <strong>Libera piloto, auxiliares y unidad</strong> y <strong>transfiere la ruta a Rutas Liquidadas</strong> igual que un cierre definitivo, pero queda marcada como <strong>Caja Abierta</strong> hasta validar la caja/boleta del punto de venta.
+                  </p>
+                </div>
+              </div>
             </div>
+
+            {tipoResolucion === 'cajaAbierta' && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                <label className="block font-bold text-amber-900 text-[11px]">
+                  Motivo por el que la caja queda pendiente de validar *
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {CAJA_ABIERTA_OPTIONS.map((opt) => {
+                    const isActive = motivoCajaAbierta === opt.reason;
+                    return (
+                      <button
+                        key={opt.reason}
+                        type="button"
+                        onClick={() => {
+                          setMotivoCajaAbierta(opt.reason);
+                          setCajaAbiertaError('');
+                        }}
+                        className={`px-2.5 py-1 text-[11px] font-bold border rounded-md transition cursor-pointer shadow-xs ${
+                          isActive
+                            ? 'bg-amber-600 text-white border-amber-700 ring-2 ring-amber-200'
+                            : 'bg-white hover:bg-amber-100 border-amber-300 text-amber-800'
+                        }`}
+                      >
+                        {opt.icon} {opt.reason}
+                      </button>
+                    );
+                  })}
+                </div>
+                {cajaAbiertaError && (
+                  <p className="text-[11px] text-rose-700 font-semibold">{cajaAbiertaError}</p>
+                )}
+              </div>
+            )}
 
             {tipoResolucion === 'abierta' && (
               <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-[11px] flex items-start space-x-2">
@@ -462,6 +540,14 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
               >
                 <RotateCcw className="w-4 h-4 mr-1.5" />
                 <span>Registrar Retorno y Dejar Ruta Abierta para Reasignar</span>
+              </button>
+            ) : tipoResolucion === 'cajaAbierta' ? (
+              <button
+                type="submit"
+                className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold shadow-md flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Lock className="w-4 h-4 mr-1.5" />
+                <span>Liquidar con Caja Abierta (Pendiente de Validar)</span>
               </button>
             ) : (
               <button
