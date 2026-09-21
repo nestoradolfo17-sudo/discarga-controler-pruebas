@@ -26,6 +26,7 @@ import {
 import { TRUCK_REASON_REMUNERA, STAFF_REASON_REMUNERA } from './data/unavailableReasons';
 import { exportRoutesToExcel } from './utils/excel';
 import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate } from './utils/date';
+import { getRouteKey, routeMatchesKey } from './utils/routeKey';
 import { Navbar } from './components/Navbar';
 import { StatsCards } from './components/StatsCards';
 import { TabNav, ActiveTab } from './components/TabNav';
@@ -1139,8 +1140,15 @@ export default function App() {
     showToast(`Partición revertida con éxito. Restaurada ruta matriz ${parentRouteId}.`, 'success');
   };
 
+  // Corrección: el mismo ID de ruta puede repetirse en fechas distintas (ruta
+  // recurrente cargada día tras día). Antes esta función buscaba/actualizaba las
+  // rutas comparando solo por "id", así que asignar una fila podía terminar
+  // aplicando la misma asignación también a otra fila con el mismo ID pero de otra
+  // fecha. Ahora se identifica la fila exacta con ID + Fecha (ver
+  // src/utils/routeKey.ts).
   const handleConfirmAssignment = (
     routeId: string,
+    fecha: string,
     assignment: {
       truckId: string;
       truckPlaca: string;
@@ -1153,7 +1161,7 @@ export default function App() {
       tipoAsignacion: AssignmentType;
     }
   ) => {
-    const targetRoute = routes.find((r) => String(r.id) === String(routeId));
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
     const intentoNum = (targetRoute?.historialDespachos?.length || 0) + 1;
     const hasPriorAssignment = Boolean(
       targetRoute?.asignacion ||
@@ -1178,7 +1186,7 @@ export default function App() {
 
     setRoutes((prev) =>
       prev.map((r) => {
-        if (String(r.id) === String(routeId)) {
+        if (routeMatchesKey(r, routeId, fecha)) {
           const originalDate = r.fechaOriginalRuta || r.fecha;
           return {
             ...r,
@@ -1217,7 +1225,7 @@ export default function App() {
             .filter(
               (r) =>
                 r.estado === 'En Tránsito' &&
-                String(r.id) !== String(routeId) &&
+                !routeMatchesKey(r, routeId, fecha) &&
                 r.asignacion?.camionId === assignment.truckId
             )
             .map((r) => String(r.id));
@@ -1261,7 +1269,7 @@ export default function App() {
     // Verificar si esta asignación comparte camión con otra ruta activa (Optimización de Carga)
     const otherRoutesWithSameTruck = routes.filter(
       (r) =>
-        String(r.id) !== String(routeId) &&
+        !routeMatchesKey(r, routeId, fecha) &&
         r.estado === 'En Tránsito' &&
         r.asignacion?.camionId === assignment.truckId
     );
@@ -1287,18 +1295,21 @@ export default function App() {
     }
   };
 
+  // Corrección: mismo motivo que handleConfirmAssignment — se identifica la fila
+  // exacta con ID + Fecha para no afectar otra fila con el mismo ID en otra fecha.
   const handleMoveToFloor = (
     routeId: string,
+    fecha: string,
     tomorrowDate: string,
     motivo: string = 'Ruta a Piso para despacho de mañana'
   ) => {
-    const targetRoute = routes.find((r) => String(r.id) === String(routeId));
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
     if (!targetRoute) return;
 
     // Liberar camión o personal si estaban asignados previamente, verificando si otras rutas activas los siguen usando
     const asig = targetRoute.asignacion || targetRoute.ultimoDespacho;
     const otherActiveRoutes = routes.filter(
-      (r) => String(r.id) !== String(routeId) && r.estado === 'En Tránsito' && r.asignacion
+      (r) => !routeMatchesKey(r, routeId, fecha) && r.estado === 'En Tránsito' && r.asignacion
     );
 
     if (asig) {
@@ -1339,7 +1350,7 @@ export default function App() {
 
     setRoutes((prev) =>
       prev.map((r) => {
-        if (String(r.id) === String(routeId)) {
+        if (routeMatchesKey(r, routeId, fecha)) {
           const originalDate = r.fechaOriginalRuta || r.fecha;
           return {
             ...r,
@@ -1372,15 +1383,19 @@ export default function App() {
   // para despacho de mañana) sin tocar el flujo de eliminación existente. Igual que la
   // acción individual "A Piso" (ver el uso de onMoveToFloor en RoutesTable.tsx), esta
   // acción NO solicita contraseña — solo "Eliminar" la requiere (ver DeleteAuthModal).
+  // Corrección: routeIds aquí son claves compuestas ID+Fecha (ver
+  // src/utils/routeKey.ts), no solo el ID — el mismo ID de ruta puede repetirse en
+  // fechas distintas, así que filtrar solo por ID podía enviar a Piso también otra
+  // fila con el mismo ID pero de otra fecha.
   const handleBulkMoveToFloor = (routeIds: string[]) => {
-    const idsSet = new Set(routeIds.map(String));
+    const keysSet = new Set(routeIds);
 
     // Solo se pueden enviar a Piso rutas que no estén ya en Piso ni Liquidadas (para una
     // ruta ya en Piso existe la opción individual "Modificar / Sacar de Piso").
     const eligibleRoutes = routes.filter(
-      (r) => idsSet.has(String(r.id)) && r.estado !== 'Liquidada' && !r.aPiso
+      (r) => keysSet.has(getRouteKey(r)) && r.estado !== 'Liquidada' && !r.aPiso
     );
-    const skippedCount = idsSet.size - eligibleRoutes.length;
+    const skippedCount = keysSet.size - eligibleRoutes.length;
 
     if (eligibleRoutes.length === 0) {
       showToast(
@@ -1390,12 +1405,12 @@ export default function App() {
       return;
     }
 
-    const eligibleIdsSet = new Set(eligibleRoutes.map((r) => String(r.id)));
+    const eligibleKeysSet = new Set(eligibleRoutes.map((r) => getRouteKey(r)));
 
     // Rutas activas que permanecen sin cambios, para liberar camión/personal
     // correctamente (mismo criterio que handleConfirmDeleteRoutes).
     const remainingActiveRoutes = routes.filter(
-      (r) => !eligibleIdsSet.has(String(r.id)) && r.estado === 'En Tránsito' && r.asignacion
+      (r) => !eligibleKeysSet.has(getRouteKey(r)) && r.estado === 'En Tránsito' && r.asignacion
     );
 
     eligibleRoutes.forEach((moveRoute) => {
@@ -1448,7 +1463,7 @@ export default function App() {
 
     setRoutes((prev) =>
       prev.map((r) => {
-        if (!eligibleIdsSet.has(String(r.id))) return r;
+        if (!eligibleKeysSet.has(getRouteKey(r))) return r;
         const originalDate = r.fechaOriginalRuta || r.fecha;
         const tomorrowDate = getTomorrowGuatemalaDate(r.fecha);
         return {
@@ -1474,15 +1489,19 @@ export default function App() {
     );
   };
 
+  // Corrección: routeIdsToDelete aquí son claves compuestas ID+Fecha (ver
+  // src/utils/routeKey.ts), no solo el ID — el mismo ID de ruta puede repetirse en
+  // fechas distintas, así que filtrar solo por ID podía eliminar también otra fila
+  // con el mismo ID pero de otra fecha.
   const handleConfirmDeleteRoutes = (routeIdsToDelete: string[]) => {
-    const idsSet = new Set(routeIdsToDelete.map(String));
+    const keysSet = new Set(routeIdsToDelete);
 
     // Rutas que se van a eliminar
-    const deletingRoutes = routes.filter((r) => idsSet.has(String(r.id)));
+    const deletingRoutes = routes.filter((r) => keysSet.has(getRouteKey(r)));
 
     // Rutas activas que permanecen sin eliminar
     const remainingActiveRoutes = routes.filter(
-      (r) => !idsSet.has(String(r.id)) && r.estado === 'En Tránsito' && r.asignacion
+      (r) => !keysSet.has(getRouteKey(r)) && r.estado === 'En Tránsito' && r.asignacion
     );
 
     // Liberar camiones y personal si estaban asignados y ninguna otra ruta activa los retiene
@@ -1535,21 +1554,26 @@ export default function App() {
     });
 
     // Eliminar de la lista de rutas
-    setRoutes((prev) => prev.filter((r) => !idsSet.has(String(r.id))));
+    setRoutes((prev) => prev.filter((r) => !keysSet.has(getRouteKey(r))));
     // Eliminar del historial si estuviera presente
-    setHistoricalRoutes((prev) => prev.filter((r) => !idsSet.has(String(r.id))));
+    setHistoricalRoutes((prev) => prev.filter((r) => !keysSet.has(getRouteKey(r))));
 
     setDeleteRoutesTargetIds(null);
     showToast(
       routeIdsToDelete.length === 1
-        ? `Ruta ${routeIdsToDelete[0]} eliminada del tablero.`
+        ? `Ruta ${deletingRoutes[0]?.id ?? routeIdsToDelete[0]} eliminada del tablero.`
         : `Se eliminaron ${routeIdsToDelete.length} rutas del tablero.`,
       'success'
     );
   };
 
+  // Corrección: mismo motivo que handleConfirmAssignment/handleMoveToFloor — el
+  // mismo ID de ruta puede repetirse en fechas distintas, así que se identifica la
+  // fila exacta con ID + Fecha (ver src/utils/routeKey.ts) para no liquidar también
+  // otra fila con el mismo ID pero de otra fecha.
   const handleConfirmLiquidation = (
     routeId: string,
+    fecha: string,
     data: {
       guiasExitosas: number;
       guiasRechazadas: number;
@@ -1562,12 +1586,12 @@ export default function App() {
       isRutaAbierta?: boolean;
     }
   ) => {
-    const targetRoute = routes.find((r) => String(r.id) === String(routeId));
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
     if (!targetRoute) return;
 
     // Free Truck and Staff, considerando si otras rutas activas siguen utilizando la unidad o tripulación (Optimización / Carga compartida)
     const otherActiveRoutes = routes.filter(
-      (r) => String(r.id) !== String(routeId) && r.estado === 'En Tránsito' && r.asignacion
+      (r) => !routeMatchesKey(r, routeId, fecha) && r.estado === 'En Tránsito' && r.asignacion
     );
 
     if (targetRoute.asignacion?.camionId) {
@@ -1668,7 +1692,7 @@ export default function App() {
       };
 
       setRoutes((prev) =>
-        prev.map((r) => (String(r.id) === String(routeId) ? updatedRoute : r))
+        prev.map((r) => (routeMatchesKey(r, routeId, fecha) ? updatedRoute : r))
       );
       setLiquidateTarget(null);
 
@@ -1707,11 +1731,11 @@ export default function App() {
       },
     };
 
-    setRoutes((prev) => prev.map((r) => (String(r.id) === String(routeId) ? updatedRoute : r)));
+    setRoutes((prev) => prev.map((r) => (routeMatchesKey(r, routeId, fecha) ? updatedRoute : r)));
 
     // Archive into historicalRoutes
     setHistoricalRoutes((prev) => {
-      const idx = prev.findIndex((hr) => String(hr.id) === String(routeId));
+      const idx = prev.findIndex((hr) => routeMatchesKey(hr, routeId, fecha));
       if (idx >= 0) {
         const copy = [...prev];
         copy[idx] = updatedRoute;
@@ -2114,12 +2138,19 @@ export default function App() {
     }
   };
 
-  const handleViewSettlementReceipt = (routeId: string, directRoute?: Route) => {
+  // Corrección: se agrega "fecha" (opcional, al final para no romper la llamada
+  // existente desde LiquidatedBoardView que ya pasa el objeto de ruta directo en
+  // directRoute) porque el mismo ID de ruta puede repetirse en fechas distintas —
+  // sin esto, ver el acta desde el Tablero de Rutas podía abrir la de otra fila con
+  // el mismo ID pero de otra fecha.
+  const handleViewSettlementReceipt = (routeId: string, directRoute?: Route, fecha?: string) => {
+    const matchesTarget = (r: Route) =>
+      fecha !== undefined ? routeMatchesKey(r, routeId, fecha) : String(r.id) === String(routeId);
     const target =
       directRoute ||
-      routes.find((r) => String(r.id) === String(routeId)) ||
-      allLiquidatedRoutes.find((r) => String(r.id) === String(routeId)) ||
-      historicalRoutes.find((r) => String(r.id) === String(routeId));
+      routes.find(matchesTarget) ||
+      allLiquidatedRoutes.find(matchesTarget) ||
+      historicalRoutes.find(matchesTarget);
 
     if (!target) {
       showToast('No se encontró la información de la ruta', 'error');
@@ -2276,23 +2307,23 @@ export default function App() {
             allRoutes={routes}
             trucks={trucks}
             staff={staff}
-            onOpenAssignModal={(id) => {
-              const r = routes.find((item) => String(item.id) === String(id));
+            onOpenAssignModal={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
               if (r) setAssignTarget(r);
             }}
-            onOpenLiquidateModal={(id) => {
-              const r = routes.find((item) => String(item.id) === String(id));
+            onOpenLiquidateModal={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
               if (r) setLiquidateTarget(r);
             }}
-            onOpenSplitRouteModal={(id) => {
-              const r = routes.find((item) => String(item.id) === String(id));
+            onOpenSplitRouteModal={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
               if (r) setSplitRouteTarget(r);
             }}
-            onOpenRevertSplitModal={(id) => {
-              const r = routes.find((item) => String(item.id) === String(id));
+            onOpenRevertSplitModal={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
               if (r) setRevertSplitTarget(r);
             }}
-            onViewSettlementReceipt={(id) => handleViewSettlementReceipt(id)}
+            onViewSettlementReceipt={(id, fecha) => handleViewSettlementReceipt(id, undefined, fecha)}
             onViewConsolidatedReceipt={(parentRouteId) =>
               handleViewConsolidatedReceipt(parentRouteId)
             }
