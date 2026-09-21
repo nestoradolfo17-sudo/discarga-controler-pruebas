@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Route, Staff } from '../types';
 import { exportHistoricalToExcel, getRouteAssignmentType } from '../utils/excel';
 import { parseFlexibleDate, formatDateToGuatemala, formatDateTimeToGuatemala } from '../utils/date';
-import { CheckCircle2, FileText, Download, Search, Filter, Calendar, PackageCheck, AlertCircle, RotateCcw, Repeat } from 'lucide-react';
+import { CheckCircle2, FileText, Download, Search, Filter, Calendar, PackageCheck, AlertCircle, RotateCcw, Repeat, Lock } from 'lucide-react';
 
 interface LiquidatedBoardViewProps {
   liquidatedRoutes: Route[];
@@ -72,7 +72,8 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
           String(asig.auxiliar2 || '').toLowerCase().includes(q) ||
           String(asig.auxiliar3 || '').toLowerCase().includes(q) ||
           String(liq.auditor || '').toLowerCase().includes(q) ||
-          String(liq.motivoDevolucion || '').toLowerCase().includes(q);
+          String(liq.motivoDevolucion || '').toLowerCase().includes(q) ||
+          String(liq.motivoCajaAbierta || '').toLowerCase().includes(q);
         if (!match) return false;
       }
 
@@ -106,6 +107,14 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
     if (total === 0) return '100.0';
     return ((totalCajasEntregadas / total) * 100).toFixed(1);
   }, [totalCajasEntregadas, totalCajasDevueltas]);
+
+  // Corrección: conteo de rutas liquidadas con el nuevo estado "Caja Abierta"
+  // (pendientes de validar caja/boleta), para que se note de un vistazo cuántas
+  // quedan por resolver sin tener que revisar fila por fila.
+  const cajaAbiertaCount = useMemo(
+    () => filteredList.filter((r) => r.liquidacion?.cajaAbierta).length,
+    [filteredList]
+  );
 
   const handleExport = () => {
     const success = exportHistoricalToExcel(filteredList, staff);
@@ -171,6 +180,16 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             <span className="text-[10px] text-indigo-500 font-medium">ratio cajas</span>
           </div>
         </div>
+
+        {cajaAbiertaCount > 0 && (
+          <div className="p-3 bg-amber-50 rounded-xl border border-amber-300">
+            <span className="text-[11px] text-amber-800 font-medium uppercase tracking-wider">Caja Abierta</span>
+            <div className="flex items-baseline space-x-2 mt-0.5">
+              <h4 className="text-xl font-extrabold text-amber-700">{cajaAbiertaCount}</h4>
+              <span className="text-[10px] text-amber-600 font-medium">pendiente(s) de validar</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -327,10 +346,27 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
 
                   {/* Estado Badge */}
                   <td className="px-5 py-4">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>Liquidada</span>
-                    </span>
+                    {liq.cajaAbierta ? (
+                      <div className="space-y-1">
+                        <span
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300"
+                          title="Ruta liquidada, pero pendiente de validar la caja/boleta del punto de venta"
+                        >
+                          <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>Caja Abierta</span>
+                        </span>
+                        {liq.motivoCajaAbierta && (
+                          <span className="block text-[10px] text-amber-700 font-medium">
+                            {liq.motivoCajaAbierta}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>Liquidada</span>
+                      </span>
+                    )}
                   </td>
 
                   {/* Agencia y Segmento */}
