@@ -398,7 +398,6 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
               </th>
               {renderSortHeader('id', 'ID', 'whitespace-nowrap')}
               {renderSortHeader('agencia', 'Agencia')}
-              {renderSortHeader('mercado', 'Mercado')}
               {renderSortHeader('segmento', 'Segmento')}
               {renderSortHeader('fecha', 'Fecha')}
               {renderSortHeader('carga', 'Carga')}
@@ -485,11 +484,6 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   {/* Agencia */}
                   <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 font-semibold text-blue-700 text-xs whitespace-nowrap">
                     {route.agencia || '-'}
-                  </td>
-
-                  {/* Mercado */}
-                  <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-slate-700 text-xs font-medium whitespace-nowrap">
-                    {route.mercado || 'Mercado Abierto'}
                   </td>
 
                   {/* Segmento */}
