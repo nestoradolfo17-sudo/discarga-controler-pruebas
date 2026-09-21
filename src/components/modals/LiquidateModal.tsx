@@ -32,6 +32,8 @@ interface LiquidateModalProps {
       // definitivo, pero queda marcada como pendiente de validar la caja/boleta.
       isCajaAbierta?: boolean;
       motivoCajaAbierta?: CajaAbiertaReason;
+      // Comentario libre y opcional, disponible para las 3 modalidades de cierre.
+      comentario?: string;
     }
   ) => void;
 }
@@ -52,6 +54,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   const [tipoResolucion, setTipoResolucion] = useState<'liquidada' | 'abierta' | 'cajaAbierta'>('liquidada');
   const [motivoCajaAbierta, setMotivoCajaAbierta] = useState<CajaAbiertaReason | null>(null);
   const [cajaAbiertaError, setCajaAbiertaError] = useState('');
+  const [comentario, setComentario] = useState('');
 
   useEffect(() => {
     if (isOpen && route) {
@@ -67,6 +70,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       setTipoResolucion(route.estado === 'Abierta' ? 'abierta' : 'liquidada');
       setMotivoCajaAbierta(null);
       setCajaAbiertaError('');
+      setComentario('');
     }
   }, [isOpen, route, defaultAuditor]);
 
@@ -155,6 +159,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       isRutaAbierta,
       isCajaAbierta,
       motivoCajaAbierta: isCajaAbierta ? motivoCajaAbierta ?? undefined : undefined,
+      comentario: comentario.trim() || undefined,
     });
   };
 
@@ -494,6 +499,19 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                 </div>
               </div>
             )}
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">
+              Comentario (opcional)
+            </label>
+            <textarea
+              value={comentario}
+              onChange={(e) => setComentario(e.target.value)}
+              rows={2}
+              placeholder="Agrega cualquier observación adicional sobre esta liquidación..."
+              className="w-full p-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+            />
           </div>
 
           <div>
