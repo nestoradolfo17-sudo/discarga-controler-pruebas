@@ -13,6 +13,7 @@ import {
   AppUser,
   TablePermissions,
   MotivoDevolucionReason,
+  CajaAbiertaReason,
 } from './types';
 import { INITIAL_ROUTES, INITIAL_TRUCKS, INITIAL_STAFF, INITIAL_USERS } from './data/initialData';
 import {
@@ -1619,6 +1620,10 @@ export default function App() {
       motivoDetalle?: string;
       auditor: string;
       isRutaAbierta?: boolean;
+      // Nuevo estado "Caja Abierta": la ruta se liquida igual que un cierre
+      // definitivo, pero queda marcada como pendiente de validar la caja/boleta.
+      isCajaAbierta?: boolean;
+      motivoCajaAbierta?: CajaAbiertaReason;
     }
   ) => {
     const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
@@ -1763,6 +1768,10 @@ export default function App() {
         // "auditor" (que sigue siendo texto libre a propósito).
         liquidadoPorUsuario: currentUser?.username,
         fechaLiquidacion: fechaHoraLiquidacion,
+        // Nuevo estado "Caja Abierta": la ruta queda liquidada normalmente, pero
+        // marcada como pendiente de validar la caja/boleta del punto de venta.
+        cajaAbierta: !!data.isCajaAbierta,
+        motivoCajaAbierta: data.motivoCajaAbierta,
       },
     };
 
@@ -1781,6 +1790,13 @@ export default function App() {
 
     setLiquidateTarget(null);
 
+    // Corrección: si la ruta se liquidó con el nuevo estado "Caja Abierta", se
+    // avisa explícitamente el motivo para que quede claro que falta validar la
+    // caja/boleta, en vez del mensaje genérico de liquidación completa.
+    const cajaAbiertaSuffix = data.isCajaAbierta
+      ? ` CAJA ABIERTA: pendiente de validar (${data.motivoCajaAbierta}).`
+      : '';
+
     // Check if part of split
     if (targetRoute.isSplitRoute && targetRoute.parentRouteId) {
       const siblings = routes.filter((r) => r.parentRouteId === targetRoute.parentRouteId);
@@ -1789,16 +1805,19 @@ export default function App() {
       );
       if (allSettled) {
         showToast(
-          `¡Completados todos los viajes de la ruta ${targetRoute.parentRouteId}!`,
-          'success'
+          `¡Completados todos los viajes de la ruta ${targetRoute.parentRouteId}!${cajaAbiertaSuffix}`,
+          data.isCajaAbierta ? 'info' : 'success'
         );
         handleViewConsolidatedReceipt(targetRoute.parentRouteId);
         return;
       } else {
-        showToast(`Línea ${targetRoute.id} liquidada y transferida al Tablero de Rutas Liquidadas.`, 'info');
+        showToast(`Línea ${targetRoute.id} liquidada y transferida al Tablero de Rutas Liquidadas.${cajaAbiertaSuffix}`, 'info');
       }
     } else {
-      showToast(`Ruta ${targetRoute.id} completamente liquidada y transferida al Tablero de Rutas Liquidadas.`, 'success');
+      showToast(
+        `Ruta ${targetRoute.id} completamente liquidada y transferida al Tablero de Rutas Liquidadas.${cajaAbiertaSuffix}`,
+        data.isCajaAbierta ? 'info' : 'success'
+      );
     }
 
     // Open receipt modal
