@@ -15,6 +15,7 @@ export const AGENCIA_LOCATION_OPTIONS: string[] = [
   'Las Casas',
   'Mercado Abierto',
   'Mercados Especiales',
+  'Naranjo',
   'Playa Grande',
   'Polochic',
   'Salama',
