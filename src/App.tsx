@@ -25,7 +25,7 @@ import {
 } from './services/sync';
 import { TRUCK_REASON_REMUNERA, STAFF_REASON_REMUNERA } from './data/unavailableReasons';
 import { exportRoutesToExcel } from './utils/excel';
-import { formatDateToGuatemala, formatDateTimeToGuatemala } from './utils/date';
+import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate } from './utils/date';
 import { Navbar } from './components/Navbar';
 import { StatsCards } from './components/StatsCards';
 import { TabNav, ActiveTab } from './components/TabNav';
@@ -1354,6 +1354,113 @@ export default function App() {
     );
   };
 
+  // Corrección: la selección múltiple del Tablero de Rutas solo permitía eliminar en
+  // lote; se agrega la acción masiva "Enviar a Piso" (guardar varias rutas en bodega
+  // para despacho de mañana) sin tocar el flujo de eliminación existente. Igual que la
+  // acción individual "A Piso" (ver el uso de onMoveToFloor en RoutesTable.tsx), esta
+  // acción NO solicita contraseña — solo "Eliminar" la requiere (ver DeleteAuthModal).
+  const handleBulkMoveToFloor = (routeIds: string[]) => {
+    const idsSet = new Set(routeIds.map(String));
+
+    // Solo se pueden enviar a Piso rutas que no estén ya en Piso ni Liquidadas (para una
+    // ruta ya en Piso existe la opción individual "Modificar / Sacar de Piso").
+    const eligibleRoutes = routes.filter(
+      (r) => idsSet.has(String(r.id)) && r.estado !== 'Liquidada' && !r.aPiso
+    );
+    const skippedCount = idsSet.size - eligibleRoutes.length;
+
+    if (eligibleRoutes.length === 0) {
+      showToast(
+        'Ninguna de las rutas seleccionadas se puede enviar a Piso (ya están a Piso o Liquidadas).',
+        'error'
+      );
+      return;
+    }
+
+    const eligibleIdsSet = new Set(eligibleRoutes.map((r) => String(r.id)));
+
+    // Rutas activas que permanecen sin cambios, para liberar camión/personal
+    // correctamente (mismo criterio que handleConfirmDeleteRoutes).
+    const remainingActiveRoutes = routes.filter(
+      (r) => !eligibleIdsSet.has(String(r.id)) && r.estado === 'En Tránsito' && r.asignacion
+    );
+
+    eligibleRoutes.forEach((moveRoute) => {
+      const asig = moveRoute.asignacion || moveRoute.ultimoDespacho;
+      if (!asig) return;
+
+      if (asig.camionId) {
+        const remainingUsingTruck = remainingActiveRoutes.filter(
+          (r) => r.asignacion?.camionId === asig.camionId
+        );
+        setTrucks((prev) =>
+          prev.map((t) => {
+            if (t.id === asig.camionId) {
+              if (remainingUsingTruck.length > 0) {
+                return {
+                  ...t,
+                  estado: 'En Ruta',
+                  rutaActual: remainingUsingTruck.map((r) => r.id).join(', '),
+                };
+              }
+              return { ...t, estado: 'Disponible', rutaActual: null };
+            }
+            return t;
+          })
+        );
+      }
+
+      const crewNames = [asig.conductor, asig.auxiliar1, asig.auxiliar2, asig.auxiliar3, asig.auxiliar4].filter(
+        Boolean
+      ) as string[];
+      setStaff((prev) =>
+        prev.map((st) => {
+          if (crewNames.includes(st.nombre)) {
+            if (st.estado === 'Baja') return st;
+            const stillInOtherRoute = remainingActiveRoutes.some((r) =>
+              [
+                r.asignacion?.conductor,
+                r.asignacion?.auxiliar1,
+                r.asignacion?.auxiliar2,
+                r.asignacion?.auxiliar3,
+                r.asignacion?.auxiliar4,
+              ].includes(st.nombre)
+            );
+            return stillInOtherRoute ? { ...st, estado: 'En Ruta' } : { ...st, estado: 'Disponible' };
+          }
+          return st;
+        })
+      );
+    });
+
+    setRoutes((prev) =>
+      prev.map((r) => {
+        if (!eligibleIdsSet.has(String(r.id))) return r;
+        const originalDate = r.fechaOriginalRuta || r.fecha;
+        const tomorrowDate = getTomorrowGuatemalaDate(r.fecha);
+        return {
+          ...r,
+          fechaOriginalRuta: originalDate,
+          fecha: originalDate, // Permanece siempre la fecha de ruta original
+          fechaReprogramada: tomorrowDate,
+          estado: 'Pendiente',
+          asignacion: null,
+          tipoAsignacion: 'Ruta a Piso',
+          esRecarga: false,
+          aPiso: true,
+          fechaPiso: formatDateTimeToGuatemala(new Date()),
+          motivoPiso: 'Ruta a Piso para despacho de mañana (acción masiva)',
+        };
+      })
+    );
+
+    showToast(
+      `${eligibleRoutes.length} ruta(s) enviada(s) a Piso para despacho de mañana` +
+        (skippedCount > 0 ? ` (${skippedCount} omitida(s): ya estaban a Piso o Liquidadas).` : '.'),
+      'success'
+    );
+  };
+
   const handleConfirmDeleteRoutes = (routeIdsToDelete: string[]) => {
     const idsSet = new Set(routeIdsToDelete.map(String));
 
@@ -2164,6 +2271,7 @@ export default function App() {
             }
             onOpenNewRouteModal={() => setIsRouteTypeSelectModalOpen(true)}
             onMoveToFloor={handleMoveToFloor}
+            onBulkMoveToFloor={handleBulkMoveToFloor}
             onOpenDeleteModal={canDeleteData ? (ids) => setDeleteRoutesTargetIds(ids) : undefined}
           />
         )}
