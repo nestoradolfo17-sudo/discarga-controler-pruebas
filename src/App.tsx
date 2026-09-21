@@ -139,6 +139,22 @@ export default function App() {
   const trucksSyncRef = useRef<SyncIdHolder & { json: string }>({ json: '', ids: null });
   const staffSyncRef = useRef<SyncIdHolder & { json: string }>({ json: '', ids: null });
   const usersSyncRef = useRef<SyncIdHolder & { json: string }>({ json: '', ids: null });
+  // Corrección: cada sincronización hacia Supabase de una colección primero sube
+  // los registros actuales y LUEGO borra en Supabase cualquier id que antes se
+  // conocía y ya no está presente (ver pushSharedCollection en services/sync.ts).
+  // Si dos actualizaciones seguidas de la MISMA colección (por ejemplo, dos
+  // acciones en el Tablero de Rutas hechas con pocos segundos de diferencia)
+  // quedaban "en vuelo" al mismo tiempo y la red las resolvía fuera de orden, la
+  // más lenta terminaba comparando contra información ya desactualizada y podía
+  // borrar en Supabase algo que la más rápida acababa de guardar bien — y esa
+  // pérdida se veía reflejada en las demás pantallas conectadas. Esta cola
+  // (una por colección) obliga a que cada sincronización espere a que termine la
+  // anterior antes de empezar la siguiente, para que nunca compitan entre sí.
+  const routesPushQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const historyPushQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const trucksPushQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const staffPushQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const usersPushQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   // Sube una colección a Supabase solo si su contenido realmente cambió desde
   // la última vez que se sincronizó (en cualquier dirección: una edición local
@@ -150,13 +166,19 @@ export default function App() {
     <T extends { id: string }>(
       table: SyncableTable,
       items: T[],
-      ref: { current: SyncIdHolder & { json: string } }
+      ref: { current: SyncIdHolder & { json: string } },
+      queueRef: { current: Promise<void> }
     ) => {
       if (!isSupabaseConfigured || !isRemoteReady) return;
       const json = JSON.stringify(items);
       if (json === ref.current.json) return;
       ref.current.json = json;
-      void pushSharedCollection(table, items, ref.current);
+      // Encadenada detrás de la sincronización anterior de esta misma colección
+      // (ver el comentario de las *PushQueueRef arriba) para que nunca se
+      // ejecuten dos en paralelo compitiendo por el mismo registro de IDs.
+      queueRef.current = queueRef.current
+        .catch(() => {})
+        .then(() => pushSharedCollection(table, items, ref.current));
     },
     [isRemoteReady]
   );
@@ -287,7 +309,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    pushIfChanged('app_users', users, usersSyncRef);
+    pushIfChanged('app_users', users, usersSyncRef, usersPushQueueRef);
   }, [users, pushIfChanged]);
 
   const handleLogin = (username: string, password: string): boolean => {
@@ -488,7 +510,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    pushIfChanged('app_routes', routes, routesSyncRef);
+    pushIfChanged('app_routes', routes, routesSyncRef, routesPushQueueRef);
   }, [routes, pushIfChanged]);
 
   useEffect(() => {
@@ -497,7 +519,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    pushIfChanged('app_trucks', trucks, trucksSyncRef);
+    pushIfChanged('app_trucks', trucks, trucksSyncRef, trucksPushQueueRef);
   }, [trucks, pushIfChanged]);
 
   useEffect(() => {
@@ -506,7 +528,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    pushIfChanged('app_staff', staff, staffSyncRef);
+    pushIfChanged('app_staff', staff, staffSyncRef, staffPushQueueRef);
   }, [staff, pushIfChanged]);
 
   useEffect(() => {
@@ -515,7 +537,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    pushIfChanged('app_historical_routes', historicalRoutes, historySyncRef);
+    pushIfChanged('app_historical_routes', historicalRoutes, historySyncRef, historyPushQueueRef);
   }, [historicalRoutes, pushIfChanged]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
