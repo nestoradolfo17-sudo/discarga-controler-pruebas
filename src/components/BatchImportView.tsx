@@ -183,7 +183,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
         </div>
         <h4 className="font-bold text-slate-800 text-sm">Haz clic para seleccionar o arrastra tu archivo Excel aquí</h4>
         <p className="text-xs text-slate-400 mt-1">
-          Formato compatible: <strong>Agencia | Fecha | ID de ruta | Viaje | Servicio | Descanso | Total | Distancia | Paradas | Equipo Frio | % de capacidad | Cajas 12 Oz | Peso | Cajas Fisicas</strong>
+          Formato compatible: <strong>Agencia | Segmento | Fecha | ID de ruta | Viaje | Servicio | Descanso | Total | Distancia | Paradas | Equipo Frio | % de capacidad | Cajas 12 Oz | Peso | Cajas Fisicas</strong>
         </p>
       </div>
 
@@ -265,6 +265,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
               <thead className="bg-slate-100 text-slate-700 uppercase font-semibold sticky top-0">
                 <tr>
                   <th className="py-2.5 px-3">Agencia</th>
+                  <th className="py-2.5 px-3">Segmento</th>
                   <th className="py-2.5 px-3">Fecha</th>
                   <th className="py-2.5 px-3">ID de Ruta</th>
                   <th className="py-2.5 px-2 text-center">Viaje</th>
@@ -291,6 +292,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                       className={isDuplicate ? 'bg-amber-50/80 hover:bg-amber-100/70' : 'hover:bg-slate-50'}
                     >
                       <td className="py-2 px-3 font-sans font-medium text-slate-800">{r.agencia}</td>
+                      <td className="py-2 px-3 font-sans text-slate-700">{r.segmento || '-'}</td>
                       <td className="py-2 px-3 font-sans text-slate-700 whitespace-nowrap">
                         {formatDateToGuatemala(r.fecha) || r.fecha}
                       </td>
