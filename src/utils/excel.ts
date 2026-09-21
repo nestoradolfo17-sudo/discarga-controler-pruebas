@@ -45,9 +45,9 @@ export function normalizeAgencia(raw: string, defaultAgencia?: string): string {
 
 export function downloadExcelTemplate() {
   const templateData = [
-    ["Agencia", "Fecha", "ID de ruta", "Viaje", "Servicio", "Descanso", "Total", "Distancia", "Paradas", "Equipo Frio", "% de capacidad", "Cajas 12 Oz", "Peso", "Cajas Fisicas"],
-    ["Mercado Abierto", "31/07/2026", "102201", "01:29", "08:12", "00:45", "10:27", 16.8, 63, 53, "102.49 %", 348.3, 4478.203, 384.336],
-    ["Mercado Abierto", "03/01/2026", "102202", "02:02", "08:57", "00:45", "11:44", 31.46, 74, 61, "106.26 %", 358.208, 4748.406, 398.482]
+    ["Agencia", "Segmento", "Fecha", "ID de ruta", "Viaje", "Servicio", "Descanso", "Total", "Distancia", "Paradas", "Equipo Frio", "% de capacidad", "Cajas 12 Oz", "Peso", "Cajas Fisicas"],
+    ["Mercado Abierto", "Mayoreo", "31/07/2026", "102201", "01:29", "08:12", "00:45", "10:27", 16.8, 63, 53, "102.49 %", 348.3, 4478.203, 384.336],
+    ["Mercado Abierto", "Detalle", "03/01/2026", "102202", "02:02", "08:57", "00:45", "11:44", 31.46, 74, 61, "106.26 %", 358.208, 4748.406, 398.482]
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(templateData);
@@ -235,6 +235,10 @@ export function parseRoutesFromSheet(ws: XLSX.WorkSheet): WithImportReport<Route
         else if (h.includes('mercado') || h.includes('canal')) {
           if (colMap.mercado === undefined) colMap.mercado = c;
         }
+        // 3b. Segmento
+        else if (h.includes('segmento')) {
+          if (colMap.segmento === undefined) colMap.segmento = c;
+        }
         // 4. Fecha de Ruta
         else if (h.includes('fecha') || h === 'dia' || h === 'date') {
           if (colMap.fecha === undefined) colMap.fecha = c;
@@ -370,10 +374,13 @@ export function parseRoutesFromSheet(ws: XLSX.WorkSheet): WithImportReport<Route
       cajasFisicasVal = cajas12Val;
     }
 
+    const segmentoVal = getVal(colMap.segmento, 'general');
+
     const routeItem: Route = {
       id: idVal,
       agencia: agenciaVal,
       mercado: mercadoVal,
+      segmento: segmentoVal || '',
       fecha: routeDate,
       fechaOriginalRuta: routeDate, // Se guarda la fecha original de la ruta desde su importación
       viaje: getVal(colMap.viaje, 'time') || '00:00',
@@ -425,6 +432,7 @@ export function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
     "ID Ruta",
     "Agencia",
     "Mercado",
+    "Segmento",
     "Fecha de Ruta",
     "Fecha de Asignación",
     "Fecha de Liquidación",
@@ -475,6 +483,7 @@ export function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
       r.id,
       r.agencia || "Mercado Abierto",
       r.mercado || "Mercado Abierto",
+      r.segmento || "-",
       formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) || "",
       r.fechaAsignacion || asig?.fechaAsignacion || "-",
       formatDateTimeToGuatemala(liq?.fechaLiquidacion || r.fechaLiquidacion) || "-",
@@ -537,6 +546,7 @@ export function exportHistoricalToExcel(historicalRoutes: Route[], staffList: St
     "ID Ruta",
     "Agencia",
     "Mercado",
+    "Segmento",
     "Fecha de Ruta",
     "Fecha de Asignación",
     "Fecha de Liquidación",
@@ -580,6 +590,7 @@ export function exportHistoricalToExcel(historicalRoutes: Route[], staffList: St
       r.id,
       r.agencia || "Mercado Abierto",
       r.mercado || "Mercado Abierto",
+      r.segmento || "-",
       formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) || "",
       r.fechaAsignacion || asig?.fechaAsignacion || "-",
       formatDateTimeToGuatemala(liq?.fechaLiquidacion || r.fechaLiquidacion) || "",
