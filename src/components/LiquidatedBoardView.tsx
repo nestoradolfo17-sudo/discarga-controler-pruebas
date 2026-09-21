@@ -65,6 +65,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
           String(r.id).toLowerCase().includes(q) ||
           String(r.agencia || '').toLowerCase().includes(q) ||
           String(r.mercado || '').toLowerCase().includes(q) ||
+          String(r.segmento || '').toLowerCase().includes(q) ||
           String(asig.camionPlaca || '').toLowerCase().includes(q) ||
           String(asig.conductor || '').toLowerCase().includes(q) ||
           String(asig.auxiliar1 || '').toLowerCase().includes(q) ||
@@ -245,7 +246,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             <tr>
               <th scope="col" className="px-5 py-4">ID Ruta</th>
               <th scope="col" className="px-5 py-4">Estado</th>
-              <th scope="col" className="px-5 py-4">Agencia & Mercado</th>
+              <th scope="col" className="px-5 py-4">Agencia, Mercado y Segmento</th>
               <th scope="col" className="px-5 py-4">Fecha Ruta & Cierre</th>
               <th scope="col" className="px-5 py-4">Camión (Placa)</th>
               <th scope="col" className="px-5 py-4 min-w-[200px]">Tripulación</th>
@@ -332,10 +333,13 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                     </span>
                   </td>
 
-                  {/* Agencia & Mercado */}
+                  {/* Agencia, Mercado y Segmento */}
                   <td className="px-5 py-4 text-xs sm:text-sm">
                     <div className="font-semibold text-blue-700">{r.agencia}</div>
                     <div className="text-[11px] text-slate-500">{r.mercado || 'Mercado Abierto'}</div>
+                    {r.segmento && (
+                      <div className="text-[11px] text-slate-400">{r.segmento}</div>
+                    )}
                   </td>
 
                   {/* Fecha Ruta & Cierre */}
