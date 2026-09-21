@@ -7,7 +7,6 @@ interface NewTruckModalProps {
   onClose: () => void;
   defaultAgencia?: string;
   onSubmit: (truck: {
-    idCamion: string;
     placa: string;
     agencia: string;
     proveedor: string;
@@ -23,7 +22,6 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
   defaultAgencia,
   onSubmit,
 }) => {
-  const [idCamion, setIdCamion] = useState('');
   const [placa, setPlaca] = useState('');
   const [agencia, setAgencia] = useState(defaultAgencia || AGENCIA_LOCATION_OPTIONS[0]);
   const [proveedor, setProveedor] = useState('');
@@ -44,7 +42,6 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
     if (!placa.trim()) return;
     if (!agencia) return;
     onSubmit({
-      idCamion: idCamion.trim(),
       placa: placa.trim().toUpperCase(),
       agencia,
       proveedor: proveedor.trim(),
@@ -52,7 +49,6 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
       bahias: bahias.trim(),
       capacidad: capacidad.trim() || '0',
     });
-    setIdCamion('');
     setPlaca('');
     setProveedor('');
     setTon('');
@@ -74,18 +70,6 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">ID Camión *</label>
-            <input
-              type="text"
-              value={idCamion}
-              onChange={(e) => setIdCamion(e.target.value)}
-              placeholder="Ej: 385"
-              required
-              className="w-full p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-            />
-          </div>
-
           <div>
             <label className="block font-semibold text-slate-700 mb-1">
               Placa *
