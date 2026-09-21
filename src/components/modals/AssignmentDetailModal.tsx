@@ -103,7 +103,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
                 <MapPin className="w-3 h-3 text-slate-400" />
                 <span>{route.agencia}</span>
                 <span>•</span>
-                <span>{route.mercado || 'Mercado Abierto'}</span>
+                <span>{route.segmento || '-'}</span>
               </p>
             </div>
           </div>
