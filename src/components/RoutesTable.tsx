@@ -43,6 +43,7 @@ interface RoutesTableProps {
   onViewConsolidatedReceipt: (parentRouteId: string) => void;
   onOpenNewRouteModal: () => void;
   onMoveToFloor?: (routeId: string, tomorrowDate: string, motivo?: string) => void;
+  onBulkMoveToFloor?: (routeIds: string[]) => void;
   onOpenDeleteModal?: (routeIds: string[]) => void;
 }
 
@@ -75,6 +76,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   onViewConsolidatedReceipt,
   onOpenNewRouteModal,
   onMoveToFloor,
+  onBulkMoveToFloor,
   onOpenDeleteModal,
 }) => {
   const [activeDropdownId, setActiveDropdownId] = React.useState<string | null>(null);
@@ -329,8 +331,8 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
             </span>
             <span>
               {selectedRouteIds.length === 1
-                ? '1 ruta seleccionada para eliminar'
-                : `${selectedRouteIds.length} rutas seleccionadas para eliminar`}
+                ? '1 ruta seleccionada'
+                : `${selectedRouteIds.length} rutas seleccionadas`}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -341,6 +343,19 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
             >
               Cancelar selección
             </button>
+            {onBulkMoveToFloor && (
+              <button
+                type="button"
+                onClick={() => {
+                  onBulkMoveToFloor(selectedRouteIds);
+                  setSelectedRouteIds([]);
+                }}
+                className="px-3 py-1 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <Warehouse className="w-3.5 h-3.5" />
+                <span>Enviar a Piso ({selectedRouteIds.length})</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
