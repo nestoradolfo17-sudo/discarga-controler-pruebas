@@ -2043,12 +2043,15 @@ export default function App() {
     return `TL00000${String(maxN + 1).padStart(3, '0')}`;
   }, [routes, historicalRoutes]);
 
-  // Recursos disponibles (camiones y personal) que aún no tienen motivo de no-asignación
+  // Recursos disponibles (camiones y personal) que aún no tienen motivo de no-asignación.
+  // Corrección: se cuenta sobre visibleTrucks/visibleStaff (ya filtrados por la agencia
+  // del usuario) en vez de las listas completas, para que el número en la insignia de
+  // "Fin de Asignación" coincida con lo que ese usuario realmente puede ver al abrir el modal.
   const pendingReasonsCount = useMemo(() => {
-    const pendingTrucks = trucks.filter((t) => t.estado === 'Disponible' && !t.motivoNoAsignado).length;
-    const pendingStaff = staff.filter((s) => s.estado === 'Disponible' && !s.motivoNoAsignado).length;
+    const pendingTrucks = visibleTrucks.filter((t) => t.estado === 'Disponible' && !t.motivoNoAsignado).length;
+    const pendingStaff = visibleStaff.filter((s) => s.estado === 'Disponible' && !s.motivoNoAsignado).length;
     return pendingTrucks + pendingStaff;
-  }, [trucks, staff]);
+  }, [visibleTrucks, visibleStaff]);
 
   // Mientras se carga la base de datos compartida (solo aplica cuando Supabase
   // está configurado — ver src/services/supabaseClient.ts) se muestra una
@@ -2107,8 +2110,8 @@ export default function App() {
           pendingReasonsCount={pendingReasonsCount}
           activeCount={filteredActiveRoutes.length}
           liquidatedCount={allLiquidatedRoutes.length}
-          trucksCount={trucks.length}
-          staffCount={staff.length}
+          trucksCount={visibleTrucks.length}
+          staffCount={visibleStaff.length}
           usersCount={users.length}
           showDashboard={canView('dashboard')}
           showBoard={canView('board')}
@@ -2344,8 +2347,8 @@ export default function App() {
         onClose={() => setIsDailySummaryModalOpen(false)}
         routes={routes.filter((r) => canViewAgency(r.agencia))}
         allLiquidatedRoutes={allLiquidatedRoutes}
-        staff={staff}
-        trucks={trucks}
+        staff={visibleStaff}
+        trucks={visibleTrucks}
         selectedAgency={selectedAgency}
         agencies={agencies}
         fechaHoy={stats.fechaHoy}
@@ -2378,8 +2381,8 @@ export default function App() {
       <UnassignedResourcesModal
         isOpen={isUnassignedResourcesModalOpen}
         onClose={() => setIsUnassignedResourcesModalOpen(false)}
-        trucks={trucks}
-        staff={staff}
+        trucks={visibleTrucks}
+        staff={visibleStaff}
         routes={routes}
         onSetTruckReason={handleSetTruckReason}
         onSetStaffReason={handleSetStaffReason}
