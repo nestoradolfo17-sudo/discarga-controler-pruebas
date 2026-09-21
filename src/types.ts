@@ -151,6 +151,10 @@ export interface Route {
   id: string;
   agencia: string;
   mercado: string;
+  // Segmento de la ruta (por ejemplo, clasificación operativa/comercial adicional
+  // a la Agencia y el Mercado). Se captura desde la Plantilla de Carga de Rutas,
+  // se muestra en el Tablero de Rutas y viaja con la ruta hasta su liquidación.
+  segmento?: string;
   fecha: string;
   fechaAsignacion?: string;
   fechaLiquidacion?: string;
