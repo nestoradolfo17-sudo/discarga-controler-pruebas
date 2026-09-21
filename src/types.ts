@@ -218,7 +218,20 @@ export interface TablePermissions {
   liquidated: boolean; // Rutas Liquidadas
   trucks: boolean; // Camiones
   staff: boolean; // Personal
-  batch: boolean; // Carga Masiva Excel
+  batch: boolean; // Carga Masiva Excel (Rutas)
+  // Corrección: permisos independientes para poder AGREGAR Camiones/Personal (por
+  // Excel o manualmente) sin dar permiso para editar los registros ya cargados
+  // previamente — la carga masiva de Camiones/Personal ahora solo agrega
+  // registros nuevos y nunca sobrescribe uno existente que ya estaba en el
+  // sistema (ver handleImportTrucksBatch / handleImportStaffBatch en App.tsx).
+  // Nota de compatibilidad: los usuarios creados ANTES de este cambio no tienen
+  // estos 4 campos guardados todavía; en tiempo de ejecución se tratan como
+  // permitidos (true) mientras no se guarden explícitamente en false, para no
+  // quitarles de golpe algo que ya podían hacer (ver App.tsx y UsersView.tsx).
+  canBulkUploadTrucks: boolean; // Subir Excel de Camiones
+  canManualAddTrucks: boolean; // Agregar Camiones manualmente
+  canBulkUploadStaff: boolean; // Subir Excel de Personal
+  canManualAddStaff: boolean; // Agregar Personal manualmente
 }
 
 export interface AppUser {
