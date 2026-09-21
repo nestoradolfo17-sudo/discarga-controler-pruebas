@@ -27,7 +27,7 @@ interface ClosingActaModalProps {
 interface ActaRow {
   id: string;
   agencia: string;
-  mercado: string;
+  segmento: string;
   estado: string;
   isLiquidada: boolean;
   isFloor: boolean;
@@ -62,7 +62,7 @@ function buildActaRow(r: Route): ActaRow {
   return {
     id: String(r.id),
     agencia: r.agencia || 'Mercado Abierto',
-    mercado: r.mercado || 'Principal',
+    segmento: r.segmento || '-',
     estado: r.estado,
     isLiquidada,
     isFloor,
@@ -257,7 +257,7 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
                     <tr>
                       <th className="px-2.5 py-2">No. Ruta</th>
                       <th className="px-2.5 py-2">Agencia</th>
-                      <th className="px-2.5 py-2">Mercado</th>
+                      <th className="px-2.5 py-2">Segmento</th>
                       <th className="px-2.5 py-2">Piloto</th>
                       <th className="px-2.5 py-2">Camión</th>
                       <th className="px-2.5 py-2 text-right">Cajas Plan</th>
@@ -272,7 +272,7 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
                       <tr key={r.id}>
                         <td className="px-2.5 py-2 font-bold text-indigo-900 whitespace-nowrap">#{r.id}</td>
                         <td className="px-2.5 py-2 whitespace-nowrap">{r.agencia}</td>
-                        <td className="px-2.5 py-2 whitespace-nowrap">{r.mercado}</td>
+                        <td className="px-2.5 py-2 whitespace-nowrap">{r.segmento}</td>
                         <td className="px-2.5 py-2 whitespace-nowrap">{r.conductor}</td>
                         <td className="px-2.5 py-2 font-mono whitespace-nowrap">{r.camionPlaca}</td>
                         <td className="px-2.5 py-2 text-right font-semibold">{r.cajasPlan.toFixed(1)}</td>
@@ -311,7 +311,7 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
                     <tr>
                       <th className="px-2.5 py-2">No. Ruta</th>
                       <th className="px-2.5 py-2">Agencia</th>
-                      <th className="px-2.5 py-2">Mercado</th>
+                      <th className="px-2.5 py-2">Segmento</th>
                       <th className="px-2.5 py-2">Estado</th>
                       <th className="px-2.5 py-2">Piloto</th>
                       <th className="px-2.5 py-2">Camión</th>
@@ -324,7 +324,7 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
                       <tr key={r.id}>
                         <td className="px-2.5 py-2 font-bold text-indigo-900 whitespace-nowrap">#{r.id}</td>
                         <td className="px-2.5 py-2 whitespace-nowrap">{r.agencia}</td>
-                        <td className="px-2.5 py-2 whitespace-nowrap">{r.mercado}</td>
+                        <td className="px-2.5 py-2 whitespace-nowrap">{r.segmento}</td>
                         <td className="px-2.5 py-2 whitespace-nowrap">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300">
                             {r.isFloor ? 'En Bodega / Piso' : r.estado}
