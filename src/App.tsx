@@ -436,19 +436,24 @@ export default function App() {
   // Permisos efectivos del usuario en sesión (un administrador siempre tiene acceso total)
   const canView = (key: keyof TablePermissions) => !!currentUser && (currentUser.isAdmin || currentUser.permissions[key]);
   const canDeleteData = !!currentUser && (currentUser.isAdmin || currentUser.canDelete);
-  // Corrección: permisos independientes para poder subir Excel masivo o agregar
-  // manualmente Camiones/Personal. Se usa "!== false" (no "=== true") a propósito:
-  // los usuarios creados antes de este cambio no tienen estos 4 campos guardados
-  // todavía (quedan undefined), y así se les sigue permitiendo lo que ya podían
-  // hacer hasta que un administrador los restrinja explícitamente en "Usuarios".
+  // Corrección: la carga masiva de Excel (Camiones/Personal) se controla con un
+  // permiso independiente, pero AGREGAR MANUALMENTE ya no es un permiso aparte:
+  // si el usuario puede visualizar Camiones/Personal (permiso "trucks"/"staff"),
+  // automáticamente puede agregar manualmente en esa tabla — la única pregunta
+  // adicional que se le hace al administrador es si además puede cargar Excel
+  // masivo. Se usa "!== false" (no "=== true") para el permiso de Excel a
+  // propósito: los usuarios creados antes de este cambio no tienen este campo
+  // guardado todavía (queda undefined), y así se les sigue permitiendo lo que ya
+  // podían hacer hasta que un administrador los restrinja explícitamente en
+  // "Usuarios".
+  const canManualAddTrucks = canView('trucks');
+  const canManualAddStaff = canView('staff');
   const canBulkUploadTrucks =
-    !!currentUser && (currentUser.isAdmin || currentUser.permissions.canBulkUploadTrucks !== false);
-  const canManualAddTrucks =
-    !!currentUser && (currentUser.isAdmin || currentUser.permissions.canManualAddTrucks !== false);
+    !!currentUser &&
+    (currentUser.isAdmin || (canView('trucks') && currentUser.permissions.canBulkUploadTrucks !== false));
   const canBulkUploadStaff =
-    !!currentUser && (currentUser.isAdmin || currentUser.permissions.canBulkUploadStaff !== false);
-  const canManualAddStaff =
-    !!currentUser && (currentUser.isAdmin || currentUser.permissions.canManualAddStaff !== false);
+    !!currentUser &&
+    (currentUser.isAdmin || (canView('staff') && currentUser.permissions.canBulkUploadStaff !== false));
 
   // Control de acceso por agencia: un usuario sin acceso "all" (o sin el campo,
   // por compatibilidad con datos previos) solo puede ver rutas de las agencias
