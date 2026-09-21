@@ -435,6 +435,19 @@ export default function App() {
   // Permisos efectivos del usuario en sesión (un administrador siempre tiene acceso total)
   const canView = (key: keyof TablePermissions) => !!currentUser && (currentUser.isAdmin || currentUser.permissions[key]);
   const canDeleteData = !!currentUser && (currentUser.isAdmin || currentUser.canDelete);
+  // Corrección: permisos independientes para poder subir Excel masivo o agregar
+  // manualmente Camiones/Personal. Se usa "!== false" (no "=== true") a propósito:
+  // los usuarios creados antes de este cambio no tienen estos 4 campos guardados
+  // todavía (quedan undefined), y así se les sigue permitiendo lo que ya podían
+  // hacer hasta que un administrador los restrinja explícitamente en "Usuarios".
+  const canBulkUploadTrucks =
+    !!currentUser && (currentUser.isAdmin || currentUser.permissions.canBulkUploadTrucks !== false);
+  const canManualAddTrucks =
+    !!currentUser && (currentUser.isAdmin || currentUser.permissions.canManualAddTrucks !== false);
+  const canBulkUploadStaff =
+    !!currentUser && (currentUser.isAdmin || currentUser.permissions.canBulkUploadStaff !== false);
+  const canManualAddStaff =
+    !!currentUser && (currentUser.isAdmin || currentUser.permissions.canManualAddStaff !== false);
 
   // Control de acceso por agencia: un usuario sin acceso "all" (o sin el campo,
   // por compatibilidad con datos previos) solo puede ver rutas de las agencias
@@ -1940,25 +1953,10 @@ export default function App() {
         });
 
         if (matchIdx >= 0) {
-          const current = updatedList[matchIdx];
-          const newStatus = current.estado === 'En Ruta' ? 'En Ruta' : imp.estado;
-          updatedList[matchIdx] = {
-            ...current,
-            dpi: imp.dpi !== 'N/A' && imp.dpi ? imp.dpi : current.dpi,
-            nombre: imp.nombre || current.nombre,
-            agencia: imp.agencia || current.agencia,
-            puesto: imp.puesto || current.puesto,
-            rol: imp.rol || current.rol,
-            telefono: imp.telefono && imp.telefono !== '-' ? imp.telefono : current.telefono,
-            estado: newStatus,
-            // Corrección: estos tres campos ya venían parseados y visibles en la
-            // vista previa de la carga masiva, pero antes se descartaban aquí y
-            // nunca se guardaban (ej. marcar a alguien como BAJA por Excel no
-            // tenía ningún efecto real). Ahora sí se actualizan.
-            codigo: imp.codigo || current.codigo,
-            codigoCorto: imp.codigoCorto || current.codigoCorto,
-            estatus: imp.estatus || current.estatus,
-          };
+          // Corrección: la carga masiva de Personal ya NO sobrescribe registros que
+          // ya existían en el sistema (antes actualizaba los campos del colaborador
+          // encontrado). Ahora simplemente se omite esa fila del Excel y se cuenta
+          // como "ya existente", para no borrar/editar datos previamente cargados.
           updatedCount++;
         } else {
           updatedList.push({
@@ -1982,7 +1980,7 @@ export default function App() {
 
       const message =
         updatedCount > 0
-          ? `Carga masiva completada: ${newCount} colaboradores agregados y ${updatedCount} actualizados desde Excel.`
+          ? `Carga masiva completada: ${newCount} colaboradores agregados y ${updatedCount} omitidos (ya existían en el sistema).`
           : `Carga masiva completada: ${newCount} colaboradores agregados desde Excel.`;
       showToast(message, 'success');
 
@@ -2014,18 +2012,10 @@ export default function App() {
         });
 
         if (matchIdx >= 0) {
-          const current = updatedList[matchIdx];
-          const newEstado = current.estado === 'En Ruta' ? 'En Ruta' : imp.estado;
-          updatedList[matchIdx] = {
-            ...current,
-            idCamion: imp.idCamion || current.idCamion,
-            placa: imp.placa || current.placa,
-            agencia: imp.agencia || current.agencia,
-            capacidad: imp.capacidad || current.capacidad,
-            ton: imp.ton !== undefined && imp.ton !== '' ? imp.ton : current.ton,
-            bahias: imp.bahias !== undefined && imp.bahias !== '' ? imp.bahias : current.bahias,
-            estado: newEstado,
-          };
+          // Corrección: la carga masiva de Camiones ya NO sobrescribe registros que
+          // ya existían en el sistema (antes actualizaba los campos del camión
+          // encontrado). Ahora simplemente se omite esa fila del Excel y se cuenta
+          // como "ya existente", para no borrar/editar datos previamente cargados.
           updatedCount++;
         } else {
           updatedList.push({
@@ -2045,7 +2035,7 @@ export default function App() {
 
       const message =
         updatedCount > 0
-          ? `Carga masiva completada: ${newCount} camiones agregados y ${updatedCount} actualizados desde Excel.`
+          ? `Carga masiva completada: ${newCount} camiones agregados y ${updatedCount} omitidos (ya existían en el sistema).`
           : `Carga masiva completada: ${newCount} camiones agregados desde Excel.`;
       showToast(message, 'success');
 
@@ -2386,6 +2376,10 @@ export default function App() {
             onDeleteStaffMembers={handleDeleteStaffMembers}
             onShowToast={showToast}
             canDelete={canDeleteData}
+            canBulkUploadTrucks={canBulkUploadTrucks}
+            canManualAddTrucks={canManualAddTrucks}
+            canBulkUploadStaff={canBulkUploadStaff}
+            canManualAddStaff={canManualAddStaff}
           />
         )}
 
@@ -2405,6 +2399,10 @@ export default function App() {
             onDeleteStaffMembers={handleDeleteStaffMembers}
             onShowToast={showToast}
             canDelete={canDeleteData}
+            canBulkUploadTrucks={canBulkUploadTrucks}
+            canManualAddTrucks={canManualAddTrucks}
+            canBulkUploadStaff={canBulkUploadStaff}
+            canManualAddStaff={canManualAddStaff}
           />
         )}
 
