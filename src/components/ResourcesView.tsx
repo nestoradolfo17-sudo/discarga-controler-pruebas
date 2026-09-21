@@ -162,6 +162,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                 <th className="py-3 px-4">ID Camión</th>
                 <th className="py-3 px-4">Placa</th>
                 <th className="py-3 px-4">Agencia</th>
+                <th className="py-3 px-4">Proveedor</th>
                 <th className="py-3 px-4">Estatus</th>
                 <th className="py-3 px-4">TON</th>
                 <th className="py-3 px-4">Bahías</th>
@@ -191,6 +192,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                       </span>
                     )}
                   </td>
+                  <td className="py-3 px-4 text-slate-600">{t.proveedor || '-'}</td>
                   <td className="py-3 px-4">
                     <div className="flex flex-col items-start gap-1">
                       {/* Corrección: antes se mostraba el badge verde "Disponible" incluso
