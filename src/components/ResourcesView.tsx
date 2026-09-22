@@ -432,15 +432,24 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                             <select
                               id={`staff-estatus-${s.id}`}
                               value={estatus}
+                              disabled={!canBulkUploadStaff}
                               onChange={(e) =>
                                 onUpdateStaffEstatus?.(s.id, e.target.value as StaffEstatus)
                               }
-                              className={`appearance-none text-[11px] font-bold pl-2.5 pr-6 py-1 rounded-md border cursor-pointer outline-none transition shadow-sm ${
+                              className={`appearance-none text-[11px] font-bold pl-2.5 pr-6 py-1 rounded-md border outline-none transition shadow-sm ${
+                                !canBulkUploadStaff
+                                  ? 'opacity-60 cursor-not-allowed'
+                                  : 'cursor-pointer'
+                              } ${
                                 estatus === 'ALTA'
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                                  : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
+                                  ? `bg-emerald-50 text-emerald-800 border-emerald-300 ${canBulkUploadStaff ? 'hover:bg-emerald-100' : ''}`
+                                  : `bg-rose-50 text-rose-800 border-rose-300 ${canBulkUploadStaff ? 'hover:bg-rose-100' : ''}`
                               }`}
-                              title="Estatus de planilla: si la persona sigue activa en la empresa (ALTA/BAJA)"
+                              title={
+                                canBulkUploadStaff
+                                  ? 'Estatus de planilla: si la persona sigue activa en la empresa (ALTA/BAJA)'
+                                  : 'Solo un usuario con permiso de carga de Excel de personal puede cambiar este estatus'
+                              }
                             >
                               <option value="ALTA">ALTA</option>
                               <option value="BAJA">BAJA</option>
@@ -456,10 +465,13 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                             <select
                               id={`staff-status-${s.id}`}
                               value={s.estado}
+                              disabled={!canBulkUploadStaff}
                               onChange={(e) =>
                                 onUpdateStaffStatus?.(s.id, e.target.value as ResourceStatus)
                               }
-                              className={`appearance-none text-[10px] font-bold pl-2 pr-5 py-0.5 rounded border cursor-pointer outline-none transition ${
+                              className={`appearance-none text-[10px] font-bold pl-2 pr-5 py-0.5 rounded border outline-none transition ${
+                                !canBulkUploadStaff ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                              } ${
                                 // Corrección: si el estado es "Disponible" pero existe un
                                 // motivoNoAsignado activo (permiso, ausencia, apoyo a otra
                                 // agencia, etc.), el selector ya no se pinta en verde — pintarlo
@@ -474,7 +486,9 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                                   : 'bg-blue-50 text-blue-800 border-blue-200'
                               }`}
                               title={
-                                s.estado === 'Disponible' && s.motivoNoAsignado
+                                !canBulkUploadStaff
+                                  ? 'Solo un usuario con permiso de carga de Excel de personal puede cambiar este estado'
+                                  : s.estado === 'Disponible' && s.motivoNoAsignado
                                   ? `Disponible operativamente, pero no fue asignado hoy: ${s.motivoNoAsignado}`
                                   : 'Estado operativo del día (independiente del estatus de planilla)'
                               }
