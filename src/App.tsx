@@ -2150,6 +2150,15 @@ export default function App() {
   };
 
   const handleUpdateStaffEstatus = (staffId: string, newEstatus: StaffEstatus) => {
+    // Corrección: el estatus de planilla (ALTA/BAJA) y el estado operativo del
+    // día solo deben poder cambiarse desde aquí si el usuario tiene permiso de
+    // carga de Excel de personal (canBulkUploadStaff) — el selector ya se
+    // deshabilita en ResourcesView para ese caso, pero se valida también aquí
+    // para no depender únicamente del control visual.
+    if (!canBulkUploadStaff) {
+      showToast('No tienes permiso para modificar el estatus de personal.', 'error');
+      return;
+    }
     const target = staff.find((s) => s.id === staffId);
     if (!target) return;
     setStaff((prev) => prev.map((s) => (s.id === staffId ? { ...s, estatus: newEstatus } : s)));
@@ -2303,6 +2312,13 @@ export default function App() {
   };
 
   const handleUpdateStaffStatus = (staffId: string, newStatus: ResourceStatus) => {
+    // Corrección: mismo resguardo que en handleUpdateStaffEstatus — el estado
+    // operativo del día tampoco debe poder cambiarse sin permiso de carga de
+    // Excel de personal.
+    if (!canBulkUploadStaff) {
+      showToast('No tienes permiso para modificar el estatus de personal.', 'error');
+      return;
+    }
     const target = staff.find((s) => s.id === staffId);
     if (!target) return;
 
