@@ -270,7 +270,11 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
       {/* Table */}
       <div className="overflow-x-auto border border-slate-200 rounded-xl w-full">
         <table className="min-w-full divide-y divide-slate-200 text-left text-xs sm:text-sm whitespace-nowrap">
-          <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-xs sm:text-[13px] tracking-wider">
+          {/* Corrección: encabezado fijo (sticky) al desplazarse verticalmente, igual
+              que en el Tablero de Rutas. La tabla se desplaza junto con la página, así
+              que el "top" se compensa con la altura de la Navbar (68px, fija con
+              z-30) para que el encabezado quede pegado justo debajo de ella. */}
+          <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-xs sm:text-[13px] tracking-wider sticky top-[68px] z-20">
             <tr>
               <th scope="col" className="px-5 py-4">ID Ruta</th>
               <th scope="col" className="px-5 py-4">Estado</th>
