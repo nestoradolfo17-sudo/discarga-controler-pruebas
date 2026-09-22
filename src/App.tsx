@@ -2035,8 +2035,22 @@ export default function App() {
 
     // Rutas importadas del archivo del día:
     // Si no sigue vigente (en tránsito, abierta o pendiente sin resolver), se carga con los datos del Excel
-    const runningIds = new Set(activeRunningBacklog.map((r) => String(r.id)));
-    const freshDailyRoutes = importedRoutes.filter((r) => !runningIds.has(String(r.id)));
+    //
+    // Corrección: antes esta comparación era SOLO por ID de ruta (sin la fecha), lo
+    // cual asumía que un mismo número de ruta nunca se repetía mientras hubiera una
+    // ruta vigente con ese número. En la práctica el cliente SÍ reutiliza los mismos
+    // números de ruta día tras día (p. ej. "158201" existe en Resumen 19, 20, 21...),
+    // así que en cuanto una ruta con ese ID quedaba "Pendiente" sin asignar, TODA
+    // importación futura con ese mismo número — de cualquier día distinto — se
+    // descartaba en silencio (0 rutas nuevas), porque se trataba como si fuera "la
+    // misma ruta todavía en curso". Ahora se compara por ID + Fecha (ver
+    // getRouteKey): solo se preserva la ruta vigente y se descarta el duplicado del
+    // Excel cuando de verdad es la MISMA ruta del MISMO día (evita perder el avance
+    // de una asignación en curso si se vuelve a subir el archivo de ese día), pero
+    // ya no bloquea la carga de rutas nuevas de otro día que por coincidencia
+    // reutilizan el mismo número.
+    const runningKeys = new Set(activeRunningBacklog.map((r) => getRouteKey(r)));
+    const freshDailyRoutes = importedRoutes.filter((r) => !runningKeys.has(getRouteKey(r)));
 
     // Claves de las rutas que salen del tablero activo en este import (las ya
     // Liquidadas, que se acaban de archivar arriba en historicalRoutes). Se
