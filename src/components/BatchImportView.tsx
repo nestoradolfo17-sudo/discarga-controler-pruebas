@@ -253,14 +253,26 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
       onShowToast('No hay rutas para importar', 'error');
       return;
     }
-    const finalRoutes = clientesByNormRuta
-      ? previewRoutes.map((r) => {
-          const clientes = clientesByNormRuta.get(normRuta(r.id));
-          return clientes && clientes.length > 0 ? { ...r, clientesRuta: clientes } : r;
-        })
-      : previewRoutes;
-    onCommitRoutes(finalRoutes);
-    handleCancelPreview();
+    // Corrección: antes, si algo fallaba aquí adentro (o dentro de onCommitRoutes,
+    // que se llama de forma síncrona), el error quedaba solo en la consola del
+    // navegador — en pantalla no aparecía ningún aviso ni de éxito ni de error, y
+    // parecía que el botón "Confirmar e Importar Rutas" simplemente no hacía nada.
+    // Ahora cualquier error se atrapa y se muestra como aviso en pantalla, para
+    // poder diagnosticar exactamente qué falla en vez de adivinar.
+    try {
+      const finalRoutes = clientesByNormRuta
+        ? previewRoutes.map((r) => {
+            const clientes = clientesByNormRuta.get(normRuta(r.id));
+            return clientes && clientes.length > 0 ? { ...r, clientesRuta: clientes } : r;
+          })
+        : previewRoutes;
+      onCommitRoutes(finalRoutes);
+      handleCancelPreview();
+    } catch (err) {
+      console.error('Error al confirmar la importación de rutas:', err);
+      const detail = err instanceof Error ? err.message : String(err);
+      onShowToast(`Ocurrió un error al importar las rutas: ${detail}`, 'error');
+    }
   };
 
   return (
