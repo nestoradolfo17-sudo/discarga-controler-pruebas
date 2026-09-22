@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Route, MotivoDevolucionReason, CajaAbiertaReason } from '../../types';
-import { X, CheckCircle, ClipboardCheck, RotateCcw, AlertTriangle, Lock } from 'lucide-react';
+import { Route, MotivoDevolucionReason, CajaAbiertaReason, ClientePendiente } from '../../types';
+import { X, CheckCircle, ClipboardCheck, RotateCcw, AlertTriangle, Lock, Users, Search } from 'lucide-react';
 import { MOTIVO_DEVOLUCION_OPTIONS, MOTIVO_REVISITA } from '../../data/motivosDevolucion';
 import { CAJA_ABIERTA_OPTIONS } from '../../data/motivosCajaAbierta';
 
@@ -34,6 +34,11 @@ interface LiquidateModalProps {
       motivoCajaAbierta?: CajaAbiertaReason;
       // Comentario libre y opcional, disponible para las 3 modalidades de cierre.
       comentario?: string;
+      // Clientes marcados puntualmente como pendientes (Ruta Abierta / Caja
+      // Abierta), cada uno con su propio motivo. Solo se envía cuando la ruta
+      // tenía clientesRuta cargado y el usuario marcó al menos uno; si no, queda
+      // undefined y la liquidación funciona exactamente igual que siempre.
+      clientesPendientes?: ClientePendiente[];
     }
   ) => void;
 }
@@ -55,6 +60,13 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   const [motivoCajaAbierta, setMotivoCajaAbierta] = useState<CajaAbiertaReason | null>(null);
   const [cajaAbiertaError, setCajaAbiertaError] = useState('');
   const [comentario, setComentario] = useState('');
+  // Clientes marcados puntualmente como pendientes en Ruta Abierta / Caja
+  // Abierta (código -> motivo elegido, vacío mientras no se elija). Solo tiene
+  // sentido cuando la ruta trae clientesRuta cargado (ver Route.clientesRuta) —
+  // si no, esta sección ni siquiera se muestra y todo funciona como siempre.
+  const [clientesMarcados, setClientesMarcados] = useState<Map<string, string>>(new Map());
+  const [clientesFiltro, setClientesFiltro] = useState('');
+  const [clientesPendientesError, setClientesPendientesError] = useState('');
 
   useEffect(() => {
     if (isOpen && route) {
@@ -71,8 +83,38 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       setMotivoCajaAbierta(null);
       setCajaAbiertaError('');
       setComentario('');
+      setClientesMarcados(new Map());
+      setClientesFiltro('');
+      setClientesPendientesError('');
     }
   }, [isOpen, route, defaultAuditor]);
+
+  // Cambiar de modalidad de cierre limpia los clientes marcados: los motivos
+  // disponibles son distintos entre Ruta Abierta y Caja Abierta, así que no
+  // tiene sentido arrastrar una selección hecha bajo la otra modalidad.
+  useEffect(() => {
+    setClientesMarcados(new Map());
+    setClientesPendientesError('');
+  }, [tipoResolucion]);
+
+  // Corrección: si se marcan clientes como pendientes en modalidad "Ruta
+  // Abierta", las Paradas No Entregadas y las Cajas Devueltas se recalculan
+  // automáticamente a partir de esos clientes (así lo pidió el usuario), sin
+  // impedir que después se ajusten a mano si algo no cuadra exactamente. Si no
+  // se marca ningún cliente, estos campos se comportan igual que siempre
+  // (edición manual). No aplica a "Caja Abierta": ahí los clientes marcados son
+  // solo de trazabilidad de la caja/boleta, no representan mercadería sin
+  // entregar.
+  useEffect(() => {
+    if (tipoResolucion !== 'abierta') return;
+    if (!route?.clientesRuta || route.clientesRuta.length === 0) return;
+    if (clientesMarcados.size === 0) return;
+    const marcados = route.clientesRuta.filter((c) => clientesMarcados.has(c.codigo));
+    const sumaCajas = marcados.reduce((acc, c) => acc + (Number(c.cajas) || 0), 0);
+    handleRechazadasChange(marcados.length);
+    setCajasDevueltas(sumaCajas.toFixed(3));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientesMarcados, tipoResolucion]);
 
   if (!isOpen || !route) return null;
 
@@ -128,6 +170,28 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       return;
     }
     setCajaAbiertaError('');
+
+    // Validar que todo cliente marcado como pendiente tenga su motivo elegido.
+    if (clientesMarcados.size > 0) {
+      const faltante = Array.from(clientesMarcados.values()).some((m) => !m);
+      if (faltante) {
+        setClientesPendientesError('Selecciona el motivo para todos los clientes marcados como pendientes.');
+        return;
+      }
+    }
+    const clientesPendientes: ClientePendiente[] | undefined =
+      clientesMarcados.size > 0
+        ? Array.from(clientesMarcados.entries()).map(([codigo, motivo]) => {
+            const cliente = route.clientesRuta?.find((c) => c.codigo === codigo);
+            return {
+              codigo,
+              nombre: cliente?.nombre || '',
+              motivo,
+              cajas: cliente?.cajas,
+            };
+          })
+        : undefined;
+
     const isRutaAbierta = tipoResolucion === 'abierta';
     let finalMotivos = [...motivosSeleccionados];
     const detalle = motivoDetalle.trim();
@@ -160,6 +224,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       isCajaAbierta,
       motivoCajaAbierta: isCajaAbierta ? motivoCajaAbierta ?? undefined : undefined,
       comentario: comentario.trim() || undefined,
+      clientesPendientes,
     });
   };
 
@@ -500,6 +565,123 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Clientes Pendientes: solo aparece cuando la ruta trae detalle de
+              clientes cargado (import de Excel) y la modalidad no es Cierre
+              Definitivo. Permite marcar puntualmente qué clientes quedaron
+              pendientes y con qué motivo, en vez de un solo motivo para toda la
+              ruta. Es completamente opcional: si no se marca ningún cliente,
+              todo funciona exactamente igual que antes de este cambio. */}
+          {(tipoResolucion === 'abierta' || tipoResolucion === 'cajaAbierta') &&
+            route.clientesRuta &&
+            route.clientesRuta.length > 0 &&
+            (() => {
+              const motivoOptions: { reason: string; icon: string }[] =
+                tipoResolucion === 'abierta'
+                  ? [{ reason: MOTIVO_REVISITA, icon: '🔁' }, ...MOTIVO_DEVOLUCION_OPTIONS]
+                  : CAJA_ABIERTA_OPTIONS;
+
+              const filtro = clientesFiltro.toLowerCase().trim();
+              const clientesFiltrados = route.clientesRuta!.filter(
+                (c) =>
+                  !filtro ||
+                  c.codigo.toLowerCase().includes(filtro) ||
+                  (c.nombre || '').toLowerCase().includes(filtro)
+              );
+
+              const toggleCliente = (codigo: string) => {
+                setClientesMarcados((prev) => {
+                  const next = new Map(prev);
+                  if (next.has(codigo)) next.delete(codigo);
+                  else next.set(codigo, '');
+                  return next;
+                });
+                setClientesPendientesError('');
+              };
+
+              const setMotivoCliente = (codigo: string, motivo: string) => {
+                setClientesMarcados((prev) => {
+                  const next = new Map(prev);
+                  next.set(codigo, motivo);
+                  return next;
+                });
+                setClientesPendientesError('');
+              };
+
+              return (
+                <div className="border border-slate-200 rounded-xl p-3.5 space-y-2.5 bg-white">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <label className="font-bold text-slate-800 text-xs flex items-center">
+                      <Users className="w-3.5 h-3.5 mr-1.5 text-blue-600" />
+                      Clientes Pendientes ({clientesMarcados.size} de {route.clientesRuta!.length} marcados)
+                    </label>
+                    <div className="relative w-full sm:w-52">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={clientesFiltro}
+                        onChange={(e) => setClientesFiltro(e.target.value)}
+                        placeholder="Buscar código o nombre..."
+                        className="w-full pl-7 pr-2 py-1 text-[11px] border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Opcional: marca los clientes que quedaron pendientes y asígnales su motivo. Si no marcas
+                    ninguno, el motivo general de arriba sigue aplicando igual que siempre.
+                  </p>
+
+                  <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                    {clientesFiltrados.map((c) => {
+                      const isMarcado = clientesMarcados.has(c.codigo);
+                      return (
+                        <div
+                          key={c.codigo}
+                          className={`flex items-center justify-between gap-2 py-1.5 px-2 ${
+                            isMarcado ? 'bg-amber-50/60' : ''
+                          }`}
+                        >
+                          <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isMarcado}
+                              onChange={() => toggleCliente(c.codigo)}
+                              className="cursor-pointer shrink-0"
+                            />
+                            <span className="truncate text-[11px]">
+                              <span className="font-mono text-slate-500">{c.codigo}</span>{' '}
+                              <span className="font-medium text-slate-800">{c.nombre || '-'}</span>{' '}
+                              <span className="text-slate-400">({Number(c.cajas || 0).toFixed(3)} cajas)</span>
+                            </span>
+                          </label>
+                          {isMarcado && (
+                            <select
+                              value={clientesMarcados.get(c.codigo) || ''}
+                              onChange={(e) => setMotivoCliente(c.codigo, e.target.value)}
+                              className="text-[10px] border border-amber-300 bg-white rounded px-1.5 py-1 outline-none shrink-0 cursor-pointer font-semibold text-amber-900"
+                            >
+                              <option value="">-- Motivo --</option>
+                              {motivoOptions.map((opt) => (
+                                <option key={opt.reason} value={opt.reason}>
+                                  {opt.icon} {opt.reason}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {clientesFiltrados.length === 0 && (
+                      <div className="py-3 text-center text-[11px] text-slate-400">Sin resultados</div>
+                    )}
+                  </div>
+
+                  {clientesPendientesError && (
+                    <p className="text-[11px] text-rose-700 font-semibold">{clientesPendientesError}</p>
+                  )}
+                </div>
+              );
+            })()}
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">
