@@ -2,7 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { Route, Staff } from '../types';
 import { exportHistoricalToExcel, getRouteAssignmentType } from '../utils/excel';
 import { parseFlexibleDate, formatDateToGuatemala, formatDateTimeToGuatemala } from '../utils/date';
-import { CheckCircle2, FileText, Download, Search, Filter, Calendar, PackageCheck, AlertCircle, RotateCcw, Repeat, Lock } from 'lucide-react';
+import { CheckCircle2, FileText, Download, Search, Filter, Calendar, PackageCheck, AlertCircle, RotateCcw, Repeat, Lock, Users } from 'lucide-react';
+import { ClientesRutaList } from './ClientesRutaList';
+import { getRouteKey } from '../utils/routeKey';
 
 interface LiquidatedBoardViewProps {
   liquidatedRoutes: Route[];
@@ -31,6 +33,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
   const [selectedAgency, setSelectedAgency] = useState('TODAS');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [expandedClientesKey, setExpandedClientesKey] = useState<string | null>(null);
 
   const filteredList = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
@@ -313,9 +316,12 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                 (r.historialDespachos && r.historialDespachos.length > 0)
               );
 
+              const routeKey = getRouteKey(r);
+              const rowKey = `${r.id}-${asigType}-${r.tripNumber || 1}-${r.liquidacion?.fechaLiquidacion || ''}`;
+
               return (
+                <React.Fragment key={rowKey}>
                 <tr
-                  key={`${r.id}-${asigType}-${r.tripNumber || 1}-${r.liquidacion?.fechaLiquidacion || ''}`}
                   className="hover:bg-slate-50/90 transition-colors"
                 >
                   {/* ID */}
@@ -470,6 +476,21 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                         {liq.guiasRechazadas}
                       </div>
                     )}
+                    {r.clientesRuta && r.clientesRuta.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedClientesKey((prev) => (prev === routeKey ? null : routeKey))}
+                        title="Ver la lista de clientes de esta ruta (solo consulta)"
+                        className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded-md border transition cursor-pointer ${
+                          expandedClientesKey === routeKey
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50 hover:border-slate-400'
+                        }`}
+                      >
+                        <Users className="w-3 h-3" />
+                        {expandedClientesKey === routeKey ? 'Ocultar' : 'Ver'} clientes ({r.clientesRuta.length})
+                      </button>
+                    )}
                   </td>
 
                   {/* Balance Cajas */}
@@ -508,6 +529,23 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                         </span>
                       );
                     })()}
+                    {liq.clientesPendientes && liq.clientesPendientes.length > 0 && (
+                      <div className="mt-1.5 space-y-0.5 max-w-[240px] whitespace-normal">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">
+                          Clientes pendientes ({liq.clientesPendientes.length}):
+                        </span>
+                        {liq.clientesPendientes.slice(0, 3).map((cp, idx) => (
+                          <div key={`${cp.codigo}-${idx}`} className="text-[10px] text-slate-600 leading-tight">
+                            <strong className="text-slate-700">{cp.nombre || cp.codigo}</strong>: {cp.motivo}
+                          </div>
+                        ))}
+                        {liq.clientesPendientes.length > 3 && (
+                          <div className="text-[10px] text-slate-400">
+                            +{liq.clientesPendientes.length - 3} más
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </td>
 
                   {/* Auditor */}
@@ -576,6 +614,14 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                     </div>
                   </td>
                 </tr>
+                {expandedClientesKey === routeKey && r.clientesRuta && r.clientesRuta.length > 0 && (
+                  <tr className="bg-slate-50/70">
+                    <td colSpan={11} className="px-5 py-3">
+                      <ClientesRutaList clientes={r.clientesRuta} />
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               );
             })}
           </tbody>
