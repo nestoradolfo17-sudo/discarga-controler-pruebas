@@ -524,6 +524,32 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                     </table>
                   </div>
 
+                  {liq.clientesPendientes && liq.clientesPendientes.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 font-sans">
+                      <div className="text-[11px] font-bold text-amber-900 mb-1">
+                        Clientes Pendientes ({liq.clientesPendientes.length}):
+                      </div>
+                      <table className="w-full text-[10px] text-left">
+                        <thead className="text-amber-800 font-semibold">
+                          <tr>
+                            <th className="py-0.5 pr-2">Código</th>
+                            <th className="py-0.5 pr-2">Cliente</th>
+                            <th className="py-0.5">Motivo</th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-slate-700">
+                          {liq.clientesPendientes.map((cp, idx) => (
+                            <tr key={`${cp.codigo}-${idx}`} className="border-t border-amber-100">
+                              <td className="py-0.5 pr-2 font-mono">{cp.codigo}</td>
+                              <td className="py-0.5 pr-2">{cp.nombre || '-'}</td>
+                              <td className="py-0.5">{cp.motivo}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
                   {route.historialDespachos && route.historialDespachos.length > 0 && (
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-1.5 font-sans">
                       <div className="text-[11px] font-bold text-slate-800 flex items-center justify-between">
