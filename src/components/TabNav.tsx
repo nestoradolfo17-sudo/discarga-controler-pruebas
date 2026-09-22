@@ -11,6 +11,14 @@ interface TabNavProps {
   onSearchChange: (q: string) => void;
   onExportExcel: () => void;
   onResetDemo: () => void;
+  // Corrección de seguridad: el botón "Demo" reemplaza TODO el contenido de
+  // Rutas, Camiones y Personal por datos de ejemplo, sin confirmación. Eso
+  // solo tiene sentido en modo local (sin base de datos compartida) — con
+  // Supabase configurado ya causó pérdidas reales de datos de todos los
+  // usuarios conectados. Este flag (pasado como `!isSupabaseConfigured` desde
+  // App.tsx) oculta el botón por completo en modo compartido; `onResetDemo`
+  // además se niega a ejecutarse en ese caso como segunda capa de protección.
+  allowResetDemo?: boolean;
   onOpenUnassignedResourcesModal?: () => void;
   pendingReasonsCount?: number;
   activeCount?: number;
@@ -38,6 +46,7 @@ export const TabNav: React.FC<TabNavProps> = ({
   onSearchChange,
   onExportExcel,
   onResetDemo,
+  allowResetDemo = true,
   onOpenUnassignedResourcesModal,
   pendingReasonsCount,
   activeCount,
@@ -329,8 +338,12 @@ export const TabNav: React.FC<TabNavProps> = ({
           </button>
           {/* "Restablecer datos de prueba" solo para administradores: en producción,
               un operador de agencia no debe tener a la vista un botón que puede borrar
-              datos reales por error de un clic. */}
-          {isAdmin && (
+              datos reales por error de un clic. Corrección de seguridad: además, se
+              oculta por completo en cuanto hay una base de datos compartida
+              configurada (allowResetDemo=false) — restablecer a datos de ejemplo ya
+              no tiene sentido una vez que existen datos reales de todo el equipo, y
+              este botón sin confirmación llegó a borrarlos por accidente. */}
+          {isAdmin && allowResetDemo && (
             <button
               onClick={onResetDemo}
               title="Restablecer datos de prueba (solo administrador)"
