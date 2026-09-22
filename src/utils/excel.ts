@@ -362,19 +362,18 @@ export function parseRoutesFromSheet(ws: XLSX.WorkSheet): WithImportReport<Route
     // un bloque de estadísticas de la hoja ("N Rutas", "Menor", "Superior") y
     // notas al pie ("Los tamaños resaltados son...", "El % de capacidad se
     // calcula..."), a veces SIN ninguna fila en blanco que las separe de los
-    // datos reales — antes esas líneas se importaban como si fueran rutas
-    // válidas (verificado contra un archivo real: 5 filas fantasma por cada
-    // pestaña "Resumen N").
-    if (['menor', 'superior', 'mayor', 'minimo', 'maximo', 'mínimo', 'máximo'].includes(idCheck)) {
-      discardedByReason.set('Fila estadística ("Menor"/"Superior")', (discardedByReason.get('Fila estadística ("Menor"/"Superior")') || 0) + 1);
-      continue;
-    }
-    if (/^\d+\s*rutas?$/.test(idCheck)) {
-      discardedByReason.set('Fila de conteo ("N Rutas")', (discardedByReason.get('Fila de conteo ("N Rutas")') || 0) + 1);
-      continue;
-    }
-    if (idVal.trim().length > 25 && /\s/.test(idVal.trim())) {
-      discardedByReason.set('Nota al pie / leyenda', (discardedByReason.get('Nota al pie / leyenda') || 0) + 1);
+    // datos reales. En vez de intentar reconocer cada frase posible de ese
+    // bloque una por una (frágil: cualquier variante de redacción se cuela),
+    // se exige que el ID de ruta tenga el formato real de un código de ruta:
+    // solo dígitos, con como mucho un pequeño sufijo de letras (p. ej.
+    // "152201", "152232A"). Cualquier otra cosa — texto con espacios, palabras
+    // sueltas como "Menor"/"Superior", el conteo "N Rutas", notas al pie — se
+    // descarta aquí sin importar la redacción exacta.
+    if (!/^\d+[a-zA-Z]{0,3}$/.test(idVal.trim())) {
+      discardedByReason.set(
+        'Formato de ID de ruta no válido (se esperaba un código numérico)',
+        (discardedByReason.get('Formato de ID de ruta no válido (se esperaba un código numérico)') || 0) + 1
+      );
       continue;
     }
 
