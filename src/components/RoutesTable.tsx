@@ -306,7 +306,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
         // desplazarse. Cada celda necesita también su propio fondo sólido
         // (bg-slate-50) porque, al pegarse de forma independiente, sin esto se
         // vería el contenido de las filas pasando "por debajo" y transparentándose.
-        className={`px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 cursor-pointer select-none transition-colors hover:bg-slate-100 group sticky top-[68px] z-20 bg-slate-50 ${extraClass}`}
+        className={`px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 cursor-pointer select-none transition-colors hover:bg-slate-100 group sticky top-0 z-20 bg-slate-50 ${extraClass}`}
         title={`Ordenar por ${label} (${
           isActive
             ? sortOrder === 'asc'
@@ -338,16 +338,6 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   };
 
   return (
-    // Corrección: este contenedor tenía "overflow-hidden" junto con "rounded-2xl"
-    // (para recortar las esquinas cuadradas de la tabla y que se vieran redondeadas
-    // como el contenedor). Esa combinación —overflow:hidden + border-radius en un
-    // ancestro— es un problema conocido en navegadores basados en Chromium: hace
-    // que los elementos "sticky" (como el encabezado fijo de la tabla) se queden
-    // "trabados" en una posición incorrecta en vez de pegarse correctamente al
-    // desplazarse, que es exactamente el comportamiento que se reportó. Se quita
-    // "overflow-hidden" aquí para que el encabezado fijo funcione; como efecto
-    // secundario mínimo, las esquinas superiores de la tabla ya no se recortan de
-    // forma perfecta al redondeado del contenedor (imperceptible en el uso normal).
     <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm w-full">
       {/* Barra de acción masiva cuando hay rutas seleccionadas */}
       {selectedRouteIds.length > 0 && (
@@ -399,17 +389,29 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
         </div>
       )}
 
-      <div className="overflow-x-auto min-h-[280px] pb-8 md:pb-10">
+      {/* Corrección (causa real del encabezado "trabado"): este contenedor de la
+          tabla tiene "overflow-x-auto" para poder deslizarla horizontalmente en
+          pantallas angostas. Por especificación CSS, en cuanto un eje de overflow
+          es distinto de "visible" (overflow-x), el otro eje (overflow-y) se calcula
+          también como "auto" aunque no se declare — esto convertía a este div en su
+          propio "contenedor de scroll". Como "position: sticky" se calcula siempre
+          respecto a su contenedor de scroll más cercano, el encabezado dejaba de
+          fijarse contra la ventana/Navbar (para lo cual se había usado "top-[68px]")
+          e intentaba fijarse contra ESTE div — que no tenía altura limitada ni
+          scroll propio real, dando el comportamiento errático reportado ("se queda
+          trabado"). La quitada anterior de "overflow-hidden" en el contenedor
+          exterior no resolvía esto porque el problema estaba aquí, no allá. Fix:
+          este mismo contenedor ahora tiene también su propio scroll vertical
+          limitado ("overflow-auto" + "max-h-[70vh]"), y el encabezado se fija con
+          "top-0" respecto a SU PROPIO borde superior — ya no depende del scroll de
+          la ventana ni de la Navbar. */}
+      <div className="overflow-auto min-h-[280px] max-h-[70vh] pb-8 md:pb-10">
         <table className="w-full divide-y divide-slate-200 text-left text-xs">
-          {/* Corrección: encabezado fijo (sticky) al desplazarse verticalmente, igual
-              que en la tabla de Rutas Liquidadas. El "top" se compensa con la altura
-              de la barra superior (Navbar, 68px, fija con z-30) para que el
-              encabezado quede pegado justo debajo de ella. El "sticky" real se aplica
-              celda por celda (ver renderSortHeader y los <th> de abajo), no aquí en
-              el <thead> — ver la nota en renderSortHeader. */}
+          {/* El "sticky" real se aplica celda por celda (ver renderSortHeader y los
+              <th> de abajo), no aquí en el <thead> — ver la nota en renderSortHeader. */}
           <thead className="bg-slate-50 text-slate-600 uppercase tracking-wider font-bold text-[10px] md:text-[11px]">
             <tr>
-              <th scope="col" className="px-2 md:px-2.5 py-2 md:py-2.5 w-7 text-center sticky top-[68px] z-20 bg-slate-50">
+              <th scope="col" className="px-2 md:px-2.5 py-2 md:py-2.5 w-7 text-center sticky top-0 z-20 bg-slate-50">
                 <input
                   type="checkbox"
                   aria-label="Seleccionar todas las rutas visibles"
@@ -434,7 +436,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
               {renderSortHeader('segmento', 'Segmento')}
               {renderSortHeader('fecha', 'Fecha')}
               {renderSortHeader('carga', 'Carga')}
-              <th scope="col" className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-center w-24 whitespace-nowrap sticky top-[68px] z-20 bg-slate-50">Acciones</th>
+              <th scope="col" className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-center w-24 whitespace-nowrap sticky top-0 z-20 bg-slate-50">Acciones</th>
               {renderSortHeader('horas', 'Horas sin Liq.', 'whitespace-nowrap')}
               {renderSortHeader('estado', 'Estado')}
               {renderSortHeader('asignacion', 'Camión y Tripulación', 'text-center whitespace-nowrap')}
