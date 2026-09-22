@@ -1,14 +1,51 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { Route } from '../types';
-import { downloadExcelTemplate, scoreSheetForRoutes, parseRoutesFromSheet, ImportReport } from '../utils/excel';
+import { Route, RouteClientEntry } from '../types';
+import {
+  downloadExcelTemplate,
+  scoreSheetForRoutes,
+  parseRoutesFromSheet,
+  parseClientesFromSheet,
+  groupClientesByRuta,
+  isClientesSheetName,
+  extractDayNumberFromSheetName,
+  ImportReport,
+} from '../utils/excel';
 import { formatDateToGuatemala } from '../utils/date';
-import { FileSpreadsheet, Download, UploadCloud, CheckCircle, X, Layers, AlertCircle } from 'lucide-react';
+import { FileSpreadsheet, Download, UploadCloud, CheckCircle, X, Layers, AlertCircle, Users } from 'lucide-react';
 
 interface BatchImportViewProps {
   existingRoutes: Route[];
   onCommitRoutes: (newRoutes: Route[]) => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+}
+
+// Normaliza un número de ruta para comparar el ID de ruta (hoja "Resumen N") contra
+// la clave de ruta agrupada del detalle de clientes (hoja "Clientes N") sin que
+// diferencias de formato (ceros a la izquierda, espacios) rompan el emparejamiento.
+function normRuta(v: string): string {
+  return String(v ?? '').trim().replace(/^0+(?=\d)/, '');
+}
+
+// Detecta, dentro del mismo archivo cargado, cuáles pestañas son de detalle de
+// clientes ("Clientes N"), para poder ofrecerlas como pareja opcional de la
+// pestaña de rutas ("Resumen N") seleccionada.
+function detectClientesSheets(wb: XLSX.WorkBook): string[] {
+  return wb.SheetNames.filter((n) => isClientesSheetName(n));
+}
+
+// Sugiere automáticamente la pestaña de clientes que corresponde al mismo día
+// que la pestaña de rutas seleccionada (mismo número de pestaña). Si no hay
+// coincidencia exacta de día, sugiere la primera disponible; el usuario puede
+// cambiarla o desactivarla desde el selector.
+function autoMatchClientesSheet(routesSheetName: string, candidates: string[]): string {
+  if (candidates.length === 0) return '';
+  const routesDay = extractDayNumberFromSheetName(routesSheetName);
+  if (routesDay !== null) {
+    const sameDay = candidates.find((c) => extractDayNumberFromSheetName(c) === routesDay);
+    if (sameDay) return sameDay;
+  }
+  return candidates[0];
 }
 
 export const BatchImportView: React.FC<BatchImportViewProps> = ({
@@ -26,6 +63,16 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
   // sobre las filas que se descartaban silenciosamente).
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Detalle de Clientes por Ruta (opcional, del mismo archivo) ---
+  // Si el archivo cargado además trae una pestaña "Clientes N" (aparte de la
+  // pestaña "Resumen N" de rutas), se puede seleccionar aquí mismo para que el
+  // detalle de clientes quede adjunto a cada ruta desde el momento en que se
+  // crea — sin necesidad de subir el mismo archivo dos veces.
+  const [clientesSheetNames, setClientesSheetNames] = useState<string[]>([]);
+  const [selectedClientesSheet, setSelectedClientesSheet] = useState<string>('');
+  const [clientesByRutaMap, setClientesByRutaMap] = useState<Map<string, RouteClientEntry[]> | null>(null);
+  const [clientesImportReport, setClientesImportReport] = useState<ImportReport | null>(null);
 
   const handleFile = (file: File) => {
     const reader = new FileReader();
@@ -47,11 +94,13 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
         setWorkbook(wb);
         setSheetNames(wb.SheetNames);
 
-        // Find best sheet
+        // Find best sheet (se excluyen las pestañas de detalle de clientes: aunque
+        // también mencionan "ruta", no son la fuente de las rutas en sí).
         let bestSheetName = wb.SheetNames[0];
         let bestScore = -1;
 
         for (const sName of wb.SheetNames) {
+          if (isClientesSheetName(sName)) continue;
           const ws = wb.Sheets[sName];
           if (!ws || !ws['!ref']) continue;
           const score = scoreSheetForRoutes(ws);
@@ -63,6 +112,13 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
 
         setSelectedSheet(bestSheetName);
         parseAndSetRoutes(wb, bestSheetName);
+
+        // Detecta y preselecciona automáticamente la pestaña de clientes del mismo día.
+        const clientesCandidates = detectClientesSheets(wb);
+        setClientesSheetNames(clientesCandidates);
+        const autoClientes = autoMatchClientesSheet(bestSheetName, clientesCandidates);
+        setSelectedClientesSheet(autoClientes);
+        parseAndSetClientes(wb, autoClientes);
       } catch (err) {
         console.error('Error procesando archivo Excel:', err);
         onShowToast('Error al leer el archivo Excel.', 'error');
@@ -95,10 +151,38 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
     onShowToast(`Se extrajeron ${parsed.length} rutas correctamente${discardedMsg}`, 'success');
   };
 
+  const parseAndSetClientes = (wb: XLSX.WorkBook, sheetName: string) => {
+    if (!sheetName) {
+      setClientesByRutaMap(null);
+      setClientesImportReport(null);
+      return;
+    }
+    const ws = wb.Sheets[sheetName];
+    if (!ws || !ws['!ref']) {
+      setClientesByRutaMap(null);
+      setClientesImportReport(null);
+      return;
+    }
+    const parsed = parseClientesFromSheet(ws);
+    setClientesImportReport(parsed.importReport || null);
+    setClientesByRutaMap(groupClientesByRuta(parsed));
+  };
+
   const handleSheetChange = (sheetName: string) => {
     setSelectedSheet(sheetName);
     if (workbook) {
       parseAndSetRoutes(workbook, sheetName);
+      // Re-sincroniza la pestaña de clientes sugerida con el nuevo día de rutas.
+      const autoClientes = autoMatchClientesSheet(sheetName, clientesSheetNames);
+      setSelectedClientesSheet(autoClientes);
+      parseAndSetClientes(workbook, autoClientes);
+    }
+  };
+
+  const handleClientesSheetChange = (sheetName: string) => {
+    setSelectedClientesSheet(sheetName);
+    if (workbook) {
+      parseAndSetClientes(workbook, sheetName);
     }
   };
 
@@ -108,17 +192,56 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
     setWorkbook(null);
     setSheetNames([]);
     setSelectedSheet('');
+    setClientesSheetNames([]);
+    setSelectedClientesSheet('');
+    setClientesByRutaMap(null);
+    setClientesImportReport(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
+
+  // Mapa de clientes por ruta ya normalizado, listo para emparejar contra el ID
+  // de ruta de cada fila de la vista previa (evita que ceros a la izquierda u
+  // otros detalles de formato impidan el match).
+  const clientesByNormRuta = useMemo(() => {
+    if (!clientesByRutaMap) return null;
+    const m = new Map<string, RouteClientEntry[]>();
+    clientesByRutaMap.forEach((v, k) => m.set(normRuta(k), v));
+    return m;
+  }, [clientesByRutaMap]);
+
+  const clientesSummary = useMemo(() => {
+    if (!clientesByRutaMap || previewRoutes.length === 0) return null;
+    const routeIds = new Set(previewRoutes.map((r) => normRuta(r.id)));
+    let matchedRoutes = 0;
+    let totalClientes = 0;
+    const unmatchedRutas: string[] = [];
+    clientesByRutaMap.forEach((clientes, ruta) => {
+      totalClientes += clientes.length;
+      if (routeIds.has(normRuta(ruta))) matchedRoutes++;
+      else unmatchedRutas.push(ruta);
+    });
+    return {
+      matchedRoutes,
+      totalRutasEnHoja: clientesByRutaMap.size,
+      totalClientes,
+      unmatchedRutas: unmatchedRutas.sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    };
+  }, [clientesByRutaMap, previewRoutes]);
 
   const handleCommit = () => {
     if (previewRoutes.length === 0) {
       onShowToast('No hay rutas para importar', 'error');
       return;
     }
-    onCommitRoutes(previewRoutes);
+    const finalRoutes = clientesByNormRuta
+      ? previewRoutes.map((r) => {
+          const clientes = clientesByNormRuta.get(normRuta(r.id));
+          return clientes && clientes.length > 0 ? { ...r, clientesRuta: clientes } : r;
+        })
+      : previewRoutes;
+    onCommitRoutes(finalRoutes);
     handleCancelPreview();
   };
 
@@ -131,7 +254,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
             Carga Masiva de Rutas desde Excel (.xlsx / .xls / .csv)
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Sube tu archivo de rutas para crearlas en estado <strong>Pendiente</strong>. Se conservará la cola de rutas no asignadas o no liquidadas.
+            Sube tu archivo de rutas para crearlas en estado <strong>Pendiente</strong>. Se conservará la cola de rutas no asignadas o no liquidadas. Si el mismo archivo trae una pestaña de detalle de clientes ("Clientes N"), podrás seleccionarla abajo para adjuntarla a cada ruta en el mismo paso.
           </p>
         </div>
         <button
@@ -202,7 +325,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
             </div>
 
             <div className="flex items-center space-x-2">
-              {sheetNames.length > 1 && (
+              {sheetNames.filter((n) => !isClientesSheetName(n)).length > 1 && (
                 <div className="flex items-center space-x-1.5 text-xs bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
                   <Layers className="w-3.5 h-3.5 text-slate-500" />
                   <label htmlFor="sheetSelect" className="text-slate-600 font-semibold">
@@ -214,11 +337,13 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                     onChange={(e) => handleSheetChange(e.target.value)}
                     className="bg-white border border-slate-300 rounded text-xs py-0.5 px-1 font-medium cursor-pointer"
                   >
-                    {sheetNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
+                    {sheetNames
+                      .filter((n) => !isClientesSheetName(n))
+                      .map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
                   </select>
                 </div>
               )}
@@ -240,6 +365,48 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
               </button>
             </div>
           </div>
+
+          {clientesSheetNames.length > 0 && (
+            <div className="bg-blue-50/60 border border-blue-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <div className="flex items-center gap-1.5 text-xs shrink-0">
+                <Users className="w-3.5 h-3.5 text-blue-600" />
+                <label htmlFor="clientesSheetSelect" className="text-blue-800 font-semibold">
+                  Detalle de Clientes (opcional):
+                </label>
+                <select
+                  id="clientesSheetSelect"
+                  value={selectedClientesSheet}
+                  onChange={(e) => handleClientesSheetChange(e.target.value)}
+                  className="bg-white border border-blue-300 rounded text-xs py-1 px-1.5 font-medium cursor-pointer"
+                >
+                  <option value="">— No importar clientes —</option>
+                  {clientesSheetNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedClientesSheet && clientesSummary && (
+                <div className="text-[11px] text-blue-800 font-medium">
+                  {clientesSummary.totalClientes} cliente(s) listos para {clientesSummary.matchedRoutes} de{' '}
+                  {previewRoutes.length} ruta(s) de esta hoja.
+                  {clientesSummary.unmatchedRutas.length > 0 && (
+                    <span className="text-amber-700">
+                      {' '}
+                      · {clientesSummary.unmatchedRutas.length} ruta(s) del detalle de clientes no aparecen en "
+                      {selectedSheet}" ({clientesSummary.unmatchedRutas.slice(0, 8).join(', ')}
+                      {clientesSummary.unmatchedRutas.length > 8 ? '…' : ''})
+                    </span>
+                  )}
+                </div>
+              )}
+              {selectedClientesSheet && !clientesSummary && (
+                <div className="text-[11px] text-blue-700">No se detectaron clientes válidos en esta pestaña.</div>
+              )}
+            </div>
+          )}
 
           {importReport && importReport.discarded > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1.5">
@@ -268,6 +435,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                   <th className="py-2.5 px-3">Segmento</th>
                   <th className="py-2.5 px-3">Fecha</th>
                   <th className="py-2.5 px-3">ID de Ruta</th>
+                  {clientesByNormRuta && <th className="py-2.5 px-2 text-center">Clientes</th>}
                   <th className="py-2.5 px-2 text-center">Viaje</th>
                   <th className="py-2.5 px-2 text-center">Servicio</th>
                   <th className="py-2.5 px-2 text-center">Descanso</th>
@@ -286,6 +454,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                   const isDuplicate = existingRoutes.some(
                     (ex) => String(ex.id) === String(r.id) && ex.estado !== 'Liquidada'
                   );
+                  const clienteCount = clientesByNormRuta?.get(normRuta(r.id))?.length || 0;
                   return (
                     <tr
                       key={`${r.id}-${idx}`}
@@ -304,6 +473,17 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                           </span>
                         )}
                       </td>
+                      {clientesByNormRuta && (
+                        <td className="py-2 px-2 text-center">
+                          {clienteCount > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-sans">
+                              <Users className="w-2.5 h-2.5" /> {clienteCount}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">–</span>
+                          )}
+                        </td>
+                      )}
                       <td className="py-2 px-2 text-center text-slate-600">{r.viaje || '-'}</td>
                       <td className="py-2 px-2 text-center text-slate-600">{r.servicio || '-'}</td>
                       <td className="py-2 px-2 text-center text-slate-600">{r.descanso || '-'}</td>
