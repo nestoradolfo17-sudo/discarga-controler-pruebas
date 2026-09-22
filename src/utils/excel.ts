@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Route, Staff, StaffPuesto, ResourceStatus, StaffEstatus, Truck } from '../types';
+import { Route, Staff, StaffPuesto, ResourceStatus, StaffEstatus, Truck, RouteClientEntry } from '../types';
 import { formatDateToSpanish, formatDateToGuatemala, formatDateTimeToGuatemala, getGuatemalaDateForInput, parseFlexibleDate } from './date';
 import { AGENCIA_LOCATION_OPTIONS } from '../data/agencies';
 
@@ -406,6 +406,157 @@ export function parseRoutesFromSheet(ws: XLSX.WorkSheet): WithImportReport<Route
 
   results.importReport = buildImportReport(totalRows, results.length, discardedByReason);
   return results;
+}
+
+// --- Detalle de Clientes por Ruta ---
+//
+// El cliente (operador logístico para el que Discarga trabaja) envía un archivo
+// Excel con una pestaña "Resumen N" (totales de ruta, ya soportado arriba) y una
+// pestaña "Clientes N" por cada día del mes, donde N es el día. La pestaña
+// "Clientes N" trae, por ruta, el listado de clientes/puntos de venta visitados:
+// CODIGO, NOMBRE, RUTA, EQUIPO_FRIO, VENTA, SECUENCIA, más filas de subtotal
+// "Total <ruta>" y un "Total general" al cierre de la hoja. Un mismo cliente
+// puede repetirse varias veces bajo la misma ruta (varias facturas al mismo
+// cliente en la misma parada): se agrupa por (RUTA, CODIGO) sumando VENTA, lo
+// cual reproduce exactamente los subtotales "Total <ruta>" que el propio
+// archivo ya trae (verificado contra un archivo real: 0 diferencias).
+
+export interface ClienteRutaGrouped {
+  ruta: string;
+  codigo: string;
+  nombre: string;
+  cajas: number;
+}
+
+export function parseClientesFromSheet(ws: XLSX.WorkSheet): WithImportReport<ClienteRutaGrouped> {
+  if (!ws['!ref']) return [];
+  const range = XLSX.utils.decode_range(ws['!ref']);
+
+  let headerRowIndex = -1;
+  const colMap: Record<string, number> = {};
+
+  // Escanea las primeras 15 filas buscando la fila de encabezados
+  // CODIGO / NOMBRE / RUTA / EQUIPO_FRIO / VENTA / SECUENCIA.
+  for (let r = range.s.r; r <= Math.min(range.s.r + 15, range.e.r); r++) {
+    const rowHeaders: Array<{ c: number; text: string }> = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (!cell) continue;
+      const rawText = cell.w || cell.v;
+      if (rawText === undefined || rawText === null || String(rawText).trim() === '') continue;
+      const txt = cleanHeaderStr(rawText);
+      if (!txt) continue;
+      rowHeaders.push({ c, text: txt });
+    }
+
+    const hasCodigo = rowHeaders.some((h) => h.text === 'codigo');
+    const hasRuta = rowHeaders.some((h) => h.text === 'ruta');
+    const hasVenta = rowHeaders.some((h) => h.text === 'venta');
+
+    if (hasCodigo && hasRuta && hasVenta) {
+      headerRowIndex = r;
+      rowHeaders.forEach((item) => {
+        if (item.text === 'codigo' && colMap.codigo === undefined) colMap.codigo = item.c;
+        else if (item.text === 'nombre' && colMap.nombre === undefined) colMap.nombre = item.c;
+        else if (item.text === 'ruta' && colMap.ruta === undefined) colMap.ruta = item.c;
+        else if (item.text === 'venta' && colMap.venta === undefined) colMap.venta = item.c;
+      });
+      break;
+    }
+  }
+
+  if (headerRowIndex === -1 || colMap.codigo === undefined || colMap.ruta === undefined) {
+    return [];
+  }
+
+  const getRawVal = (r: number, colIdx: number | undefined) => {
+    if (colIdx === undefined) return undefined;
+    const cell = ws[XLSX.utils.encode_cell({ r, c: colIdx })];
+    return cell ? cell.v : undefined;
+  };
+
+  let totalRows = 0;
+  const discardedByReason = new Map<string, number>();
+  // Agrupa por (ruta, codigo) sumando venta: así se reduce automáticamente
+  // cualquier cliente repetido (varias facturas) a un solo registro por ruta.
+  const groups = new Map<string, ClienteRutaGrouped>();
+
+  for (let r = headerRowIndex + 1; r <= range.e.r; r++) {
+    const rawCodigo = getRawVal(r, colMap.codigo);
+    const rawRuta = getRawVal(r, colMap.ruta);
+    const rawNombre = getRawVal(r, colMap.nombre);
+    const rawVenta = getRawVal(r, colMap.venta);
+
+    const hasAnyCell =
+      rawCodigo !== undefined || rawRuta !== undefined || rawNombre !== undefined || rawVenta !== undefined;
+    if (!hasAnyCell) continue; // fila completamente vacía: no cuenta ni como leída
+
+    totalRows++;
+
+    if (rawCodigo === undefined || rawCodigo === null || String(rawCodigo).trim() === '') {
+      // Filas sin código de cliente: son los subtotales "Total <ruta>" que el
+      // archivo intercala después de cada ruta, o el "Total general" al final.
+      discardedByReason.set(
+        'Fila de subtotal ("Total <ruta>" / "Total general")',
+        (discardedByReason.get('Fila de subtotal ("Total <ruta>" / "Total general")') || 0) + 1
+      );
+      continue;
+    }
+    if (rawRuta === undefined || rawRuta === null || String(rawRuta).trim() === '') {
+      discardedByReason.set('Falta el número de ruta', (discardedByReason.get('Falta el número de ruta') || 0) + 1);
+      continue;
+    }
+
+    const codigo = String(typeof rawCodigo === 'number' ? Math.round(rawCodigo) : rawCodigo).trim();
+    const ruta = String(typeof rawRuta === 'number' ? Math.round(rawRuta) : rawRuta).trim();
+    const nombre = rawNombre !== undefined && rawNombre !== null ? String(rawNombre).trim() : '';
+    const venta =
+      typeof rawVenta === 'number' ? rawVenta : parseFloat(String(rawVenta ?? '0').replace(',', '.')) || 0;
+
+    const key = `${ruta}__${codigo}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.cajas += venta;
+      if (!existing.nombre && nombre) existing.nombre = nombre;
+    } else {
+      groups.set(key, { ruta, codigo, nombre, cajas: venta });
+    }
+  }
+
+  const results: WithImportReport<ClienteRutaGrouped> = Array.from(groups.values());
+  results.importReport = buildImportReport(totalRows, results.length, discardedByReason);
+  return results;
+}
+
+// Agrupa filas ya sumadas por cliente en un mapa RUTA -> lista de clientes,
+// listo para asignarse directamente a Route.clientesRuta.
+export function groupClientesByRuta(rows: ClienteRutaGrouped[]): Map<string, RouteClientEntry[]> {
+  const map = new Map<string, RouteClientEntry[]>();
+  rows.forEach((row) => {
+    const arr = map.get(row.ruta) || [];
+    arr.push({ codigo: row.codigo, nombre: row.nombre, cajas: row.cajas });
+    map.set(row.ruta, arr);
+  });
+  return map;
+}
+
+// El nombre de cada pestaña ("Clientes 22", "Resumen 05", "Resumen 4.", "Resumen
+// 9", etc.) siempre trae en algún punto el número del día del mes al que
+// corresponde esa hoja — el formato exacto varía (con o sin cero a la
+// izquierda, con o sin un punto al final) pero el número es consistente con la
+// fecha real de entrega (ver conversación con el usuario).
+export function extractDayNumberFromSheetName(name: string): number | null {
+  const m = String(name || '').match(/(\d{1,2})/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) && n >= 1 && n <= 31 ? n : null;
+}
+
+// Identifica, de forma tolerante a mayúsculas/acentos, si una pestaña es del
+// tipo "Clientes N" (detalle de clientes) en vez de "Resumen N" (totales de
+// ruta) u otra pestaña ajena al archivo (por ejemplo, una "Hoja1" en blanco).
+export function isClientesSheetName(name: string): boolean {
+  return cleanHeaderStr(name).includes('cliente');
 }
 
 export function getRouteAssignmentType(r: Route): string {
