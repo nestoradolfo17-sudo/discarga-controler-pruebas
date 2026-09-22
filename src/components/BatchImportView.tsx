@@ -9,6 +9,7 @@ import {
   groupClientesByRuta,
   isClientesSheetName,
   extractDayNumberFromSheetName,
+  extractFechaEntregaMonthYear,
   ImportReport,
 } from '../utils/excel';
 import { formatDateToGuatemala } from '../utils/date';
@@ -135,7 +136,24 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
       return;
     }
 
-    const parsed = parseRoutesFromSheet(ws);
+    // Corrección: las hojas "Resumen N" tipo ROADNET/UPS Logistics no traen
+    // columna de Fecha por fila — sin este cálculo, cada ruta importada se
+    // quedaba con la fecha de HOY (día del import), lo que rompía por completo
+    // el emparejamiento con el detalle de clientes ("Clientes N"). Se usa el
+    // número de la pestaña como el día real (ya establecido para el detalle de
+    // clientes) y el mes/año del texto "Fecha de entrega" de la propia hoja
+    // (ese texto sí trae el mes/año correctos, aunque el día pueda diferir en
+    // uno respecto al número de pestaña). Si la hoja SÍ trae columna de Fecha
+    // por fila (plantilla propia), esa columna sigue teniendo prioridad — ver
+    // parseRoutesFromSheet.
+    const dayFromSheetName = extractDayNumberFromSheetName(sheetName);
+    const entregaMonthYear = extractFechaEntregaMonthYear(ws);
+    const dateOverride =
+      dayFromSheetName !== null && entregaMonthYear
+        ? formatDateToGuatemala(new Date(entregaMonthYear.year, entregaMonthYear.month - 1, dayFromSheetName, 12))
+        : undefined;
+
+    const parsed = parseRoutesFromSheet(ws, dateOverride);
     setImportReport(parsed.importReport || null);
     if (parsed.length === 0) {
       onShowToast(`No se encontraron registros de rutas válidos en "${sheetName}".`, 'error');
