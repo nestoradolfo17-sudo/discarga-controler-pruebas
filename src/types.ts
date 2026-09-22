@@ -62,6 +62,34 @@ export type MotivoDevolucionReason =
 // '../data/motivosCajaAbierta' para el catálogo con íconos.
 export type CajaAbiertaReason = 'PIN de Abasto' | 'Pendiente Validación de Boleta' | 'Fuera POS';
 
+// Un cliente/punto de venta dentro de una ruta, tal como viene en el archivo
+// "Clientes N" que envía el cliente (operador logístico) junto con el resumen de
+// rutas del día. "cajas" es la suma de la columna VENTA de todas las líneas de
+// ese cliente dentro de esa ruta (un mismo cliente puede traer varias líneas —
+// varias facturas— dentro de la misma ruta; se guardan ya sumadas). Es
+// información de solo consulta/referencia: no participa en ningún cálculo de
+// Cajas Físicas, Paradas ni Liquidación de la ruta salvo que el usuario la use
+// explícitamente al marcar Clientes Pendientes (ver ClientePendiente abajo).
+export interface RouteClientEntry {
+  codigo: string;
+  nombre: string;
+  cajas: number;
+}
+
+// Un cliente de la ruta que quedó marcado como pendiente al momento de liquidar
+// en modalidad "Ruta Abierta" o "Caja Abierta" (ver LiquidateModal), junto con el
+// motivo puntual de ESE cliente (tomado del mismo catálogo que ya existía a nivel
+// de ruta: motivosDevolucion.ts para Ruta Abierta, motivosCajaAbierta.ts para
+// Caja Abierta). Se guarda además "cajas" (copiado de RouteClientEntry al
+// momento de marcarlo) para poder recalcular sumas históricas sin depender de
+// que clientesRuta siga existiendo en la ruta más adelante.
+export interface ClientePendiente {
+  codigo: string;
+  nombre: string;
+  motivo: string;
+  cajas?: number;
+}
+
 export interface Truck {
   id: string;
   idCamion?: string;
@@ -170,6 +198,12 @@ export interface RouteLiquidation {
   // (ver RouteLiquidationStatusEntry arriba), para mostrarlo en el Tablero de
   // Rutas Liquidadas.
   historialEstados?: RouteLiquidationStatusEntry[];
+  // Clientes de la ruta (ver RouteClientEntry en Route.clientesRuta) que se
+  // marcaron puntualmente como pendientes al liquidar en modalidad Ruta Abierta
+  // o Caja Abierta, cada uno con su propio motivo. Solo se llena cuando la ruta
+  // tenía clientesRuta cargado (import de Excel con detalle de clientes); si no,
+  // la liquidación sigue funcionando igual que siempre, sin este detalle.
+  clientesPendientes?: ClientePendiente[];
 }
 
 export interface RouteDispatchRecord {
@@ -191,6 +225,11 @@ export interface RouteDispatchRecord {
   // Comentario libre y opcional capturado al registrar el retorno (misma
   // captura que el campo de comentario del modal de liquidación).
   comentario?: string;
+  // Clientes que se marcaron pendientes en ESTE intento/retorno puntual (Ruta
+  // Abierta), cada uno con su motivo — ver ClientePendiente. Queda en el
+  // historial de despachos para trazabilidad aunque la ruta se vuelva a
+  // despachar y su lista de clientesRuta se reduzca solo a estos pendientes.
+  clientesPendientes?: ClientePendiente[];
 }
 
 export interface Route {
@@ -245,6 +284,12 @@ export interface Route {
   destino?: string;
   razonTraslado?: string;
   razonTrasladoDetalle?: string;
+  // Lista de clientes/puntos de venta de esta ruta (solo consulta/referencia),
+  // cargada desde el archivo "Clientes N" que envía el cliente junto al resumen
+  // de rutas del día (ver RouteClientEntry). Opcional: las rutas cargadas antes
+  // de esta función, o sin ese archivo disponible, simplemente no la traen y
+  // todo sigue funcionando exactamente igual que hoy.
+  clientesRuta?: RouteClientEntry[];
 }
 
 export interface ToastMessage {
