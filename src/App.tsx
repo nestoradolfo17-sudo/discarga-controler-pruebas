@@ -14,6 +14,8 @@ import {
   TablePermissions,
   MotivoDevolucionReason,
   CajaAbiertaReason,
+  ClientePendiente,
+  RouteClientEntry,
 } from './types';
 import { INITIAL_ROUTES, INITIAL_TRUCKS, INITIAL_STAFF, INITIAL_USERS } from './data/initialData';
 import {
@@ -36,6 +38,7 @@ import { TabNav, ActiveTab } from './components/TabNav';
 import { RoutesTable } from './components/RoutesTable';
 import { ResourcesView } from './components/ResourcesView';
 import { BatchImportView } from './components/BatchImportView';
+import { ClientesImportView } from './components/ClientesImportView';
 import { LiquidatedBoardView } from './components/LiquidatedBoardView';
 import { NewRouteModal } from './components/modals/NewRouteModal';
 import { NewTrasladoRouteModal } from './components/modals/NewTrasladoRouteModal';
@@ -138,22 +141,26 @@ export default function App() {
   // localStorage, un usuario por navegador). Esto evita que agregar la base de
   // datos compartida cambie el comportamiento de nadie que siga sin configurarla.
   const [isRemoteReady, setIsRemoteReady] = useState(!isSupabaseConfigured);
-  type SyncRef = { json: string; ids: Set<string> | null };
-  const routesSyncRef = useRef<SyncRef>({ json: '', ids: null });
-  const historySyncRef = useRef<SyncRef>({ json: '', ids: null });
-  const trucksSyncRef = useRef<SyncRef>({ json: '', ids: null });
-  const staffSyncRef = useRef<SyncRef>({ json: '', ids: null });
-  const usersSyncRef = useRef<SyncRef>({ json: '', ids: null });
-  // Corrección: cada sincronización hacia Supabase de una colección primero sube
-  // los registros actuales y LUEGO borra en Supabase cualquier clave que antes se
-  // conocía y ya no está presente (ver pushSharedCollection en services/sync.ts).
-  // Si dos actualizaciones seguidas de la MISMA colección (por ejemplo, dos
-  // acciones en el Tablero de Rutas hechas con pocos segundos de diferencia)
-  // quedaban "en vuelo" al mismo tiempo y la red las resolvía fuera de orden, la
-  // más lenta terminaba comparando contra información ya desactualizada y podía
-  // borrar en Supabase algo que la más rápida acababa de guardar bien — y esa
-  // pérdida se veía reflejada en las demás pantallas conectadas. Esta cola
-  // (una por colección) obliga a que cada sincronización espere a que termine la
+  // Corrección: este ref ya NO guarda un set de "ids anteriores" — ver la nota
+  // de seguridad en pushSharedCollection (services/sync.ts): el borrado en
+  // Supabase ya nunca se infiere comparando snapshots, así que ya no hace
+  // falta rastrear qué claves había "antes" solo para poder borrar por
+  // diferencia. Solo se usa para detectar si la colección realmente cambió
+  // (comparando el JSON) antes de molestarse en subirla de nuevo.
+  type SyncRef = { json: string };
+  const routesSyncRef = useRef<SyncRef>({ json: '' });
+  const historySyncRef = useRef<SyncRef>({ json: '' });
+  const trucksSyncRef = useRef<SyncRef>({ json: '' });
+  const staffSyncRef = useRef<SyncRef>({ json: '' });
+  const usersSyncRef = useRef<SyncRef>({ json: '' });
+  // Corrección: cada sincronización hacia Supabase de una colección sube (hace
+  // upsert de) los registros actuales — ver pushSharedCollection en
+  // services/sync.ts. Si dos actualizaciones seguidas de la MISMA colección
+  // (por ejemplo, dos acciones en el Tablero de Rutas hechas con pocos
+  // segundos de diferencia) quedaban "en vuelo" al mismo tiempo y la red las
+  // resolvía fuera de orden, la más lenta podía sobrescribir en Supabase el
+  // resultado de la más rápida con datos ya desactualizados. Esta cola (una
+  // por colección) obliga a que cada sincronización espere a que termine la
   // anterior antes de empezar la siguiente, para que nunca compitan entre sí.
   const routesPushQueueRef = useRef<Promise<void>>(Promise.resolve());
   const historyPushQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -168,15 +175,16 @@ export default function App() {
   // este mismo navegador acaba de subir, el contenido ya coincide con lo
   // último sincronizado y no se vuelve a subir.
   //
-  // Corrección: antes, la sincronización en cola leía `ref.current.ids` recién
-  // en el momento en que la operación de red se ejecutaba de verdad — y ese
-  // objeto podía haber sido sobrescrito mientras tanto por otra sincronización
-  // en cola o por un cambio en tiempo real de otro usuario, haciendo que se
-  // comparara (y se borrara) contra un conjunto de claves que no tenía nada que
-  // ver con este cambio específico. Ahora `previousKeys` se captura aquí mismo,
-  // de forma síncrona, en el mismo instante en que se decide subir el cambio —
-  // como valor independiente, no como referencia mutable — así que ninguna otra
-  // sincronización que se encole después puede "contaminarlo" retroactivamente.
+  // Corrección de seguridad importante: esta función SOLO hace upsert (agregar
+  // o actualizar). Ya NO calcula ni pasa ninguna "clave anterior" para que
+  // pushSharedCollection borre por diferencia — ver la nota de seguridad en
+  // pushSharedCollection (services/sync.ts) sobre por qué ese borrado
+  // implícito se eliminó por completo tras causar pérdidas reales de datos.
+  // Cuando una acción del usuario realmente borra un registro a propósito
+  // (eliminar un camión, una ruta, un colaborador, etc.), esa acción llama
+  // directamente a `deleteSharedRecords` con la clave exacta de lo borrado,
+  // en vez de depender de que este helper "adivine" qué se quitó comparando
+  // el arreglo de antes con el de ahora.
   const pushIfChanged = useCallback(
     <T,>(
       table: SyncableTable,
@@ -188,15 +196,13 @@ export default function App() {
       if (!isSupabaseConfigured || !isRemoteReady) return;
       const json = JSON.stringify(items);
       if (json === ref.current.json) return;
-      const previousKeys = ref.current.ids;
-      const currentKeys = new Set(items.map(getKey));
-      ref.current = { json, ids: currentKeys };
+      ref.current = { json };
       // Encadenada detrás de la sincronización anterior de esta misma colección
       // (ver el comentario de las *PushQueueRef arriba) para que nunca se
-      // ejecuten dos en paralelo compitiendo por el mismo registro de claves.
+      // ejecuten dos en paralelo compitiendo por el mismo registro.
       queueRef.current = queueRef.current
         .catch(() => {})
-        .then(() => pushSharedCollection(table, items, getKey, previousKeys));
+        .then(() => pushSharedCollection(table, items, getKey));
     },
     [isRemoteReady]
   );
@@ -269,10 +275,9 @@ export default function App() {
           const remoteList = remoteRows.map((row) => row.data);
           const finalList = remoteList.length > 0 ? remoteList : localList;
           setter(finalList);
-          const finalKeys = new Set(finalList.map(getKey));
-          ref.current = { json: JSON.stringify(finalList), ids: finalKeys };
+          ref.current = { json: JSON.stringify(finalList) };
           if (remoteList.length === 0) {
-            void pushSharedCollection(table, finalList, getKey, null);
+            void pushSharedCollection(table, finalList, getKey);
             return;
           }
           // Corrección: limpieza única de filas guardadas con un esquema de clave
@@ -280,11 +285,13 @@ export default function App() {
           // remota fue guardada bajo una clave que ya no coincide con la que hoy se
           // calcularía para esos mismos datos (por ejemplo, el número de ruta solo,
           // sin la fecha), se re-sube esa colección bajo la clave correcta y luego
-          // se elimina la fila vieja. En cargas siguientes esto ya no encuentra nada
+          // se elimina EXPLÍCITAMENTE (por su clave exacta, nunca por diferencia de
+          // arreglos) la fila vieja. En cargas siguientes esto ya no encuentra nada
           // que migrar (es una operación segura de repetir).
+          const finalKeys = new Set(finalList.map(getKey));
           const legacyKeys = remoteRows.filter((row) => !finalKeys.has(row.key)).map((row) => row.key);
           if (legacyKeys.length > 0) {
-            void pushSharedCollection(table, finalList, getKey, null).then(() =>
+            void pushSharedCollection(table, finalList, getKey).then(() =>
               deleteSharedRecords(table, legacyKeys)
             );
           }
@@ -326,35 +333,35 @@ export default function App() {
       subscribeToSharedCollection<Route>('app_routes', (updater) => {
         setRoutes((prev) => {
           const next = updater(prev);
-          routesSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map(routeSyncKey)) };
+          routesSyncRef.current = { json: JSON.stringify(next) };
           return next;
         });
       }, routeSyncKey),
       subscribeToSharedCollection<Route>('app_historical_routes', (updater) => {
         setHistoricalRoutes((prev) => {
           const next = updater(prev);
-          historySyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map(routeSyncKey)) };
+          historySyncRef.current = { json: JSON.stringify(next) };
           return next;
         });
       }, routeSyncKey),
       subscribeToSharedCollection<Truck>('app_trucks', (updater) => {
         setTrucks((prev) => {
           const next = updater(prev);
-          trucksSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map(defaultSyncKey)) };
+          trucksSyncRef.current = { json: JSON.stringify(next) };
           return next;
         });
       }, defaultSyncKey),
       subscribeToSharedCollection<Staff>('app_staff', (updater) => {
         setStaff((prev) => {
           const next = updater(prev);
-          staffSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map(defaultSyncKey)) };
+          staffSyncRef.current = { json: JSON.stringify(next) };
           return next;
         });
       }, defaultSyncKey),
       subscribeToSharedCollection<AppUser>('app_users', (updater) => {
         setUsers((prev) => {
           const next = updater(prev);
-          usersSyncRef.current = { json: JSON.stringify(next), ids: new Set(next.map(defaultSyncKey)) };
+          usersSyncRef.current = { json: JSON.stringify(next) };
           return next;
         });
       }, defaultSyncKey),
@@ -481,6 +488,7 @@ export default function App() {
   };
 
   const handleDeleteUser = (userId: string) => {
+    let didDelete = false;
     setUsers((prev) => {
       const target = prev.find((u) => u.id === userId);
       if (!target) return prev;
@@ -490,8 +498,16 @@ export default function App() {
         return prev;
       }
       showToast(`Usuario "${target.username}" eliminado.`, 'info');
+      didDelete = true;
       return prev.filter((u) => u.id !== userId);
     });
+    // Borrado explícito en Supabase (ver la nota de seguridad en
+    // pushSharedCollection): la sincronización normal ya nunca borra por su
+    // cuenta, así que cada acción que realmente elimina algo debe pedirlo
+    // directamente, con la clave exacta de lo que se quitó.
+    if (didDelete) {
+      void deleteSharedRecords('app_users', [userId]);
+    }
   };
 
   // Permisos efectivos del usuario en sesión (un administrador siempre tiene acceso total)
@@ -1084,6 +1100,11 @@ export default function App() {
       return copy;
     });
     setSplitRouteTarget(null);
+    // Borrado explícito en Supabase: la ruta original queda reemplazada por sus
+    // viajes hijos bajo IDs distintos, así que su clave compuesta (id+fecha) ya
+    // no aparece en el arreglo — hay que pedir su borrado a propósito en vez de
+    // depender de una sincronización que infiera la diferencia.
+    void deleteSharedRecords('app_routes', [getRouteKey(originalRoute)]);
     showToast(
       `Ruta ${originalRoute.id} dividida en ${childRoutes.length} viajes independientes.`,
       'success'
@@ -1240,6 +1261,11 @@ export default function App() {
       filtered.splice(firstIdx >= 0 ? firstIdx : 0, 0, restoredRoute);
       return filtered;
     });
+
+    // Borrado explícito en Supabase: los viajes individuales (hijos) quedan
+    // reemplazados por la ruta matriz restaurada, así que sus claves compuestas
+    // ya no aparecen en el arreglo — se borran a propósito, nunca por diferencia.
+    void deleteSharedRecords('app_routes', siblings.map((s) => getRouteKey(s)));
 
     setRevertSplitTarget(null);
     showToast(`Partición revertida con éxito. Restaurada ruta matriz ${parentRouteId}.`, 'success');
@@ -1663,6 +1689,12 @@ export default function App() {
     // Eliminar del historial si estuviera presente
     setHistoricalRoutes((prev) => prev.filter((r) => !keysSet.has(getRouteKey(r))));
 
+    // Borrado explícito en Supabase, en ambas tablas (la ruta eliminada puede
+    // estar en cualquiera de las dos, o en ambas) — con las claves exactas que
+    // el usuario confirmó eliminar, nunca por diferencia de arreglos.
+    void deleteSharedRecords('app_routes', routeIdsToDelete);
+    void deleteSharedRecords('app_historical_routes', routeIdsToDelete);
+
     setDeleteRoutesTargetIds(null);
     showToast(
       routeIdsToDelete.length === 1
@@ -1695,6 +1727,9 @@ export default function App() {
       motivoCajaAbierta?: CajaAbiertaReason;
       // Comentario libre y opcional, disponible para las 3 modalidades de cierre.
       comentario?: string;
+      // Clientes marcados puntualmente como pendientes (Ruta Abierta / Caja
+      // Abierta), cada uno con su motivo — ver ClientePendiente en types.ts.
+      clientesPendientes?: ClientePendiente[];
     }
   ) => {
     const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
@@ -1781,7 +1816,19 @@ export default function App() {
         auditor: data.auditor,
         tipoAsignacion: currentTripTipo,
         comentario: data.comentario,
+        clientesPendientes: data.clientesPendientes,
       };
+
+      // Corrección: si se marcaron clientes puntuales como pendientes, la ruta
+      // que sigue vigente (para Revisita) debe traer ya solo esos clientes en su
+      // lista de referencia — no la lista completa original, que ya no
+      // corresponde a lo que falta por entregar. Si no se usó el selector de
+      // clientes (data.clientesPendientes vacío), se deja la lista tal cual
+      // estaba, igual que siempre.
+      const clientesRutaRestante =
+        data.clientesPendientes && data.clientesPendientes.length > 0
+          ? data.clientesPendientes.map((cp) => ({ codigo: cp.codigo, nombre: cp.nombre, cajas: cp.cajas || 0 }))
+          : targetRoute.clientesRuta;
 
       const updatedRoute: Route = {
         ...targetRoute,
@@ -1797,6 +1844,7 @@ export default function App() {
         cajasFisicas: data.cajasDevueltas > 0 ? data.cajasDevueltas : targetRoute.cajasFisicas,
         paradasOriginales: targetRoute.paradasOriginales || targetRoute.paradas,
         paradas: data.guiasRechazadas > 0 ? data.guiasRechazadas : targetRoute.paradas,
+        clientesRuta: clientesRutaRestante,
         tipoAsignacion: currentTripTipo,
         esReasignacion: currentTripTipo === 'Revisita',
         esRecarga: currentTripTipo === 'Recarga',
@@ -1845,6 +1893,7 @@ export default function App() {
         // marcada como pendiente de validar la caja/boleta del punto de venta.
         cajaAbierta: !!data.isCajaAbierta,
         motivoCajaAbierta: data.motivoCajaAbierta,
+        clientesPendientes: data.clientesPendientes,
         // Primer registro del historial de status: se guarda la fecha exacta del
         // status inicial con el que queda esta liquidación (Liquidada o Caja
         // Abierta), para poder mostrar más adelante una línea de tiempo completa
@@ -1989,8 +2038,18 @@ export default function App() {
     const runningIds = new Set(activeRunningBacklog.map((r) => String(r.id)));
     const freshDailyRoutes = importedRoutes.filter((r) => !runningIds.has(String(r.id)));
 
+    // Claves de las rutas que salen del tablero activo en este import (las ya
+    // Liquidadas, que se acaban de archivar arriba en historicalRoutes). Se
+    // capturan ANTES de reemplazar "routes" para poder pedir su borrado
+    // explícito de "app_routes" — la sincronización normal ya nunca borra por
+    // su cuenta (ver la nota de seguridad en pushSharedCollection).
+    const archivedKeys = routes.filter((r) => r.estado === 'Liquidada').map((r) => getRouteKey(r));
+
     setRoutes([...freshDailyRoutes, ...activeRunningBacklog]);
     setActiveTab('board');
+    if (archivedKeys.length > 0) {
+      void deleteSharedRecords('app_routes', archivedKeys);
+    }
 
     const msg =
       activeRunningBacklog.length > 0
@@ -1999,6 +2058,29 @@ export default function App() {
           }.`
         : `Se importaron ${freshDailyRoutes.length} rutas del día listas para asignar.`;
     showToast(msg, 'success');
+  };
+
+  // Agrega/actualiza la lista de clientes de referencia (clientesRuta) de rutas
+  // que YA existen en el sistema (activas o ya archivadas en historicalRoutes),
+  // emparejadas por clave ID+Fecha (ver getRouteKey). No crea rutas nuevas, no
+  // toca cajas/paradas/estado/liquidación de ninguna ruta — es puramente
+  // informativo/de referencia (ver ClientesImportView).
+  const handleImportClientesPorRuta = (updates: { routeKey: string; clientesRuta: RouteClientEntry[] }[]) => {
+    if (updates.length === 0) return;
+    const byKey = new Map(updates.map((u) => [u.routeKey, u.clientesRuta]));
+
+    setRoutes((prev) =>
+      prev.map((r) => {
+        const match = byKey.get(getRouteKey(r));
+        return match ? { ...r, clientesRuta: match } : r;
+      })
+    );
+    setHistoricalRoutes((prev) =>
+      prev.map((r) => {
+        const match = byKey.get(getRouteKey(r));
+        return match ? { ...r, clientesRuta: match } : r;
+      })
+    );
   };
 
   const handleCreateTruck = (truckData: {
@@ -2195,6 +2277,9 @@ export default function App() {
     const idSet = new Set(truckIds);
     const removed = trucks.filter((t) => idSet.has(t.id));
     setTrucks((prev) => prev.filter((t) => !idSet.has(t.id)));
+    // Borrado explícito en Supabase con las claves exactas confirmadas por el
+    // usuario (ver la nota de seguridad en pushSharedCollection).
+    void deleteSharedRecords('app_trucks', truckIds);
     if (removed.length === 1) {
       showToast(`Camión ${removed[0].placa} eliminado`, 'info');
     } else {
@@ -2207,6 +2292,9 @@ export default function App() {
     const idSet = new Set(staffIds);
     const removed = staff.filter((s) => idSet.has(s.id));
     setStaff((prev) => prev.filter((s) => !idSet.has(s.id)));
+    // Borrado explícito en Supabase con las claves exactas confirmadas por el
+    // usuario (ver la nota de seguridad en pushSharedCollection).
+    void deleteSharedRecords('app_staff', staffIds);
     if (removed.length === 1) {
       showToast(`Colaborador ${removed[0].nombre} eliminado`, 'info');
     } else {
@@ -2271,7 +2359,25 @@ export default function App() {
     }
   };
 
+  // Corrección de seguridad crítica: "Restablecer Datos de Ejemplo" reemplaza
+  // TODO el contenido de Rutas, Camiones y Personal por los datos de ejemplo
+  // con los que arranca la app en modo local — algo razonable únicamente
+  // cuando NO hay una base de datos compartida configurada (modo de un solo
+  // navegador, sin Supabase). Con Supabase configurado, este botón terminaba
+  // reemplazando en TODAS las pantallas conectadas los datos reales cargados
+  // por el equipo con datos de ejemplo, con un solo clic y sin ninguna
+  // confirmación — esto ya causó pérdidas reales de Rutas, Camiones y
+  // Personal. Ahora esta función se niega a ejecutarse si Supabase está
+  // configurado (además, el botón que la dispara ya no se muestra en ese caso
+  // — ver TabNav.tsx / allowResetDemo), como segunda capa de protección.
   const handleResetDemo = () => {
+    if (isSupabaseConfigured) {
+      showToast(
+        'Restablecer a datos de ejemplo está deshabilitado: esta base de datos es compartida y contiene datos reales de todos los usuarios.',
+        'error'
+      );
+      return;
+    }
     setRoutes(JSON.parse(JSON.stringify(INITIAL_ROUTES)));
     setTrucks(JSON.parse(JSON.stringify(INITIAL_TRUCKS)));
     setStaff(JSON.parse(JSON.stringify(INITIAL_STAFF)));
@@ -2431,6 +2537,7 @@ export default function App() {
           onSearchChange={setSearchQuery}
           onExportExcel={handleExportActiveRoutesExcel}
           onResetDemo={handleResetDemo}
+          allowResetDemo={!isSupabaseConfigured}
           onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
           pendingReasonsCount={pendingReasonsCount}
           activeCount={filteredActiveRoutes.length}
@@ -2555,11 +2662,19 @@ export default function App() {
         )}
 
         {activeTab === 'batch' && (
-          <BatchImportView
-            existingRoutes={routes}
-            onCommitRoutes={handleCommitBatchRoutes}
-            onShowToast={showToast}
-          />
+          <div className="space-y-6">
+            <BatchImportView
+              existingRoutes={routes}
+              onCommitRoutes={handleCommitBatchRoutes}
+              onShowToast={showToast}
+            />
+            <ClientesImportView
+              routes={routes}
+              historicalRoutes={historicalRoutes}
+              onCommitClientesRuta={handleImportClientesPorRuta}
+              onShowToast={showToast}
+            />
+          </div>
         )}
 
         {activeTab === 'users' && currentUser.isAdmin && (
