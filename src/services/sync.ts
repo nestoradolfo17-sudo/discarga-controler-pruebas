@@ -58,65 +58,72 @@ export async function fetchSharedCollection<T>(
 
 /**
  * Sube el estado completo de una colección: hace upsert de todos los
- * registros actuales (bajo la clave que calcule `getKey`) y elimina en
- * Supabase las claves de `previousKeys` que ya no están presentes en
- * `items`.
+ * registros actuales (bajo la clave que calcule `getKey`). NUNCA borra nada
+ * en Supabase — ver la nota de seguridad más abajo. Nunca lanza — cualquier
+ * error queda solo en consola, igual que ya ocurría con los errores de
+ * localStorage lleno/bloqueado.
  *
- * Corrección importante: `previousKeys` se recibe como un valor YA
- * CAPTURADO por quien llama (un Set independiente, no una referencia
- * mutable compartida que esta función vaya a leer más tarde). Antes,
- * `pushSharedCollection` recibía un objeto "idHolder" mutable y leía
- * `idHolder.ids` en el momento en que la operación de red finalmente se
- * ejecutaba. Si dos sincronizaciones de la misma colección quedaban en cola
- * (por ejemplo, una edición local seguida de un cambio en tiempo real de
- * otro usuario, o dos ediciones locales seguidas), ese objeto podía ser
- * sobrescrito por la más reciente ANTES de que la más antigua, ya en vuelo,
- * leyera `idHolder.ids` — comparando entonces contra un conjunto de ids que
- * no tenía nada que ver con los datos que esa sincronización específica
- * estaba subiendo, y terminando por BORRAR en Supabase registros que otro
- * usuario acababa de guardar correctamente unos milisegundos antes. Ahora
- * cada llamada recibe su propio snapshot de "claves anteriores" por valor,
- * capturado de forma síncrona en el mismo instante en que se decide subir el
- * cambio (ver App.tsx/pushIfChanged), así que ninguna sincronización puede
- * "contaminar" el punto de comparación de otra que ya esté en cola. Nunca
- * lanza — cualquier error queda solo en consola, igual que ya ocurría con
- * los errores de localStorage lleno/bloqueado.
+ * ────────────────────────────────────────────────────────────────────────
+ * NOTA DE SEGURIDAD — por qué esta función NUNCA borra registros:
+ *
+ * La versión anterior de esta función borraba en Supabase cualquier clave
+ * que "antes" existiera localmente y ya "no" apareciera en `items` (borrado
+ * INFERIDO por diferencia entre dos snapshots). La intención era simple
+ * (reflejar en Supabase cuando el arreglo local se hacía más chico), pero
+ * ese diseño resultó ser peligroso: CUALQUIER causa que hiciera que el
+ * arreglo local pareciera más chico de lo que realmente debía ser —una
+ * condición de carrera, una recarga con datos aún no sincronizados, un error
+ * de programación futuro en cualquier pantalla que reemplace un arreglo
+ * completo (como el reinicio a datos de ejemplo, que sí llegó a ocurrir)—
+ * se traducía automáticamente en un borrado real, silencioso y compartido
+ * con TODOS los usuarios conectados. Esto causó más de un incidente real de
+ * pérdida de datos en Camiones, Personal y Rutas.
+ *
+ * Ahora el borrado en Supabase SOLO ocurre cuando el código de App.tsx llama
+ * explícitamente a `deleteSharedRecords` con las claves EXACTAS de lo que el
+ * usuario realmente decidió eliminar (por ejemplo, al presionar "Eliminar"
+ * sobre un camión, una ruta o un colaborador concreto). `pushSharedCollection`
+ * en cambio solo agrega/actualiza — nunca puede borrar nada, sin importar
+ * qué tan chico llegue `items`. El costo de este diseño es que, si en el
+ * futuro se agrega una nueva forma de "quitar" un registro de su arreglo
+ * local sin agregar también su borrado explícito correspondiente, esa fila
+ * quedaría "huérfana" en Supabase (visible para quien revise la base de
+ * datos directamente) en vez de desaparecer del tablero — un error mucho
+ * más seguro y fácil de notar/corregir que borrar datos reales de otros
+ * usuarios sin que nadie lo pidiera.
+ * ────────────────────────────────────────────────────────────────────────
  */
 export async function pushSharedCollection<T>(
   table: SyncableTable,
   items: T[],
-  getKey: SyncKeyFn<T>,
-  previousKeys: Set<string> | null
+  getKey: SyncKeyFn<T>
 ): Promise<void> {
-  if (!supabase) return;
+  if (!supabase || items.length === 0) return;
   try {
-    const currentKeys = new Set(items.map(getKey));
-    if (items.length > 0) {
-      const rows = items.map((item) => ({
-        id: getKey(item),
-        data: item,
-        updated_at: new Date().toISOString(),
-      }));
-      const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
-      if (error) throw error;
-    }
-    if (previousKeys) {
-      const removedKeys = [...previousKeys].filter((key) => !currentKeys.has(key));
-      if (removedKeys.length > 0) {
-        const { error } = await supabase.from(table).delete().in('id', removedKeys);
-        if (error) throw error;
-      }
-    }
+    const rows = items.map((item) => ({
+      id: getKey(item),
+      data: item,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
+    if (error) throw error;
   } catch (e) {
     console.error(`Error sincronizando "${table}" con Supabase:`, e);
   }
 }
 
 /**
- * Elimina explícitamente filas de una tabla compartida por su clave. Se usa
- * puntualmente para limpiar, una sola vez, filas que quedaron guardadas con
- * un esquema de clave anterior (ver la migración de "app_routes" /
- * "app_historical_routes" en App.tsx al pasar a clave compuesta id+fecha).
+ * Elimina explícitamente filas de una tabla compartida por su clave. Esta es
+ * la ÚNICA forma en la que un registro puede desaparecer de Supabase (ver la
+ * nota de seguridad en `pushSharedCollection` arriba) — App.tsx la llama
+ * puntualmente desde cada acción que realmente borra algo a propósito (por
+ * ejemplo, "Eliminar" sobre un camión, una ruta o un colaborador concreto,
+ * o al archivar una ruta liquidada fuera del tablero activo), nunca de forma
+ * implícita a partir de que un arreglo local se haya hecho más chico.
+ * También se usa puntualmente para limpiar, una sola vez, filas que quedaron
+ * guardadas con un esquema de clave anterior (ver la migración de
+ * "app_routes" / "app_historical_routes" en App.tsx al pasar a clave
+ * compuesta id+fecha).
  */
 export async function deleteSharedRecords(table: SyncableTable, keys: string[]): Promise<void> {
   if (!supabase || keys.length === 0) return;
