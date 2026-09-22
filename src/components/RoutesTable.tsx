@@ -384,7 +384,14 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
 
       <div className="overflow-x-auto min-h-[280px] pb-8 md:pb-10">
         <table className="w-full divide-y divide-slate-200 text-left text-xs">
-          <thead className="bg-slate-50 text-slate-600 uppercase tracking-wider font-bold text-[10px] md:text-[11px]">
+          {/* Corrección: encabezado fijo (sticky) al desplazarse verticalmente, igual
+              que en la tabla de Rutas Liquidadas. Esta tabla se desplaza junto con la
+              página (no tiene su propio scroll interno), así que el "top" del sticky
+              se compensa con la altura de la barra superior (Navbar, 68px, fija con
+              z-30) para que el encabezado quede pegado justo debajo de ella en vez de
+              taparla o quedar tapado por ella. z-20 lo mantiene por debajo de la
+              Navbar pero por encima de las filas de la tabla. */}
+          <thead className="bg-slate-50 text-slate-600 uppercase tracking-wider font-bold text-[10px] md:text-[11px] sticky top-[68px] z-20">
             <tr>
               <th scope="col" className="px-2 md:px-2.5 py-2 md:py-2.5 w-7 text-center">
                 <input
