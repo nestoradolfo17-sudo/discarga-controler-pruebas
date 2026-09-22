@@ -299,7 +299,14 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
       <th
         scope="col"
         onClick={() => handleSort(key)}
-        className={`px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 cursor-pointer select-none transition-colors hover:bg-slate-100 group ${extraClass}`}
+        // Corrección: el "sticky" se aplica en cada <th> (no en el <thead>), que es
+        // el patrón que de verdad funciona de forma consistente en navegadores
+        // basados en Chromium para encabezados de tabla — poner "sticky" solo en el
+        // <thead> se veía bien en el código pero no se pegaba visualmente al
+        // desplazarse. Cada celda necesita también su propio fondo sólido
+        // (bg-slate-50) porque, al pegarse de forma independiente, sin esto se
+        // vería el contenido de las filas pasando "por debajo" y transparentándose.
+        className={`px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 cursor-pointer select-none transition-colors hover:bg-slate-100 group sticky top-[68px] z-20 bg-slate-50 ${extraClass}`}
         title={`Ordenar por ${label} (${
           isActive
             ? sortOrder === 'asc'
@@ -385,15 +392,14 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
       <div className="overflow-x-auto min-h-[280px] pb-8 md:pb-10">
         <table className="w-full divide-y divide-slate-200 text-left text-xs">
           {/* Corrección: encabezado fijo (sticky) al desplazarse verticalmente, igual
-              que en la tabla de Rutas Liquidadas. Esta tabla se desplaza junto con la
-              página (no tiene su propio scroll interno), así que el "top" del sticky
-              se compensa con la altura de la barra superior (Navbar, 68px, fija con
-              z-30) para que el encabezado quede pegado justo debajo de ella en vez de
-              taparla o quedar tapado por ella. z-20 lo mantiene por debajo de la
-              Navbar pero por encima de las filas de la tabla. */}
-          <thead className="bg-slate-50 text-slate-600 uppercase tracking-wider font-bold text-[10px] md:text-[11px] sticky top-[68px] z-20">
+              que en la tabla de Rutas Liquidadas. El "top" se compensa con la altura
+              de la barra superior (Navbar, 68px, fija con z-30) para que el
+              encabezado quede pegado justo debajo de ella. El "sticky" real se aplica
+              celda por celda (ver renderSortHeader y los <th> de abajo), no aquí en
+              el <thead> — ver la nota en renderSortHeader. */}
+          <thead className="bg-slate-50 text-slate-600 uppercase tracking-wider font-bold text-[10px] md:text-[11px]">
             <tr>
-              <th scope="col" className="px-2 md:px-2.5 py-2 md:py-2.5 w-7 text-center">
+              <th scope="col" className="px-2 md:px-2.5 py-2 md:py-2.5 w-7 text-center sticky top-[68px] z-20 bg-slate-50">
                 <input
                   type="checkbox"
                   aria-label="Seleccionar todas las rutas visibles"
@@ -418,7 +424,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
               {renderSortHeader('segmento', 'Segmento')}
               {renderSortHeader('fecha', 'Fecha')}
               {renderSortHeader('carga', 'Carga')}
-              <th scope="col" className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-center w-24 whitespace-nowrap">Acciones</th>
+              <th scope="col" className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-center w-24 whitespace-nowrap sticky top-[68px] z-20 bg-slate-50">Acciones</th>
               {renderSortHeader('horas', 'Horas sin Liq.', 'whitespace-nowrap')}
               {renderSortHeader('estado', 'Estado')}
               {renderSortHeader('asignacion', 'Camión y Tripulación', 'text-center whitespace-nowrap')}
