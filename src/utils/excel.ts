@@ -357,6 +357,26 @@ export function parseRoutesFromSheet(ws: XLSX.WorkSheet): WithImportReport<Route
       discardedByReason.set('Fila de total / subtotal', (discardedByReason.get('Fila de total / subtotal') || 0) + 1);
       continue;
     }
+    // Corrección: los reportes tipo ROADNET/UPS Logistics (el mismo formato de
+    // "Resumen N" que usa este archivo) traen, después de la última ruta real,
+    // un bloque de estadísticas de la hoja ("N Rutas", "Menor", "Superior") y
+    // notas al pie ("Los tamaños resaltados son...", "El % de capacidad se
+    // calcula..."), a veces SIN ninguna fila en blanco que las separe de los
+    // datos reales — antes esas líneas se importaban como si fueran rutas
+    // válidas (verificado contra un archivo real: 5 filas fantasma por cada
+    // pestaña "Resumen N").
+    if (['menor', 'superior', 'mayor', 'minimo', 'maximo', 'mínimo', 'máximo'].includes(idCheck)) {
+      discardedByReason.set('Fila estadística ("Menor"/"Superior")', (discardedByReason.get('Fila estadística ("Menor"/"Superior")') || 0) + 1);
+      continue;
+    }
+    if (/^\d+\s*rutas?$/.test(idCheck)) {
+      discardedByReason.set('Fila de conteo ("N Rutas")', (discardedByReason.get('Fila de conteo ("N Rutas")') || 0) + 1);
+      continue;
+    }
+    if (idVal.trim().length > 25 && /\s/.test(idVal.trim())) {
+      discardedByReason.set('Nota al pie / leyenda', (discardedByReason.get('Nota al pie / leyenda') || 0) + 1);
+      continue;
+    }
 
     const agenciaVal = getVal(colMap.agencia, 'general') || 'Mercado Abierto';
     const mercadoVal = getVal(colMap.mercado, 'general') || (agenciaVal.toLowerCase().includes('mercado') ? agenciaVal : 'Mercado Abierto');
