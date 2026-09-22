@@ -27,8 +27,10 @@ import {
   ArrowDown,
   Trash2,
   Eye,
+  Users,
 } from 'lucide-react';
 import { AssignmentDetailModal } from './modals/AssignmentDetailModal';
+import { ClientesRutaList } from './ClientesRutaList';
 import { getRouteKey } from '../utils/routeKey';
 
 interface RoutesTableProps {
@@ -89,6 +91,9 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   const [sortOrder, setSortOrder] = React.useState<SortOrder>('asc');
   const [selectedRouteIds, setSelectedRouteIds] = React.useState<string[]>([]);
   const [viewingAssignmentRoute, setViewingAssignmentRoute] = React.useState<Route | null>(null);
+  // Clave (ID+Fecha) de la ruta cuya lista de clientes de referencia está
+  // desplegada debajo de su fila, o null si ninguna está abierta.
+  const [expandedClientesKey, setExpandedClientesKey] = React.useState<string | null>(null);
 
   // Limpiar seleccionados que ya no existan en la lista de rutas
   React.useEffect(() => {
@@ -438,8 +443,8 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                 siblings.every((r) => r.estado === 'Liquidada');
 
               return (
+                <React.Fragment key={routeKey}>
                 <tr
-                  key={routeKey}
                   className={`transition-colors ${
                     isSelected
                       ? 'bg-rose-50/70 hover:bg-rose-50'
@@ -540,6 +545,24 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                       <div className="text-[10px] md:text-[11px] font-mono text-slate-500 whitespace-nowrap">
                         12 Oz: <b className="text-slate-700 font-bold">{route.cajas12Oz || 0}</b>
                       </div>
+                      {route.clientesRuta && route.clientesRuta.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedClientesKey((prev) => (prev === routeKey ? null : routeKey));
+                          }}
+                          title="Ver la lista de clientes de esta ruta (solo consulta)"
+                          className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded-md border transition cursor-pointer ${
+                            expandedClientesKey === routeKey
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50 hover:border-slate-400'
+                          }`}
+                        >
+                          <Users className="w-3 h-3" />
+                          {expandedClientesKey === routeKey ? 'Ocultar' : 'Ver'} clientes ({route.clientesRuta.length})
+                        </button>
+                      )}
                     </div>
                   </td>
 
@@ -1070,6 +1093,14 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                     )}
                   </td>
                 </tr>
+                {expandedClientesKey === routeKey && route.clientesRuta && route.clientesRuta.length > 0 && (
+                  <tr key={`${routeKey}-clientes`} className="bg-slate-50/70">
+                    <td colSpan={10} className="px-4 py-3">
+                      <ClientesRutaList clientes={route.clientesRuta} />
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               );
             })}
           </tbody>
