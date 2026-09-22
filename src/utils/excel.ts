@@ -169,7 +169,38 @@ export function scoreSheetForRoutes(ws: XLSX.WorkSheet): number {
   return maxRowScore;
 }
 
-export function parseRoutesFromSheet(ws: XLSX.WorkSheet): WithImportReport<Route> {
+// Corrección: los reportes tipo ROADNET/UPS Logistics (mismo formato que
+// "Resumen N") no traen columna de Fecha por fila — solo un texto suelto
+// "Fecha de entrega: <día completo>" en algún lugar del encabezado de la hoja.
+// Antes, al no encontrar columna de fecha, cada ruta importada se quedaba con
+// la fecha de HOY (el día en que se hace el import), lo cual está mal y
+// además rompía el emparejamiento con el detalle de clientes. El día exacto de
+// ese texto tampoco es 100% confiable (a veces difiere en un día del número
+// real de la pestaña — ver "Fecha de entrega" vs. número de pestaña, corregido
+// por el usuario), así que de aquí solo se toma el MES y AÑO (esos sí son
+// consistentes); el día real se toma del número de la pestaña en
+// BatchImportView, no de este texto.
+export function extractFechaEntregaMonthYear(ws: XLSX.WorkSheet): { month: number; year: number } | null {
+  if (!ws['!ref']) return null;
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let r = range.s.r; r <= Math.min(range.s.r + 20, range.e.r); r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (!cell) continue;
+      const raw = cell.w || cell.v;
+      if (raw === undefined || raw === null) continue;
+      const text = String(raw);
+      if (!cleanHeaderStr(text).includes('fecha de entrega')) continue;
+      const parsed = parseFlexibleDate(text);
+      if (parsed && !isNaN(parsed.getTime())) {
+        return { month: parsed.getMonth() + 1, year: parsed.getFullYear() };
+      }
+    }
+  }
+  return null;
+}
+
+export function parseRoutesFromSheet(ws: XLSX.WorkSheet, dateOverride?: string): WithImportReport<Route> {
   if (!ws['!ref']) return [];
 
   const range = XLSX.utils.decode_range(ws['!ref']);
@@ -385,7 +416,14 @@ export function parseRoutesFromSheet(ws: XLSX.WorkSheet): WithImportReport<Route
     }
 
     const rawDate = getVal(colMap.fecha, 'date');
-    const routeDate = rawDate ? formatDateToGuatemala(rawDate) : formatDateToGuatemala(new Date());
+    // Prioridad: (1) columna de Fecha por fila si la hoja la trae (plantilla
+    // propia, donde cada fila puede tener su propia fecha); (2) dateOverride
+    // calculado por el llamador a partir del número de pestaña + mes/año (ver
+    // extractFechaEntregaMonthYear) para hojas tipo ROADNET sin columna de
+    // fecha; (3) como último recurso, la fecha de hoy.
+    const routeDate = rawDate
+      ? formatDateToGuatemala(rawDate)
+      : dateOverride || formatDateToGuatemala(new Date());
 
     const cajas12Val = getVal(colMap.cajas12Oz, 'general') || '0';
     let cajasFisicasVal = getVal(colMap.cajasFisicas, 'general');
