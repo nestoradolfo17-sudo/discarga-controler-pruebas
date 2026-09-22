@@ -268,28 +268,38 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto border border-slate-200 rounded-xl w-full">
+      {/* Corrección (causa real del encabezado "trabado"): este contenedor tiene
+          "overflow-x-auto" para permitir deslizar la tabla horizontalmente en
+          pantallas angostas. Por especificación CSS, en cuanto un eje de overflow
+          es distinto de "visible" (aquí overflow-x), el otro eje (overflow-y) se
+          calcula también como "auto" aunque no se declare — esto convierte a ESTE
+          div en un "contenedor de scroll" propio. El problema: "position: sticky"
+          se calcula siempre en relación a su contenedor de scroll más cercano, así
+          que el encabezado dejaba de fijarse contra la ventana/Navbar (para lo cual
+          se había puesto "top-[68px]") y en su lugar intentaba fijarse contra ESTE
+          div — que no se desplaza de forma independiente porque no tenía una altura
+          limitada, dando el comportamiento errático e incorrecto reportado ("se
+          queda trabado"). La solución correcta y estándar para "encabezado fijo +
+          scroll horizontal" es que este mismo contenedor tenga también su propio
+          scroll VERTICAL limitado (max-h + overflow-y-auto, aquí via "overflow-auto"
+          + "max-h-[70vh]"), de modo que el encabezado se fije con "top-0" respecto
+          a SU PROPIO borde superior (ya no se necesita compensar los 68px de la
+          Navbar, porque ya no depende del scroll de la ventana). */}
+      <div className="overflow-auto border border-slate-200 rounded-xl w-full max-h-[70vh]">
         <table className="min-w-full divide-y divide-slate-200 text-left text-xs sm:text-sm whitespace-nowrap">
-          {/* Corrección: encabezado fijo (sticky) al desplazarse verticalmente, igual
-              que en el Tablero de Rutas. El "top" se compensa con la altura de la
-              Navbar (68px, fija con z-30). El "sticky" se aplica celda por celda
-              (cada <th> de abajo) en vez de en el <thead> completo — poner "sticky"
-              solo en <thead> no se pegaba de forma confiable al desplazarse en
-              Chromium; aplicado en cada <th>, con su propio fondo sólido
-              (bg-slate-50) para que no se transparenten las filas al pasar debajo. */}
           <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-xs sm:text-[13px] tracking-wider">
             <tr>
-              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">ID Ruta</th>
-              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Estado</th>
-              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Agencia y Segmento</th>
-              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Fecha Ruta & Cierre</th>
-              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Camión (Placa)</th>
-              <th scope="col" className="px-5 py-4 min-w-[200px] sticky top-[68px] z-20 bg-slate-50">Tripulación</th>
-              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Paradas</th>
-              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Balance Cajas Físicas</th>
-              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Motivo Devolución</th>
-              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Auditor</th>
-              <th scope="col" className="px-5 py-4 text-right min-w-[140px] sticky top-[68px] z-20 bg-slate-50">Actas Oficiales</th>
+              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">ID Ruta</th>
+              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Estado</th>
+              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Agencia y Segmento</th>
+              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Fecha Ruta & Cierre</th>
+              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Camión (Placa)</th>
+              <th scope="col" className="px-5 py-4 min-w-[200px] sticky top-0 z-20 bg-slate-50">Tripulación</th>
+              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Paradas</th>
+              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Balance Cajas Físicas</th>
+              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Motivo Devolución</th>
+              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Auditor</th>
+              <th scope="col" className="px-5 py-4 text-right min-w-[140px] sticky top-0 z-20 bg-slate-50">Actas Oficiales</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-normal">
