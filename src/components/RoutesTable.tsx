@@ -338,7 +338,17 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   };
 
   return (
-    <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden w-full">
+    // Corrección: este contenedor tenía "overflow-hidden" junto con "rounded-2xl"
+    // (para recortar las esquinas cuadradas de la tabla y que se vieran redondeadas
+    // como el contenedor). Esa combinación —overflow:hidden + border-radius en un
+    // ancestro— es un problema conocido en navegadores basados en Chromium: hace
+    // que los elementos "sticky" (como el encabezado fijo de la tabla) se queden
+    // "trabados" en una posición incorrecta en vez de pegarse correctamente al
+    // desplazarse, que es exactamente el comportamiento que se reportó. Se quita
+    // "overflow-hidden" aquí para que el encabezado fijo funcione; como efecto
+    // secundario mínimo, las esquinas superiores de la tabla ya no se recortan de
+    // forma perfecta al redondeado del contenedor (imperceptible en el uso normal).
+    <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm w-full">
       {/* Barra de acción masiva cuando hay rutas seleccionadas */}
       {selectedRouteIds.length > 0 && (
         <div className="bg-rose-50 border-b border-rose-200 px-3 md:px-4 py-2 flex flex-wrap items-center justify-between gap-2 animate-in fade-in slide-in-from-top-1 text-xs">
