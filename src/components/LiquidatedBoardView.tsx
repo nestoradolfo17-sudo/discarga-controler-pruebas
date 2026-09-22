@@ -271,22 +271,25 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
       <div className="overflow-x-auto border border-slate-200 rounded-xl w-full">
         <table className="min-w-full divide-y divide-slate-200 text-left text-xs sm:text-sm whitespace-nowrap">
           {/* Corrección: encabezado fijo (sticky) al desplazarse verticalmente, igual
-              que en el Tablero de Rutas. La tabla se desplaza junto con la página, así
-              que el "top" se compensa con la altura de la Navbar (68px, fija con
-              z-30) para que el encabezado quede pegado justo debajo de ella. */}
-          <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-xs sm:text-[13px] tracking-wider sticky top-[68px] z-20">
+              que en el Tablero de Rutas. El "top" se compensa con la altura de la
+              Navbar (68px, fija con z-30). El "sticky" se aplica celda por celda
+              (cada <th> de abajo) en vez de en el <thead> completo — poner "sticky"
+              solo en <thead> no se pegaba de forma confiable al desplazarse en
+              Chromium; aplicado en cada <th>, con su propio fondo sólido
+              (bg-slate-50) para que no se transparenten las filas al pasar debajo. */}
+          <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-xs sm:text-[13px] tracking-wider">
             <tr>
-              <th scope="col" className="px-5 py-4">ID Ruta</th>
-              <th scope="col" className="px-5 py-4">Estado</th>
-              <th scope="col" className="px-5 py-4">Agencia y Segmento</th>
-              <th scope="col" className="px-5 py-4">Fecha Ruta & Cierre</th>
-              <th scope="col" className="px-5 py-4">Camión (Placa)</th>
-              <th scope="col" className="px-5 py-4 min-w-[200px]">Tripulación</th>
-              <th scope="col" className="px-5 py-4">Paradas</th>
-              <th scope="col" className="px-5 py-4">Balance Cajas Físicas</th>
-              <th scope="col" className="px-5 py-4">Motivo Devolución</th>
-              <th scope="col" className="px-5 py-4">Auditor</th>
-              <th scope="col" className="px-5 py-4 text-right min-w-[140px]">Actas Oficiales</th>
+              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">ID Ruta</th>
+              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Estado</th>
+              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Agencia y Segmento</th>
+              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Fecha Ruta & Cierre</th>
+              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Camión (Placa)</th>
+              <th scope="col" className="px-5 py-4 min-w-[200px] sticky top-[68px] z-20 bg-slate-50">Tripulación</th>
+              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Paradas</th>
+              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Balance Cajas Físicas</th>
+              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Motivo Devolución</th>
+              <th scope="col" className="px-5 py-4 sticky top-[68px] z-20 bg-slate-50">Auditor</th>
+              <th scope="col" className="px-5 py-4 text-right min-w-[140px] sticky top-[68px] z-20 bg-slate-50">Actas Oficiales</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-normal">
