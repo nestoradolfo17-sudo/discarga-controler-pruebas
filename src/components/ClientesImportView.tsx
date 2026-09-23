@@ -18,6 +18,10 @@ interface ClientesImportViewProps {
   // exista en alguno de los dos.
   routes: Route[];
   historicalRoutes: Route[];
+  // Agencias permitidas al usuario. El número de ruta puede repetirse entre
+  // agencias el mismo día, así que hay que indicar a qué agencia pertenece
+  // el archivo de clientes para emparejar con la ruta correcta.
+  agencyOptions: string[];
   onCommitClientesRuta: (updates: { routeKey: string; clientesRuta: RouteClientEntry[] }[]) => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
@@ -40,10 +44,13 @@ const MESES = [
 export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
   routes,
   historicalRoutes,
+  agencyOptions,
   onCommitClientesRuta,
   onShowToast,
 }) => {
   const now = new Date();
+  const [agencia, setAgencia] = useState<string>(agencyOptions.length === 1 ? agencyOptions[0] : '');
+  const effectiveAgencia = agencyOptions.includes(agencia) ? agencia : '';
   const [mes, setMes] = useState<number>(now.getMonth() + 1);
   const [anio, setAnio] = useState<number>(now.getFullYear());
   const [isDragging, setIsDragging] = useState(false);
@@ -60,6 +67,11 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
   }, [routes, historicalRoutes]);
 
   const handleFile = (file: File) => {
+    if (!effectiveAgencia) {
+      onShowToast('Selecciona primero la agencia del archivo de clientes.', 'error');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -104,7 +116,7 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
 
           byRuta.forEach((clientesRuta, ruta) => {
             totalClientes += clientesRuta.length;
-            const routeKey = `${ruta}__${fecha}`;
+            const routeKey = getRouteKey({ id: ruta, fecha, agencia: effectiveAgencia });
             if (existingKeySet.has(routeKey)) {
               matched.push({ routeKey, clientesRuta });
             } else {
@@ -164,14 +176,14 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
     if (!dayResults || !totals) return;
     const allMatched = dayResults.flatMap((d) => d.matched);
     if (allMatched.length === 0) {
-      onShowToast('Ninguna ruta del archivo coincide con rutas existentes en el sistema para esas fechas.', 'error');
+      onShowToast(`Ninguna ruta del archivo coincide con rutas de ${effectiveAgencia} para esas fechas.`, 'error');
       return;
     }
     onCommitClientesRuta(allMatched);
     onShowToast(
       `Se agregó el detalle de clientes a ${allMatched.length} ruta(s) (${totals.totalClientes} clientes en total).` +
         (totals.totalUnmatched > 0
-          ? ` ${totals.totalUnmatched} ruta(s) del archivo no se encontraron en el sistema para esa fecha y se omitieron.`
+          ? ` ${totals.totalUnmatched} ruta(s) del archivo no se encontraron en ${effectiveAgencia} para esa fecha y se omitieron.`
           : ''),
       totals.totalUnmatched > 0 ? 'info' : 'success'
     );
@@ -194,7 +206,27 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
 
       {!dayResults && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+            <div className="col-span-2">
+              <label htmlFor="clientesAgencia" className="block font-semibold text-slate-600 mb-1">
+                Agencia del archivo: *
+              </label>
+              <select
+                id="clientesAgencia"
+                value={effectiveAgencia}
+                onChange={(e) => setAgencia(e.target.value)}
+                className={`w-full p-2 bg-white border rounded-lg font-medium cursor-pointer outline-none ${
+                  effectiveAgencia ? 'border-slate-300' : 'border-amber-400'
+                }`}
+              >
+                <option value="">— Selecciona una agencia —</option>
+                {agencyOptions.map((ag) => (
+                  <option key={ag} value={ag}>
+                    {ag}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="sm:col-span-2">
               <label htmlFor="clientesMes" className="block font-semibold text-slate-600 mb-1 flex items-center">
                 <Calendar className="w-3.5 h-3.5 mr-1 text-slate-400" />
