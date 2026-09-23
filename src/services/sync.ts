@@ -35,6 +35,41 @@ export interface SyncedRow<T> {
   data: T;
 }
 
+// --- Aviso de errores de sincronización a la interfaz ---
+//
+// Corrección: antes cualquier error al leer/guardar/borrar en Supabase
+// quedaba SOLO en la consola del navegador. El usuario seguía trabajando
+// creyendo que sus cambios se estaban guardando en la base compartida cuando
+// en realidad no era así. Ahora App.tsx registra aquí una función (que
+// muestra un aviso en pantalla) y cada error se reporta también por esa vía.
+type SyncErrorHandler = (message: string) => void;
+let syncErrorHandler: SyncErrorHandler | null = null;
+
+export function setSyncErrorHandler(handler: SyncErrorHandler | null): void {
+  syncErrorHandler = handler;
+}
+
+function reportSyncError(message: string, error: unknown): void {
+  console.error(message, error);
+  try {
+    syncErrorHandler?.(message);
+  } catch {
+    // Nunca dejar que un error al mostrar el aviso rompa la sincronización.
+  }
+}
+
+// Tamaño de página para leer y de lote para escribir.
+//
+// Corrección crítica: Supabase (PostgREST) devuelve como MÁXIMO 1000 filas
+// por consulta. La lectura anterior hacía un solo `select` sin paginar, así
+// que cualquier tabla con más de 1000 registros se cargaba INCOMPLETA en la
+// aplicación, sin ningún aviso. Con "app_staff" eso provocó que cada Carga
+// Masiva de Excel no encontrara (por DPI) a los colaboradores que habían
+// quedado fuera de esas primeras 1000 filas y los volviera a crear con un id
+// nuevo: la tabla llegó a tener miles de registros duplicados.
+const PAGE_SIZE = 1000;
+const UPSERT_BATCH_SIZE = 500;
+
 /**
  * Descarga todos los registros de una tabla compartida, junto con la clave
  * ("id" de la fila en Supabase) bajo la que están guardados actualmente.
@@ -47,21 +82,34 @@ export async function fetchSharedCollection<T>(
 ): Promise<SyncedRow<T>[] | null> {
   if (!supabase) return null;
   try {
-    const { data, error } = await supabase.from(table).select('id, data');
-    if (error) throw error;
-    return (data || []).map((row: { id: string; data: T }) => ({ key: row.id, data: row.data }));
+    const all: SyncedRow<T>[] = [];
+    // Lectura paginada (ver PAGE_SIZE arriba). Se ordena por "id" para que
+    // las páginas sean estables y no se salte ni se repita ninguna fila.
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from(table)
+        .select('id, data')
+        .order('id', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw error;
+      const rows = (data || []) as { id: string; data: T }[];
+      rows.forEach((row) => all.push({ key: row.id, data: row.data }));
+      if (rows.length < PAGE_SIZE) break;
+    }
+    return all;
   } catch (e) {
-    console.error(`Error leyendo "${table}" de Supabase:`, e);
+    reportSyncError(`No se pudo leer "${table}" de la base de datos compartida.`, e);
     return null;
   }
 }
 
 /**
- * Sube el estado completo de una colección: hace upsert de todos los
- * registros actuales (bajo la clave que calcule `getKey`). NUNCA borra nada
- * en Supabase — ver la nota de seguridad más abajo. Nunca lanza — cualquier
- * error queda solo en consola, igual que ya ocurría con los errores de
- * localStorage lleno/bloqueado.
+ * Hace upsert de los registros recibidos (bajo la clave que calcule
+ * `getKey`). App.tsx ahora solo le pasa los registros que REALMENTE cambiaron
+ * (no la colección completa) — ver pushIfChanged. NUNCA borra nada en
+ * Supabase — ver la nota de seguridad más abajo. Nunca lanza: devuelve
+ * `true` si se guardó todo, `false` si hubo error (y lo reporta en pantalla
+ * mediante setSyncErrorHandler).
  *
  * ────────────────────────────────────────────────────────────────────────
  * NOTA DE SEGURIDAD — por qué esta función NUNCA borra registros:
@@ -97,18 +145,27 @@ export async function pushSharedCollection<T>(
   table: SyncableTable,
   items: T[],
   getKey: SyncKeyFn<T>
-): Promise<void> {
-  if (!supabase || items.length === 0) return;
+): Promise<boolean> {
+  if (!supabase) return false;
+  if (items.length === 0) return true;
   try {
+    const now = new Date().toISOString();
     const rows = items.map((item) => ({
       id: getKey(item),
       data: item,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     }));
-    const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
-    if (error) throw error;
+    // En lotes, para no mandar solicitudes gigantes (ver UPSERT_BATCH_SIZE).
+    for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
+      const { error } = await supabase
+        .from(table)
+        .upsert(rows.slice(i, i + UPSERT_BATCH_SIZE), { onConflict: 'id' });
+      if (error) throw error;
+    }
+    return true;
   } catch (e) {
-    console.error(`Error sincronizando "${table}" con Supabase:`, e);
+    reportSyncError(`No se pudieron guardar cambios en "${table}" (base de datos compartida).`, e);
+    return false;
   }
 }
 
@@ -128,10 +185,15 @@ export async function pushSharedCollection<T>(
 export async function deleteSharedRecords(table: SyncableTable, keys: string[]): Promise<void> {
   if (!supabase || keys.length === 0) return;
   try {
-    const { error } = await supabase.from(table).delete().in('id', keys);
-    if (error) throw error;
+    for (let i = 0; i < keys.length; i += UPSERT_BATCH_SIZE) {
+      const { error } = await supabase
+        .from(table)
+        .delete()
+        .in('id', keys.slice(i, i + UPSERT_BATCH_SIZE));
+      if (error) throw error;
+    }
   } catch (e) {
-    console.error(`Error eliminando registros heredados de "${table}" en Supabase:`, e);
+    reportSyncError(`No se pudieron eliminar registros de "${table}" (base de datos compartida).`, e);
   }
 }
 
@@ -178,7 +240,14 @@ export function subscribeToSharedCollection<T>(
         }
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        reportSyncError(
+          `Se perdió la conexión en tiempo real con "${table}". Recarga la página si no ves los cambios de otros usuarios.`,
+          status
+        );
+      }
+    });
 
   return () => {
     supabase.removeChannel(channel);
