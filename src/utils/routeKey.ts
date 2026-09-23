@@ -14,14 +14,30 @@
 // vida (reasignaciones, recargas, envíos a piso, liquidación), así que es un
 // identificador estable para esta clave.
 
-export function getRouteKey(route: { id: string; fecha?: string }): string {
-  return `${route.id}__${route.fecha ?? ''}`;
+// Corrección: además de ID + Fecha, la clave incluye la AGENCIA. Distintas
+// agencias pueden usar el mismo número de ruta el mismo día; sin la agencia,
+// la carga de una agencia sustituía a la ruta de la otra (misma fila en
+// Supabase, mismas acciones en el tablero). Las filas guardadas con la clave
+// anterior (sin agencia) se migran solas al cargar la app (ver
+// reconcileInitialLoad en App.tsx).
+const KEY_SEP = '__';
+
+export function getRouteKey(route: { id: string; fecha?: string; agencia?: string }): string {
+  return `${route.id}${KEY_SEP}${route.fecha ?? ''}${KEY_SEP}${route.agencia ?? ''}`;
 }
 
+/**
+ * ¿Esta ruta es la fila indicada? `ref` normalmente es la clave completa de
+ * la fila (getRouteKey: id + fecha + agencia), que es lo que ahora envían el
+ * Tablero y los modales. Por compatibilidad también acepta solo la fecha
+ * (comportamiento anterior: id + fecha).
+ */
 export function routeMatchesKey(
-  route: { id: string; fecha?: string },
+  route: { id: string; fecha?: string; agencia?: string },
   id: string,
-  fecha: string
+  ref: string
 ): boolean {
-  return String(route.id) === String(id) && String(route.fecha ?? '') === String(fecha);
+  if (String(route.id) !== String(id)) return false;
+  if (String(ref).includes(KEY_SEP)) return getRouteKey(route) === ref;
+  return String(route.fecha ?? '') === String(ref);
 }
