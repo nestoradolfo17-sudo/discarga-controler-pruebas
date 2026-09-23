@@ -33,6 +33,21 @@ import { TRUCK_REASON_REMUNERA, STAFF_REASON_REMUNERA } from './data/unavailable
 import { exportRoutesToExcel } from './utils/excel';
 import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate } from './utils/date';
 import { getRouteKey, routeMatchesKey } from './utils/routeKey';
+import {
+  getSessionUserId,
+  onAuthChange,
+  signIn,
+  signOut,
+  verifyOwnPassword,
+  fetchProfiles,
+  subscribeToProfiles,
+  adminCreateUser,
+  adminSetPassword,
+  adminRenameUser,
+  adminDeleteUser,
+  adminUpdateProfile,
+  normalizeUsername,
+} from './services/auth';
 import { Navbar } from './components/Navbar';
 import { StatsCards } from './components/StatsCards';
 import { TabNav, ActiveTab } from './components/TabNav';
@@ -113,7 +128,11 @@ export default function App() {
   });
 
   // --- Control de acceso (usuarios y sesión) ---
+  // Con Supabase configurado, los usuarios vienen de la tabla de perfiles
+  // "app_users" DESPUÉS de iniciar sesión (ver services/auth.ts); nunca se
+  // guardan en el navegador ni se precargan con usuarios de ejemplo.
   const [users, setUsers] = useState<AppUser[]>(() => {
+    if (isSupabaseConfigured) return [];
     try {
       const saved = localStorage.getItem(STORAGE_KEY_USERS);
       return saved ? JSON.parse(saved) : INITIAL_USERS;
@@ -130,10 +149,69 @@ export default function App() {
     }
   });
 
-  const currentUser = useMemo(
-    () => users.find((u) => u.username.toLowerCase() === (currentUsername || '').toLowerCase()) || null,
-    [users, currentUsername]
-  );
+  // --- Sesión con Supabase Auth ---
+  // authUserId: id del usuario autenticado en Supabase (null = sin sesión).
+  // authChecked: ya se revisó si había una sesión guardada en este navegador.
+  // profilesLoaded: ya se leyó la tabla de perfiles tras iniciar sesión.
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(!isSupabaseConfigured);
+  const [profilesLoaded, setProfilesLoaded] = useState(false);
+  const [loginNotice, setLoginNotice] = useState('');
+
+  const currentUser = useMemo(() => {
+    if (isSupabaseConfigured) {
+      return users.find((u) => u.id === authUserId && u.activo !== false) || null;
+    }
+    return users.find((u) => u.username.toLowerCase() === (currentUsername || '').toLowerCase()) || null;
+  }, [users, currentUsername, authUserId]);
+
+  // Recuperar la sesión guardada y escuchar inicios/cierres de sesión.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let active = true;
+    getSessionUserId().then((id) => {
+      if (!active) return;
+      setAuthUserId(id);
+      setAuthChecked(true);
+    });
+    const unsubscribe = onAuthChange((id) => {
+      if (active) setAuthUserId(id);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Cargar perfiles al iniciar sesión. La base de datos decide qué se ve: el
+  // administrador recibe todos los perfiles, un usuario normal solo el suyo.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !authUserId) {
+      setProfilesLoaded(false);
+      return;
+    }
+    let active = true;
+    setProfilesLoaded(false);
+    fetchProfiles().then((list) => {
+      if (!active) return;
+      if (list) setUsers(list);
+      else setLoginNotice('No se pudo leer tu perfil de usuario. Revisa tu conexión e intenta de nuevo.');
+      setProfilesLoaded(true);
+    });
+    const unsubscribe = subscribeToProfiles((updater) => setUsers((prev) => updater(prev)));
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [authUserId]);
+
+  // Sesión válida pero sin perfil ACTIVO (usuario eliminado o desactivado por
+  // el administrador, incluso mientras estaba conectado): se cierra la sesión.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !authUserId || !profilesLoaded || currentUser) return;
+    setLoginNotice((prev) => prev || 'Tu usuario no tiene acceso activo. Consulta con el administrador.');
+    void signOut();
+  }, [authUserId, profilesLoaded, currentUser]);
 
   // --- Sincronización compartida (Supabase) — fase de pruebas ---
   // Corrección/diseño intencional: si VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
@@ -302,18 +380,26 @@ export default function App() {
   // llega vacía (primera vez que esta app se conecta a la base de datos), se
   // siembra con los mismos datos con los que ya arrancaba en modo local, para
   // no perder el punto de partida — y se sube esa siembra de una vez.
+  //
+  // Con Supabase Auth, las tablas solo se pueden leer con sesión iniciada (si
+  // se leyeran antes, la base de datos respondería "vacío" y la app creería
+  // que no hay datos). Por eso la carga espera a que exista `authUserId`, y
+  // se hace una sola vez por pestaña (dataLoadStartedRef).
+  const dataLoadStartedRef = useRef(false);
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    let cancelled = false;
+    // Se espera también al perfil ACTIVO: un usuario sin acceso recibiría
+    // tablas "vacías" (por seguridad) y la app las confundiría con datos reales.
+    if (!isSupabaseConfigured || !authUserId || !currentUser || dataLoadStartedRef.current) return;
+    dataLoadStartedRef.current = true;
+    const cancelled = false;
 
     (async () => {
       try {
-        const [remoteRoutes, remoteHistory, remoteTrucks, remoteStaff, remoteUsers] = await Promise.all([
+        const [remoteRoutes, remoteHistory, remoteTrucks, remoteStaff] = await Promise.all([
           fetchSharedCollection<Route>('app_routes'),
           fetchSharedCollection<Route>('app_historical_routes'),
           fetchSharedCollection<Truck>('app_trucks'),
           fetchSharedCollection<Staff>('app_staff'),
-          fetchSharedCollection<AppUser>('app_users'),
         ]);
         if (cancelled) return;
 
@@ -390,21 +476,16 @@ export default function App() {
         );
         reconcileInitialLoad('app_trucks', remoteTrucks, trucks, setTrucks, trucksSyncRef, defaultSyncKey);
         reconcileInitialLoad('app_staff', remoteStaff, staff, setStaff, staffSyncRef, defaultSyncKey);
-        reconcileInitialLoad('app_users', remoteUsers, users, setUsers, usersSyncRef, defaultSyncKey);
       } catch (e) {
         console.error('Error cargando datos compartidos de Supabase:', e);
       } finally {
         if (!cancelled) setIsRemoteReady(true);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
     // Solo debe ejecutarse una vez al montar: intencionalmente no depende de
     // routes/trucks/staff/etc. (se usan solo como semilla si Supabase está vacío).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authUserId, currentUser]);
 
   // Suscripción en tiempo real: refleja cambios hechos por otros usuarios de
   // prueba (en otra computadora) sin necesidad de recargar la página.
@@ -440,13 +521,6 @@ export default function App() {
           return next;
         });
       }, defaultSyncKey),
-      subscribeToSharedCollection<AppUser>('app_users', (updater) => {
-        setUsers((prev) => {
-          const next = updater(prev);
-          markRemoteApplied(usersSyncRef, prev, next, defaultSyncKey);
-          return next;
-        });
-      }, defaultSyncKey),
     ];
 
     return () => {
@@ -455,6 +529,9 @@ export default function App() {
   }, [isRemoteReady]);
 
   useEffect(() => {
+    // Con Supabase, los perfiles se guardan en "app_users" mediante las
+    // acciones de administrador (services/auth.ts), no por sincronización.
+    if (isSupabaseConfigured) return;
     try {
       localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
     } catch (e) {
@@ -463,7 +540,12 @@ export default function App() {
     pushIfChanged('app_users', users, defaultSyncKey, usersSyncRef, usersPushQueueRef);
   }, [users, pushIfChanged]);
 
-  const handleLogin = (username: string, password: string): boolean => {
+  const handleLogin = async (username: string, password: string): Promise<boolean | string> => {
+    if (isSupabaseConfigured) {
+      setLoginNotice('');
+      const error = await signIn(username, password);
+      return error ?? true;
+    }
     const match = users.find(
       (u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password
     );
@@ -484,6 +566,11 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (isSupabaseConfigured) {
+      // Recargar deja la aplicación limpia (sin datos en memoria del usuario anterior).
+      void signOut().finally(() => window.location.reload());
+      return;
+    }
     setCurrentUsername(null);
     try {
       localStorage.removeItem(STORAGE_KEY_SESSION);
@@ -500,7 +587,19 @@ export default function App() {
     permissions: TablePermissions;
     canDelete: boolean;
     agencyAccess: 'all' | string[];
-  }) => {
+  }): boolean | Promise<boolean> => {
+    if (isSupabaseConfigured) {
+      return adminCreateUser(data)
+        .then((created) => {
+          setUsers((prev) => (prev.some((u) => u.id === created.id) ? prev : [...prev, created]));
+          showToast(`Usuario "${created.username}" creado exitosamente.`, 'success');
+          return true;
+        })
+        .catch((e: Error) => {
+          showToast(e.message, 'error');
+          return false;
+        });
+    }
     const newUser: AppUser = {
       id: `U-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       username: data.username,
@@ -517,6 +616,7 @@ export default function App() {
     };
     setUsers((prev) => [...prev, newUser]);
     showToast(`Usuario "${data.username}" creado exitosamente.`, 'success');
+    return true;
   };
 
   const handleUpdateUser = (
@@ -525,6 +625,32 @@ export default function App() {
       Pick<AppUser, 'permissions' | 'canDelete' | 'isAdmin' | 'agencyAccess' | 'username' | 'nombre'>
     >
   ) => {
+    if (isSupabaseConfigured) {
+      void (async () => {
+        try {
+          const target = users.find((u) => u.id === userId);
+          const { username: requestedUsername, ...profilePatch } = updates;
+          if ('nombre' in updates) profilePatch.nombre = updates.nombre?.trim() || undefined;
+          const newUsername =
+            requestedUsername !== undefined && target && requestedUsername.trim() !== target.username
+              ? normalizeUsername(requestedUsername)
+              : undefined;
+          if (newUsername) await adminRenameUser(userId, newUsername);
+          await adminUpdateProfile(userId, profilePatch);
+          setUsers((prev) =>
+            prev.map((u) =>
+              u.id === userId ? { ...u, ...profilePatch, ...(newUsername ? { username: newUsername } : {}) } : u
+            )
+          );
+          if (requestedUsername !== undefined || 'nombre' in updates) {
+            showToast('Datos de usuario actualizados.', 'success');
+          }
+        } catch (e) {
+          showToast(`No se pudo actualizar el usuario: ${(e as Error).message}`, 'error');
+        }
+      })();
+      return;
+    }
     let finalUpdates: typeof updates = updates;
 
     if (updates.username !== undefined) {
@@ -565,11 +691,31 @@ export default function App() {
   };
 
   const handleResetPassword = (userId: string, newPassword: string) => {
+    if (isSupabaseConfigured) {
+      adminSetPassword(userId, newPassword)
+        .then(() => showToast('Contraseña actualizada.', 'success'))
+        .catch((e: Error) => showToast(e.message, 'error'));
+      return;
+    }
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, password: newPassword } : u)));
     showToast('Contraseña actualizada.', 'success');
   };
 
   const handleDeleteUser = (userId: string) => {
+    if (isSupabaseConfigured) {
+      const target = users.find((u) => u.id === userId);
+      if (userId === currentUser?.id) {
+        showToast('No puedes eliminar tu propio usuario.', 'error');
+        return;
+      }
+      adminDeleteUser(userId)
+        .then(() => {
+          setUsers((prev) => prev.filter((u) => u.id !== userId));
+          showToast(`Usuario "${target?.username || ''}" eliminado.`, 'info');
+        })
+        .catch((e: Error) => showToast(e.message, 'error'));
+      return;
+    }
     let didDelete = false;
     setUsers((prev) => {
       const target = prev.find((u) => u.id === userId);
@@ -590,6 +736,13 @@ export default function App() {
     if (didDelete) {
       void deleteSharedRecords('app_users', [userId]);
     }
+  };
+
+  // Confirmación de acciones delicadas en Usuarios con la contraseña del admin.
+  const handleVerifyPassword = async (password: string): Promise<boolean> => {
+    if (!currentUser) return false;
+    if (isSupabaseConfigured) return verifyOwnPassword(currentUser.username, password);
+    return password === currentUser.password;
   };
 
   // Permisos efectivos del usuario en sesión (un administrador siempre tiene acceso total)
@@ -2615,19 +2768,31 @@ export default function App() {
   // está configurado — ver src/services/supabaseClient.ts) se muestra una
   // pantalla de carga en vez del login, para no permitir el ingreso con datos
   // de usuarios todavía incompletos.
-  if (isSupabaseConfigured && !isRemoteReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center space-y-3">
-          <div className="w-10 h-10 border-4 border-slate-300 border-t-blue-600 rounded-full animate-spin mx-auto" />
-          <p className="text-sm font-semibold text-slate-600">Cargando datos compartidos...</p>
-        </div>
+  const loadingScreen = (message: string) => (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="text-center space-y-3">
+        <div className="w-10 h-10 border-4 border-slate-300 border-t-blue-600 rounded-full animate-spin mx-auto" />
+        <p className="text-sm font-semibold text-slate-600">{message}</p>
       </div>
-    );
+    </div>
+  );
+
+  // Orden con Supabase: 1) revisar sesión guardada → 2) login → 3) leer perfil
+  // → 4) cargar datos compartidos. Los datos solo se leen con sesión iniciada.
+  if (isSupabaseConfigured && !authChecked) {
+    return loadingScreen('Verificando sesión...');
+  }
+
+  if (isSupabaseConfigured && authUserId && !profilesLoaded) {
+    return loadingScreen('Cargando tu perfil...');
   }
 
   if (!currentUser) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return <LoginScreen onLogin={handleLogin} notice={loginNotice} />;
+  }
+
+  if (isSupabaseConfigured && !isRemoteReady) {
+    return loadingScreen('Cargando datos compartidos...');
   }
 
   return (
@@ -2812,6 +2977,7 @@ export default function App() {
             onUpdateUser={handleUpdateUser}
             onResetPassword={handleResetPassword}
             onDeleteUser={handleDeleteUser}
+            onVerifyPassword={handleVerifyPassword}
           />
         )}
       </main>
