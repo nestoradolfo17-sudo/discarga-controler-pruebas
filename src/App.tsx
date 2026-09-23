@@ -927,8 +927,13 @@ export default function App() {
   };
 
   // Distinct agencies (solo las que el usuario en sesión tiene permiso de ver)
+  // Corrección: antes solo aparecían agencias que ya tuvieran rutas cargadas, así
+  // que una agencia nueva (p. ej. Barberena) no se podía elegir en el filtro
+  // superior, el Resumen Diario ni el Acta de Cierre hasta tener datos. Ahora
+  // se parte de la lista oficial (data/agencies.ts) y se agregan las que
+  // aparezcan en los datos con otro nombre.
   const agencies = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(AGENCIA_LOCATION_OPTIONS);
     routes.forEach((r) => {
       if (r.agencia) set.add(r.agencia);
     });
