@@ -1,3 +1,4 @@
+import { getRouteKey } from '../../utils/routeKey';
 import React, { useState, useEffect } from 'react';
 import { Route } from '../../types';
 import { X, Lock, CheckCircle } from 'lucide-react';
@@ -77,7 +78,7 @@ export const FinalizeCajaAbiertaModal: React.FC<FinalizeCajaAbiertaModalProps> =
         <div className="pt-2">
           <button
             type="button"
-            onClick={() => onConfirmFinalize(route.id, route.fecha, comentarioFinal.trim() || undefined)}
+            onClick={() => onConfirmFinalize(route.id, getRouteKey(route), comentarioFinal.trim() || undefined)}
             className="w-full py-2.5 px-4 rounded-xl font-bold flex items-center justify-center space-x-2 shadow-sm transition bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
           >
             <CheckCircle className="w-4 h-4" />
