@@ -53,7 +53,8 @@ import { StatsCards } from './components/StatsCards';
 import { TabNav, ActiveTab } from './components/TabNav';
 import { RoutesTable } from './components/RoutesTable';
 import { ResourcesView } from './components/ResourcesView';
-import { BatchImportView } from './components/BatchImportView';
+import { BatchImportView, BatchImportTarget } from './components/BatchImportView';
+import { AGENCIA_LOCATION_OPTIONS } from './data/agencies';
 import { ClientesImportView } from './components/ClientesImportView';
 import { LiquidatedBoardView } from './components/LiquidatedBoardView';
 import { NewRouteModal } from './components/modals/NewRouteModal';
@@ -777,6 +778,18 @@ export default function App() {
     if (!access || access === 'all') return true;
     return Array.isArray(access) && access.includes(agencyName);
   };
+
+  // Agencias a las que el usuario en sesión puede CARGAR rutas por Excel: todas
+  // para un administrador o un usuario con acceso "all"; si no, solo las que
+  // tiene asignadas en Usuarios.
+  const importAgencyOptions = useMemo(() => {
+    if (!currentUser) return [] as string[];
+    const access = currentUser.agencyAccess;
+    if (currentUser.isAdmin || !access || access === 'all') return AGENCIA_LOCATION_OPTIONS;
+    return AGENCIA_LOCATION_OPTIONS.filter((ag) => Array.isArray(access) && access.includes(ag)).concat(
+      (Array.isArray(access) ? access : []).filter((ag) => !AGENCIA_LOCATION_OPTIONS.includes(ag))
+    );
+  }, [currentUser]);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('board');
 
@@ -2251,7 +2264,17 @@ export default function App() {
     showToast(`Ruta ${routeId}: Liquidación Final registrada. Caja Abierta resuelta.`, 'success');
   };
 
-  const handleCommitBatchRoutes = (importedRoutes: Route[]) => {
+  const handleCommitBatchRoutes = (importedRoutes: Route[], target: BatchImportTarget) => {
+    // Seguridad: la agencia destino debe estar entre las permitidas al usuario.
+    if (!importAgencyOptions.includes(target.agencia)) {
+      showToast(`No tienes permiso para cargar rutas a la agencia "${target.agencia}".`, 'error');
+      return;
+    }
+    // La carga es POR AGENCIA: el archivado de rutas liquidadas y el reemplazo
+    // del tablero solo afectan a la agencia seleccionada; las rutas de las
+    // demás agencias quedan exactamente como estaban.
+    const inScope = (r: Route) => r.agencia === target.agencia;
+
     // Preservar rutas que sigan vigentes al pasar a un nuevo día:
     // - En Tránsito o Abierta (con devolución pendiente de reasignar)
     // - Pendiente (incluye rutas "a Piso" reprogramadas), que deben seguir apareciendo
@@ -2259,7 +2282,6 @@ export default function App() {
     const activeRunningBacklog = routes.filter(
       (r) => r.estado === 'En Tránsito' || r.estado === 'Abierta' || r.estado === 'Pendiente'
     );
-    const pendientesCarriedOver = activeRunningBacklog.filter((r) => r.estado === 'Pendiente').length;
 
     // Archivar rutas liquidadas anteriores.
     // La comparación de duplicados usa ID + fecha de liquidación (no solo el ID), porque
@@ -2267,7 +2289,7 @@ export default function App() {
     // ID, la liquidación de "hoy" para la ruta 102201 se descartaría en cuanto ya existiera
     // una liquidación archivada de un día anterior con ese mismo número.
     routes
-      .filter((r) => r.estado === 'Liquidada')
+      .filter((r) => r.estado === 'Liquidada' && inScope(r))
       .forEach((liqR) => {
         const liqDate = liqR.fechaLiquidacion || liqR.liquidacion?.fechaLiquidacion;
         setHistoricalRoutes((prev) => {
@@ -2307,20 +2329,29 @@ export default function App() {
     // capturan ANTES de reemplazar "routes" para poder pedir su borrado
     // explícito de "app_routes" — la sincronización normal ya nunca borra por
     // su cuenta (ver la nota de seguridad en pushSharedCollection).
-    const archivedKeys = routes.filter((r) => r.estado === 'Liquidada').map((r) => getRouteKey(r));
+    const archivedKeys = routes
+      .filter((r) => r.estado === 'Liquidada' && inScope(r))
+      .map((r) => getRouteKey(r));
+    // Se conserva todo menos las liquidadas de la agencia cargada (que ya se
+    // archivaron arriba): rutas vigentes de todas las agencias y liquidadas de
+    // otras agencias que aún no han hecho su propia carga del día.
+    const keptRoutes = routes.filter((r) => !(r.estado === 'Liquidada' && inScope(r)));
 
-    setRoutes([...freshDailyRoutes, ...activeRunningBacklog]);
+    setRoutes([...freshDailyRoutes, ...keptRoutes]);
     setActiveTab('board');
     if (archivedKeys.length > 0) {
       void deleteSharedRecords('app_routes', archivedKeys);
     }
 
+    const scopedBacklog = activeRunningBacklog.filter(inScope);
+    const scopedPendientes = scopedBacklog.filter((r) => r.estado === 'Pendiente').length;
+    const destino = `${target.agencia} · ${target.segmento}`;
     const msg =
-      activeRunningBacklog.length > 0
-        ? `Se importaron ${freshDailyRoutes.length} rutas del día para asignar. Se preservaron ${activeRunningBacklog.length} ruta(s) vigente(s)${
-            pendientesCarriedOver > 0 ? ` (${pendientesCarriedOver} pendiente(s) de días anteriores)` : ''
+      scopedBacklog.length > 0
+        ? `Se importaron ${freshDailyRoutes.length} rutas a ${destino}. Se preservaron ${scopedBacklog.length} ruta(s) vigente(s) de ${target.agencia}${
+            scopedPendientes > 0 ? ` (${scopedPendientes} pendiente(s) de días anteriores)` : ''
           }.`
-        : `Se importaron ${freshDailyRoutes.length} rutas del día listas para asignar.`;
+        : `Se importaron ${freshDailyRoutes.length} rutas a ${destino}, listas para asignar.`;
     showToast(msg, 'success');
   };
 
@@ -2957,6 +2988,7 @@ export default function App() {
           <div className="space-y-6">
             <BatchImportView
               existingRoutes={routes}
+              agencyOptions={importAgencyOptions}
               onCommitRoutes={handleCommitBatchRoutes}
               onShowToast={showToast}
             />
