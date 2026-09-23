@@ -1,3 +1,4 @@
+import { getRouteKey } from '../../utils/routeKey';
 import React, { useState, useEffect } from 'react';
 import { Route, Truck, Staff, AssignmentType } from '../../types';
 import {
@@ -273,12 +274,13 @@ export const AssignModal: React.FC<AssignModalProps> = ({
 
   // Active routes with assigned crews for quick reload autofill
   const activeRoutesWithCrew = activeRoutes.filter(
-    (r) => r.estado === 'En Tránsito' && String(r.id) !== String(route.id) && r.asignacion
+    (r) => r.estado === 'En Tránsito' && getRouteKey(r) !== getRouteKey(route) && r.asignacion
   );
 
   const handleActiveCrewSelect = (routeId: string) => {
     setSelectedActiveCrewRouteId(routeId);
-    const targetRoute = activeRoutes.find((r) => String(r.id) === String(routeId));
+    // routeId aquí es la clave completa de la ruta (id + fecha + agencia).
+    const targetRoute = activeRoutes.find((r) => getRouteKey(r) === routeId);
     if (targetRoute?.asignacion) {
       const asig = targetRoute.asignacion;
       setTruckId(asig.camionId || '');
@@ -309,7 +311,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     e.preventDefault();
 
     if (isPiso) {
-      onMoveToFloor(route.id, route.fecha, tomorrowDate, motivoPiso);
+      onMoveToFloor(route.id, getRouteKey(route), tomorrowDate, motivoPiso);
       return;
     }
 
@@ -340,7 +342,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     const selectedTruck = trucks.find((t) => t.id === truckId);
     if (!selectedTruck) return;
 
-    onConfirmAssignment(route.id, route.fecha, {
+    onConfirmAssignment(route.id, getRouteKey(route), {
       truckId: selectedTruck.id,
       truckPlaca: selectedTruck.placa,
       driverName,
@@ -589,7 +591,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   >
                     <option value="">-- Seleccionar tripulación en tránsito --</option>
                     {activeRoutesWithCrew.map((ar) => (
-                      <option key={ar.id} value={ar.id}>
+                      <option key={getRouteKey(ar)} value={getRouteKey(ar)}>
                         Ruta {ar.id} → Unidad {ar.asignacion?.camionPlaca} | Piloto: {ar.asignacion?.conductor}
                       </option>
                     ))}
@@ -628,7 +630,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                 >
                   <option value="">-- Seleccionar ruta activa para combinar carga --</option>
                   {activeRoutesWithCrew.map((ar) => (
-                    <option key={ar.id} value={ar.id}>
+                    <option key={getRouteKey(ar)} value={getRouteKey(ar)}>
                       Ruta {ar.id} ({ar.cajasFisicas} cajas) → Unidad {ar.asignacion?.camionPlaca} | Piloto: {ar.asignacion?.conductor}
                     </option>
                   ))}
@@ -773,7 +775,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                             const routesOnTruck = activeRoutes.filter(
                               (ar) =>
                                 ar.estado === 'En Tránsito' &&
-                                String(ar.id) !== String(route.id) &&
+                                getRouteKey(ar) !== getRouteKey(route) &&
                                 ar.asignacion?.camionId === t.id
                             );
                             const isCurrentlyAssignedHere = t.id === route.asignacion?.camionId;
@@ -801,7 +803,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                     const routesOnTruck = activeRoutes.filter(
                       (ar) =>
                         ar.estado === 'En Tránsito' &&
-                        String(ar.id) !== String(route.id) &&
+                        getRouteKey(ar) !== getRouteKey(route) &&
                         ar.asignacion?.camionId === selectedTruckObj.id
                     );
                     const otherBoxes = routesOnTruck.reduce(
@@ -877,7 +879,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                             const routesOnDriver = activeRoutes.filter(
                               (ar) =>
                                 ar.estado === 'En Tránsito' &&
-                                String(ar.id) !== String(route.id) &&
+                                getRouteKey(ar) !== getRouteKey(route) &&
                                 ar.asignacion?.conductor === d.nombre
                             );
                             // Corrección: "Carga Compartida" solo aplica cuando las otras
@@ -914,7 +916,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                     const routesOnDriver = activeRoutes.filter(
                       (ar) =>
                         ar.estado === 'En Tránsito' &&
-                        String(ar.id) !== String(route.id) &&
+                        getRouteKey(ar) !== getRouteKey(route) &&
                         ar.asignacion?.conductor === selectedDriverObj.nombre
                     );
                     // Corrección: distinguir entre Carga Compartida real (mismo camión)
@@ -1059,7 +1061,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                         const routesOnHelper = activeRoutes.filter(
                           (ar) =>
                             ar.estado === 'En Tránsito' &&
-                            String(ar.id) !== String(route.id) &&
+                            getRouteKey(ar) !== getRouteKey(route) &&
                             (ar.asignacion?.auxiliar1 === h.nombre ||
                               ar.asignacion?.auxiliar2 === h.nombre ||
                               ar.asignacion?.auxiliar3 === h.nombre ||
@@ -1125,7 +1127,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                         const routesOnHelper = activeRoutes.filter(
                           (ar) =>
                             ar.estado === 'En Tránsito' &&
-                            String(ar.id) !== String(route.id) &&
+                            getRouteKey(ar) !== getRouteKey(route) &&
                             (ar.asignacion?.auxiliar1 === h.nombre ||
                               ar.asignacion?.auxiliar2 === h.nombre ||
                               ar.asignacion?.auxiliar3 === h.nombre ||
@@ -1191,7 +1193,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                         const routesOnHelper = activeRoutes.filter(
                           (ar) =>
                             ar.estado === 'En Tránsito' &&
-                            String(ar.id) !== String(route.id) &&
+                            getRouteKey(ar) !== getRouteKey(route) &&
                             (ar.asignacion?.auxiliar1 === h.nombre ||
                               ar.asignacion?.auxiliar2 === h.nombre ||
                               ar.asignacion?.auxiliar3 === h.nombre ||
@@ -1257,7 +1259,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                         const routesOnHelper = activeRoutes.filter(
                           (ar) =>
                             ar.estado === 'En Tránsito' &&
-                            String(ar.id) !== String(route.id) &&
+                            getRouteKey(ar) !== getRouteKey(route) &&
                             (ar.asignacion?.auxiliar1 === h.nombre ||
                               ar.asignacion?.auxiliar2 === h.nombre ||
                               ar.asignacion?.auxiliar3 === h.nombre ||
