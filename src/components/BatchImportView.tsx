@@ -7,7 +7,7 @@ import {
   parseRoutesFromSheet,
   parseClientesFromSheet,
   groupClientesByRuta,
-  isClientesSheetName,
+  isClientesSheet,
   extractDayNumberFromSheetName,
   extractFechaEntregaMonthYear,
   ImportReport,
@@ -42,7 +42,7 @@ function normRuta(v: string): string {
 // clientes ("Clientes N"), para poder ofrecerlas como pareja opcional de la
 // pestaña de rutas ("Resumen N") seleccionada.
 function detectClientesSheets(wb: XLSX.WorkBook): string[] {
-  return wb.SheetNames.filter((n) => isClientesSheetName(n));
+  return wb.SheetNames.filter((n) => isClientesSheet(wb, n));
 }
 
 // Sugiere automáticamente la pestaña de clientes que corresponde al mismo día
@@ -120,7 +120,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
         let bestScore = -1;
 
         for (const sName of wb.SheetNames) {
-          if (isClientesSheetName(sName)) continue;
+          if (isClientesSheet(wb, sName)) continue;
           const ws = wb.Sheets[sName];
           if (!ws || !ws['!ref']) continue;
           const score = scoreSheetForRoutes(ws);
@@ -436,7 +436,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
             </div>
 
             <div className="flex items-center space-x-2">
-              {sheetNames.filter((n) => !isClientesSheetName(n)).length > 1 && (
+              {sheetNames.filter((n) => !clientesSheetNames.includes(n)).length > 1 && (
                 <div className="flex items-center space-x-1.5 text-xs bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
                   <Layers className="w-3.5 h-3.5 text-slate-500" />
                   <label htmlFor="sheetSelect" className="text-slate-600 font-semibold">
@@ -449,7 +449,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                     className="bg-white border border-slate-300 rounded text-xs py-0.5 px-1 font-medium cursor-pointer"
                   >
                     {sheetNames
-                      .filter((n) => !isClientesSheetName(n))
+                      .filter((n) => !clientesSheetNames.includes(n))
                       .map((name) => (
                         <option key={name} value={name}>
                           {name}
