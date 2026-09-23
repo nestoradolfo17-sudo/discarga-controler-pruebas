@@ -14,6 +14,7 @@ import {
 } from '../utils/excel';
 import { formatDateToGuatemala } from '../utils/date';
 import { SEGMENTO_OPTIONS } from '../data/segmentos';
+import { getRouteKey } from '../utils/routeKey';
 import { FileSpreadsheet, Download, UploadCloud, CheckCircle, X, Layers, AlertCircle, Users, MapPin, Tag } from 'lucide-react';
 
 export interface BatchImportTarget {
@@ -563,9 +564,14 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white font-mono">
                 {previewRoutes.map((r, idx) => {
-                  const isDuplicate = existingRoutes.some(
-                    (ex) => String(ex.id) === String(r.id) && ex.estado !== 'Liquidada'
-                  );
+                  // Ya existe una ruta vigente con el mismo número, fecha y agencia destino.
+                  const isDuplicate =
+                    !!effectiveAgencia &&
+                    existingRoutes.some(
+                      (ex) =>
+                        ex.estado !== 'Liquidada' &&
+                        getRouteKey(ex) === getRouteKey({ id: r.id, fecha: r.fecha, agencia: effectiveAgencia })
+                    );
                   const clienteCount = clientesByNormRuta?.get(normRuta(r.id))?.length || 0;
                   return (
                     <tr
