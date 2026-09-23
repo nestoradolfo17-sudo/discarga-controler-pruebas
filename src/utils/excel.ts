@@ -612,8 +612,41 @@ export function extractDayNumberFromSheetName(name: string): number | null {
 // Identifica, de forma tolerante a mayúsculas/acentos, si una pestaña es del
 // tipo "Clientes N" (detalle de clientes) en vez de "Resumen N" (totales de
 // ruta) u otra pestaña ajena al archivo (por ejemplo, una "Hoja1" en blanco).
+//
+// Corrección: antes se exigía que el nombre contuviera exactamente "cliente".
+// El archivo real del cliente trae la pestaña escrita como "Clintes 23" (sin
+// la "e"), así que se ignoraba y la lista de clientes nunca se cargaba. Ahora
+// se aceptan variantes con errores de tipeo (Clintes, Clientes, Cliente,
+// Clients, Clentes...). Además, ver isClientesSheet(): si el nombre no ayuda,
+// la pestaña se reconoce por su CONTENIDO (encabezados CODIGO / RUTA / VENTA).
 export function isClientesSheetName(name: string): boolean {
-  return cleanHeaderStr(name).includes('cliente');
+  const clean = cleanHeaderStr(name);
+  return /\bcl[a-z]{0,3}n?t[a-z]*/.test(clean) && /\bcl/.test(clean) && /nt/.test(clean);
+}
+
+// ¿La hoja tiene la tabla de detalle de clientes? (fila de encabezados con
+// CODIGO, RUTA y VENTA en las primeras 15 filas — el mismo criterio que usa
+// parseClientesFromSheet para empezar a leer).
+export function looksLikeClientesSheet(ws: XLSX.WorkSheet | undefined): boolean {
+  if (!ws || !ws['!ref']) return false;
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let r = range.s.r; r <= Math.min(range.s.r + 15, range.e.r); r++) {
+    const texts = new Set<string>();
+    for (let c = range.s.c; c <= Math.min(range.e.c, range.s.c + 40); c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (!cell) continue;
+      const t = cleanHeaderStr(cell.w || cell.v);
+      if (t) texts.add(t);
+    }
+    if (texts.has('codigo') && texts.has('ruta') && texts.has('venta')) return true;
+  }
+  return false;
+}
+
+// Pestaña de detalle de clientes: por nombre (tolerante a errores de tipeo)
+// o por contenido.
+export function isClientesSheet(wb: XLSX.WorkBook, name: string): boolean {
+  return isClientesSheetName(name) || looksLikeClientesSheet(wb.Sheets[name]);
 }
 
 export function getRouteAssignmentType(r: Route): string {
