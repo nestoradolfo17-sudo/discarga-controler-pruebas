@@ -333,7 +333,9 @@ export interface AppUser {
   // local del navegador (no hay hash/cifrado real posible sin un servidor). El
   // control de acceso es funcional (evita el uso sin credenciales) pero no debe
   // tratarse como una medida de seguridad de nivel bancario.
-  password: string;
+  // Solo se usa en modo local (sin Supabase). Con Supabase Auth la contraseña
+  // la maneja el servidor y la aplicación nunca la conoce.
+  password?: string;
   isAdmin: boolean;
   permissions: TablePermissions;
   canDelete: boolean;
@@ -348,4 +350,6 @@ export interface AppUser {
   // esto, dificultando revisar altas de usuarios o detectar cuentas inactivas.
   createdBy?: string;
   lastLogin?: string;
+  // Con Supabase: un usuario desactivado no puede entrar ni ver datos.
+  activo?: boolean;
 }
