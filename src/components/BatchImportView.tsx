@@ -13,11 +13,20 @@ import {
   ImportReport,
 } from '../utils/excel';
 import { formatDateToGuatemala } from '../utils/date';
-import { FileSpreadsheet, Download, UploadCloud, CheckCircle, X, Layers, AlertCircle, Users } from 'lucide-react';
+import { SEGMENTO_OPTIONS } from '../data/segmentos';
+import { FileSpreadsheet, Download, UploadCloud, CheckCircle, X, Layers, AlertCircle, Users, MapPin, Tag } from 'lucide-react';
+
+export interface BatchImportTarget {
+  agencia: string;
+  segmento: string;
+}
 
 interface BatchImportViewProps {
   existingRoutes: Route[];
-  onCommitRoutes: (newRoutes: Route[]) => void;
+  // Agencias a las que el usuario en sesión puede cargar rutas (según su
+  // permiso de agencias en Usuarios; un administrador ve todas).
+  agencyOptions: string[];
+  onCommitRoutes: (newRoutes: Route[], target: BatchImportTarget) => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -51,9 +60,18 @@ function autoMatchClientesSheet(routesSheetName: string, candidates: string[]): 
 
 export const BatchImportView: React.FC<BatchImportViewProps> = ({
   existingRoutes,
+  agencyOptions,
   onCommitRoutes,
   onShowToast,
 }) => {
+  // Destino de la carga: agencia y segmento elegidos por el usuario. Se aplican
+  // a TODAS las rutas del archivo (reemplazan lo que traiga el Excel en esas
+  // columnas). Si el usuario solo tiene permiso para una agencia, se
+  // preselecciona automáticamente.
+  const [targetAgencia, setTargetAgencia] = useState<string>(agencyOptions.length === 1 ? agencyOptions[0] : '');
+  const [targetSegmento, setTargetSegmento] = useState<string>('');
+  const effectiveAgencia = agencyOptions.includes(targetAgencia) ? targetAgencia : '';
+  const targetReady = !!effectiveAgencia && !!targetSegmento;
   const [isDragging, setIsDragging] = useState(false);
   const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
   const [sheetNames, setSheetNames] = useState<string[]>([]);
@@ -253,6 +271,14 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
       onShowToast('No hay rutas para importar', 'error');
       return;
     }
+    if (!effectiveAgencia) {
+      onShowToast('Selecciona la agencia a la que se cargarán las rutas.', 'error');
+      return;
+    }
+    if (!targetSegmento) {
+      onShowToast('Selecciona el segmento al que se cargarán las rutas.', 'error');
+      return;
+    }
     // Corrección: antes, si algo fallaba aquí adentro (o dentro de onCommitRoutes,
     // que se llama de forma síncrona), el error quedaba solo en la consola del
     // navegador — en pantalla no aparecía ningún aviso ni de éxito ni de error, y
@@ -260,13 +286,12 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
     // Ahora cualquier error se atrapa y se muestra como aviso en pantalla, para
     // poder diagnosticar exactamente qué falla en vez de adivinar.
     try {
-      const finalRoutes = clientesByNormRuta
-        ? previewRoutes.map((r) => {
-            const clientes = clientesByNormRuta.get(normRuta(r.id));
-            return clientes && clientes.length > 0 ? { ...r, clientesRuta: clientes } : r;
-          })
-        : previewRoutes;
-      onCommitRoutes(finalRoutes);
+      const finalRoutes = previewRoutes.map((r) => {
+        const withTarget: Route = { ...r, agencia: effectiveAgencia, segmento: targetSegmento };
+        const clientes = clientesByNormRuta?.get(normRuta(r.id));
+        return clientes && clientes.length > 0 ? { ...withTarget, clientesRuta: clientes } : withTarget;
+      });
+      onCommitRoutes(finalRoutes, { agencia: effectiveAgencia, segmento: targetSegmento });
       handleCancelPreview();
     } catch (err) {
       console.error('Error al confirmar la importación de rutas:', err);
@@ -294,6 +319,61 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
           <Download className="w-4 h-4 mr-1.5 text-emerald-600" />
           Descargar Plantilla Excel (.xlsx)
         </button>
+      </div>
+
+      {/* Destino de la carga: Agencia y Segmento */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+        <div>
+          <label htmlFor="importAgencia" className="flex items-center text-xs font-semibold text-slate-700 mb-1">
+            <MapPin className="w-3.5 h-3.5 mr-1 text-blue-600" />
+            Agencia destino *
+          </label>
+          <select
+            id="importAgencia"
+            value={effectiveAgencia}
+            onChange={(e) => setTargetAgencia(e.target.value)}
+            disabled={agencyOptions.length === 0}
+            className={`w-full p-2.5 border rounded-lg text-sm font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${
+              effectiveAgencia ? 'border-slate-300' : 'border-amber-400'
+            }`}
+          >
+            <option value="">— Selecciona una agencia —</option>
+            {agencyOptions.map((ag) => (
+              <option key={ag} value={ag}>
+                {ag}
+              </option>
+            ))}
+          </select>
+          {agencyOptions.length === 0 && (
+            <p className="text-[11px] text-rose-600 mt-1">
+              Tu usuario no tiene agencias asignadas. Solicita acceso al administrador.
+            </p>
+          )}
+        </div>
+        <div>
+          <label htmlFor="importSegmento" className="flex items-center text-xs font-semibold text-slate-700 mb-1">
+            <Tag className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+            Segmento *
+          </label>
+          <select
+            id="importSegmento"
+            value={targetSegmento}
+            onChange={(e) => setTargetSegmento(e.target.value)}
+            className={`w-full p-2.5 border rounded-lg text-sm font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${
+              targetSegmento ? 'border-slate-300' : 'border-amber-400'
+            }`}
+          >
+            <option value="">— Selecciona un segmento —</option>
+            {SEGMENTO_OPTIONS.map((sg) => (
+              <option key={sg} value={sg}>
+                {sg}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="sm:col-span-2 text-[11px] text-slate-500">
+          Todas las rutas del archivo se cargarán a la agencia y segmento seleccionados (reemplazan lo que traiga el Excel en esas columnas).
+        </p>
       </div>
 
       {/* Drag and drop area */}
@@ -388,7 +468,9 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
 
               <button
                 onClick={handleCommit}
-                className="px-4 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm flex items-center cursor-pointer"
+                disabled={!targetReady}
+                title={targetReady ? undefined : 'Selecciona Agencia y Segmento arriba'}
+                className="px-4 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm flex items-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
                 Confirmar e Importar Rutas
@@ -490,8 +572,12 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                       key={`${r.id}-${idx}`}
                       className={isDuplicate ? 'bg-amber-50/80 hover:bg-amber-100/70' : 'hover:bg-slate-50'}
                     >
-                      <td className="py-2 px-3 font-sans font-medium text-slate-800">{r.agencia}</td>
-                      <td className="py-2 px-3 font-sans text-slate-700">{r.segmento || '-'}</td>
+                      <td className="py-2 px-3 font-sans font-medium text-slate-800">
+                        {effectiveAgencia || <span className="text-amber-600">Sin seleccionar</span>}
+                      </td>
+                      <td className="py-2 px-3 font-sans text-slate-700">
+                        {targetSegmento || <span className="text-amber-600">Sin seleccionar</span>}
+                      </td>
                       <td className="py-2 px-3 font-sans text-slate-700 whitespace-nowrap">
                         {formatDateToGuatemala(r.fecha) || r.fecha}
                       </td>
