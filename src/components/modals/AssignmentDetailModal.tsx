@@ -1,3 +1,4 @@
+import { getRouteKey } from '../../utils/routeKey';
 import React from 'react';
 import { Route, Truck, Staff } from '../../types';
 import {
@@ -67,7 +68,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
   const sharedRoutes = asig?.camionPlaca
     ? allRoutes.filter(
         (r) =>
-          String(r.id) !== String(route.id) &&
+          getRouteKey(r) !== getRouteKey(route) &&
           r.estado === 'En Tránsito' &&
           r.asignacion?.camionPlaca &&
           r.asignacion.camionPlaca.toLowerCase() === asig.camionPlaca.toLowerCase()
@@ -321,7 +322,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
                   type="button"
                   onClick={() => {
                     onClose();
-                    onOpenAssignModal(route.id, route.fecha);
+                    onOpenAssignModal(route.id, getRouteKey(route));
                   }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
                 >
@@ -385,7 +386,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
                 type="button"
                 onClick={() => {
                   onClose();
-                  onOpenAssignModal(route.id, route.fecha);
+                  onOpenAssignModal(route.id, getRouteKey(route));
                 }}
                 className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold transition cursor-pointer text-xs border border-blue-200"
               >
