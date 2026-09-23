@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AppUser, TablePermissions } from '../types';
 import { AGENCIA_LOCATION_OPTIONS } from '../data/agencies';
 import { formatDateTimeToGuatemala } from '../utils/date';
+import { MIN_PASSWORD_LENGTH, USERNAME_PATTERN, normalizeUsername } from '../services/auth';
 import {
   UserPlus,
   Shield,
@@ -29,7 +30,7 @@ interface UsersViewProps {
     permissions: TablePermissions;
     canDelete: boolean;
     agencyAccess: 'all' | string[];
-  }) => void;
+  }) => boolean | Promise<boolean>;
   onUpdateUser: (
     userId: string,
     updates: Partial<
@@ -38,6 +39,10 @@ interface UsersViewProps {
   ) => void;
   onResetPassword: (userId: string, newPassword: string) => void;
   onDeleteUser: (userId: string) => void;
+  // Verifica la contraseña del administrador en sesión para confirmar acciones
+  // delicadas. Con Supabase Auth la app ya no conoce ninguna contraseña, así
+  // que la verificación la hace el servidor.
+  onVerifyPassword: (password: string) => Promise<boolean>;
 }
 
 const DEFAULT_PERMISSIONS: TablePermissions = {
@@ -90,6 +95,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
   onUpdateUser,
   onResetPassword,
   onDeleteUser,
+  onVerifyPassword,
 }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -130,16 +136,26 @@ export const UsersView: React.FC<UsersViewProps> = ({
 
   const adminCount = users.filter((u) => u.isAdmin).length;
 
-  const handleCreate = (e: React.FormEvent) => {
+  const [isCreating, setIsCreating] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isCreating) return;
     setFormError('');
-    const trimmed = username.trim();
+    const trimmed = normalizeUsername(username);
     if (!trimmed) {
       setFormError('El nombre de usuario es obligatorio.');
       return;
     }
-    if (password.length < 4) {
-      setFormError('La contraseña debe tener al menos 4 caracteres.');
+    if (!USERNAME_PATTERN.test(trimmed)) {
+      setFormError(
+        'Usuario inválido: de 3 a 30 caracteres, solo letras minúsculas, números, punto, guion o guion bajo (sin espacios ni tildes).'
+      );
+      return;
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setFormError(`La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`);
       return;
     }
     if (password !== confirmPassword) {
@@ -150,7 +166,8 @@ export const UsersView: React.FC<UsersViewProps> = ({
       setFormError('Ya existe un usuario con ese nombre.');
       return;
     }
-    onCreateUser({
+    setIsCreating(true);
+    const created = await onCreateUser({
       username: trimmed,
       password,
       nombre: nombre.trim() || undefined,
@@ -172,6 +189,8 @@ export const UsersView: React.FC<UsersViewProps> = ({
       canDelete: isAdmin ? true : canDelete,
       agencyAccess: isAdmin ? 'all' : agencyAll ? 'all' : agencySelection,
     });
+    setIsCreating(false);
+    if (!created) return;
     setUsername('');
     setPassword('');
     setConfirmPassword('');
@@ -206,11 +225,18 @@ export const UsersView: React.FC<UsersViewProps> = ({
   };
 
   const requestSavePasswordEdit = (userId: string) => {
-    if (newPasswordDraft.length < 4) return;
+    if (newPasswordDraft.length < MIN_PASSWORD_LENGTH) {
+      alertPasswordTooShort();
+      return;
+    }
     setConfirmError('');
     setConfirmPasswordInput('');
     setConfirmAction({ type: 'password', userId, newPassword: newPasswordDraft });
   };
+
+  const [passwordEditError, setPasswordEditError] = useState('');
+  const alertPasswordTooShort = () =>
+    setPasswordEditError(`Mínimo ${MIN_PASSWORD_LENGTH} caracteres.`);
 
   const startProfileEdit = (user: AppUser) => {
     setProfileEditingId(user.id);
@@ -225,9 +251,17 @@ export const UsersView: React.FC<UsersViewProps> = ({
   };
 
   const requestSaveProfileEdit = (userId: string) => {
-    const trimmedUsername = profileUsernameDraft.trim();
+    const currentUsername = users.find((u) => u.id === userId)?.username;
+    // Un nombre de usuario antiguo que no cumpla el formato se puede conservar;
+    // solo se valida el formato si realmente se cambia.
+    const trimmedUsername =
+      profileUsernameDraft.trim() === currentUsername ? currentUsername : normalizeUsername(profileUsernameDraft);
     if (!trimmedUsername) {
       setProfileEditError('El nombre de usuario no puede quedar vacío.');
+      return;
+    }
+    if (trimmedUsername !== currentUsername && !USERNAME_PATTERN.test(trimmedUsername)) {
+      setProfileEditError('Solo minúsculas, números, punto, guion o guion bajo (3 a 30).');
       return;
     }
     if (
@@ -261,9 +295,12 @@ export const UsersView: React.FC<UsersViewProps> = ({
     setConfirmError('');
   };
 
-  const submitConfirm = () => {
-    if (!confirmAction) return;
-    if (confirmPasswordInput !== currentUser.password) {
+  const submitConfirm = async () => {
+    if (!confirmAction || isConfirming) return;
+    setIsConfirming(true);
+    const valid = await onVerifyPassword(confirmPasswordInput);
+    setIsConfirming(false);
+    if (!valid) {
       setConfirmError('Contraseña de administrador incorrecta.');
       return;
     }
@@ -336,7 +373,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium"
-                placeholder="Ej: jperez"
+                placeholder="Ej: jperez (minúsculas, sin espacios)"
               />
             </div>
             <div>
@@ -348,7 +385,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
                   className="w-full p-2.5 pr-9 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono"
-                  placeholder="Mínimo 4 caracteres"
+                  placeholder={`Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
                 />
                 <button
                   type="button"
@@ -471,10 +508,11 @@ export const UsersView: React.FC<UsersViewProps> = ({
 
           <button
             type="submit"
-            className="text-xs bg-slate-900 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-slate-800 transition cursor-pointer flex items-center"
+            disabled={isCreating}
+            className="text-xs bg-slate-900 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-slate-800 transition cursor-pointer flex items-center disabled:opacity-60 disabled:cursor-wait"
           >
             <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-            Crear Usuario
+            {isCreating ? 'Creando...' : 'Crear Usuario'}
           </button>
         </form>
       </div>
@@ -720,7 +758,10 @@ export const UsersView: React.FC<UsersViewProps> = ({
                             type="text"
                             autoFocus
                             value={newPasswordDraft}
-                            onChange={(e) => setNewPasswordDraft(e.target.value)}
+                            onChange={(e) => {
+                              setNewPasswordDraft(e.target.value);
+                              setPasswordEditError('');
+                            }}
                             placeholder="Nueva contraseña"
                             className="w-32 p-1.5 text-xs border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500"
                           />
@@ -734,12 +775,18 @@ export const UsersView: React.FC<UsersViewProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setPasswordEditingId(null)}
+                            onClick={() => {
+                              setPasswordEditingId(null);
+                              setPasswordEditError('');
+                            }}
                             className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 cursor-pointer"
                             title="Cancelar"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
+                          {passwordEditError && (
+                            <span className="text-[10px] font-semibold text-rose-600">{passwordEditError}</span>
+                          )}
                         </div>
                       ) : (
                         <button
@@ -839,7 +886,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                     : 'bg-slate-900 hover:bg-slate-800'
                 }`}
               >
-                {confirmAction.type === 'delete' ? 'Eliminar' : 'Confirmar'}
+                {isConfirming ? 'Verificando...' : confirmAction.type === 'delete' ? 'Eliminar' : 'Confirmar'}
               </button>
             </div>
           </div>
