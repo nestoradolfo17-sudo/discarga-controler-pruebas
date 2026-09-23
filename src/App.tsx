@@ -437,7 +437,19 @@ export default function App() {
             );
             return;
           }
-          const remoteList = remoteRows.map((row) => row.data);
+          // Si un mismo registro quedó guardado dos veces (con la clave anterior y
+          // con la nueva — p. ej. al cambiar el formato de clave de rutas para
+          // incluir la agencia), se conserva UNA sola copia: la que ya está
+          // guardada bajo la clave correcta; si ninguna lo está, la última leída.
+          const dedupedByKey = new Map<string, SyncedRow<T>>();
+          remoteRows.forEach((row) => {
+            const k = getKey(row.data);
+            const current = dedupedByKey.get(k);
+            if (!current || (current.key !== k && row.key === k) || (current.key !== k && row.key !== k)) {
+              dedupedByKey.set(k, row);
+            }
+          });
+          const remoteList = Array.from(dedupedByKey.values()).map((row) => row.data);
           const finalList = remoteList.length > 0 ? remoteList : localList;
           setter(finalList);
           ref.current = {
@@ -939,7 +951,7 @@ export default function App() {
     // Rutas Liquidadas (los números de ruta del Excel suelen repetirse día a día).
     const keyFor = (r: Route) => {
       const liqDate = r.fechaLiquidacion || r.liquidacion?.fechaLiquidacion;
-      return liqDate ? `${r.id}__${liqDate}` : `${r.id}__activa`;
+      return liqDate ? `${r.id}__${liqDate}__${r.agencia || ''}` : `${r.id}__activa__${r.agencia || ''}`;
     };
 
     // Merge historicalRoutes and routes (active state takes precedence if updated)
@@ -1356,7 +1368,7 @@ export default function App() {
 
   const handleConfirmSplit = (originalRoute: Route, childRoutes: Route[]) => {
     setRoutes((prev) => {
-      const idx = prev.findIndex((r) => String(r.id) === String(originalRoute.id));
+      const idx = prev.findIndex((r) => getRouteKey(r) === getRouteKey(originalRoute));
       if (idx === -1) return prev;
       const copy = [...prev];
       copy.splice(idx, 1, ...childRoutes);
@@ -2294,7 +2306,7 @@ export default function App() {
         const liqDate = liqR.fechaLiquidacion || liqR.liquidacion?.fechaLiquidacion;
         setHistoricalRoutes((prev) => {
           const alreadyArchived = prev.some((hr) => {
-            if (String(hr.id) !== String(liqR.id)) return false;
+            if (String(hr.id) !== String(liqR.id) || (hr.agencia || '') !== (liqR.agencia || '')) return false;
             const hrLiqDate = hr.fechaLiquidacion || hr.liquidacion?.fechaLiquidacion;
             return hrLiqDate === liqDate;
           });
@@ -2995,6 +3007,7 @@ export default function App() {
             <ClientesImportView
               routes={routes}
               historicalRoutes={historicalRoutes}
+              agencyOptions={importAgencyOptions}
               onCommitClientesRuta={handleImportClientesPorRuta}
               onShowToast={showToast}
             />
