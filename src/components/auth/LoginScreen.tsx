@@ -3,23 +3,37 @@ import { Lock, User, LogIn, AlertCircle } from 'lucide-react';
 import logoDiscarga from '../../assets/logo-discarga.png';
 
 interface LoginScreenProps {
-  onLogin: (username: string, password: string) => boolean;
+  // Devuelve true/null si entró; false o un mensaje de error si no.
+  onLogin: (username: string, password: string) => boolean | string | null | Promise<boolean | string | null>;
+  // Aviso a mostrar al abrir el login (p. ej. "usuario desactivado").
+  notice?: string;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, notice }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setError('');
-    const ok = onLogin(username.trim(), password);
-    if (!ok) {
-      setError('Usuario o contraseña incorrectos.');
+    setIsSubmitting(true);
+    let result: boolean | string | null;
+    try {
+      result = await onLogin(username.trim(), password);
+    } catch {
+      result = 'No se pudo conectar. Revisa tu conexión e intenta de nuevo.';
+    }
+    setIsSubmitting(false);
+    if (result === false || typeof result === 'string') {
+      setError(typeof result === 'string' ? result : 'Usuario o contraseña incorrectos.');
       setPassword('');
     }
   };
+
+  const shownError = error || notice || '';
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 flex items-center justify-center p-4">
@@ -74,19 +88,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             </div>
           </div>
 
-          {error && (
+          {shownError && (
             <div className="flex items-center gap-1.5 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              {error}
+              {shownError}
             </div>
           )}
 
           <button
             type="submit"
-            className="w-full flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm py-2.5 rounded-lg transition cursor-pointer"
+            disabled={isSubmitting}
+            className="w-full flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm py-2.5 rounded-lg transition cursor-pointer disabled:opacity-60 disabled:cursor-wait"
           >
             <LogIn className="w-4 h-4" />
-            Ingresar
+            {isSubmitting ? 'Ingresando...' : 'Ingresar'}
           </button>
 
           <p className="text-[11px] text-slate-400 text-center pt-1">
