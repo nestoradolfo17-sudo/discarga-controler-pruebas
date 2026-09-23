@@ -5,7 +5,7 @@ import {
   parseClientesFromSheet,
   groupClientesByRuta,
   extractDayNumberFromSheetName,
-  isClientesSheetName,
+  isClientesSheet,
 } from '../utils/excel';
 import { formatDateToGuatemala } from '../utils/date';
 import { getRouteKey } from '../utils/routeKey';
@@ -87,7 +87,7 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
         const skipped: string[] = [];
 
         wb.SheetNames.forEach((sheetName) => {
-          if (!isClientesSheetName(sheetName)) return; // ignora "Resumen N", "Hoja1", etc.
+          if (!isClientesSheet(wb, sheetName)) return; // ignora "Resumen N", "Hoja1", etc.
 
           const day = extractDayNumberFromSheetName(sheetName);
           if (day === null) {
