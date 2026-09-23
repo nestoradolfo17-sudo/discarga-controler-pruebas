@@ -24,6 +24,7 @@ import {
   pushSharedCollection,
   subscribeToSharedCollection,
   deleteSharedRecords,
+  setSyncErrorHandler,
   SyncKeyFn,
   SyncedRow,
   SyncableTable,
@@ -147,12 +148,56 @@ export default function App() {
   // falta rastrear qué claves había "antes" solo para poder borrar por
   // diferencia. Solo se usa para detectar si la colección realmente cambió
   // (comparando el JSON) antes de molestarse en subirla de nuevo.
-  type SyncRef = { json: string };
-  const routesSyncRef = useRef<SyncRef>({ json: '' });
-  const historySyncRef = useRef<SyncRef>({ json: '' });
-  const trucksSyncRef = useRef<SyncRef>({ json: '' });
-  const staffSyncRef = useRef<SyncRef>({ json: '' });
-  const usersSyncRef = useRef<SyncRef>({ json: '' });
+  //
+  // Mejora: además del JSON completo, se guarda el JSON de CADA registro
+  // (byKey) tal como quedó la última vez que se sincronizó. Así, cuando cambia
+  // una colección, solo se suben a Supabase los registros que realmente
+  // cambiaron — antes se subía la colección COMPLETA en cada cambio (miles de
+  // colaboradores por un solo clic), lo que además de lento era peligroso:
+  // si otro usuario había modificado un registro distinto hace un segundo,
+  // esa subida completa podía pisar su cambio con la copia vieja local.
+  //
+  // `blocked`: la lectura inicial de esa tabla falló. En ese caso NO se sube
+  // nada de esa tabla (la copia local puede estar desactualizada y pisaría
+  // los datos reales de todos) hasta que el usuario recargue la página.
+  type SyncRef = { json: string; byKey: Map<string, string>; blocked: boolean };
+  const emptySyncRef = (): SyncRef => ({ json: '', byKey: new Map(), blocked: false });
+  const routesSyncRef = useRef<SyncRef>(emptySyncRef());
+  const historySyncRef = useRef<SyncRef>(emptySyncRef());
+  const trucksSyncRef = useRef<SyncRef>(emptySyncRef());
+  const staffSyncRef = useRef<SyncRef>(emptySyncRef());
+  const usersSyncRef = useRef<SyncRef>(emptySyncRef());
+
+  // Construye el mapa clave → JSON de una colección completa.
+  const buildSyncedMap = <T,>(items: T[], getKey: SyncKeyFn<T>) => {
+    const map = new Map<string, string>();
+    items.forEach((item) => map.set(getKey(item), JSON.stringify(item)));
+    return map;
+  };
+
+  // Marca como "ya sincronizado" el resultado de aplicar un cambio recibido
+  // por tiempo real (para no volver a subir lo que otro usuario acaba de
+  // guardar). Solo recalcula los registros que cambiaron de referencia.
+  const markRemoteApplied = <T,>(
+    ref: { current: SyncRef },
+    prev: T[],
+    next: T[],
+    getKey: SyncKeyFn<T>
+  ) => {
+    const prevByKey = new Map<string, T>();
+    prev.forEach((item) => prevByKey.set(getKey(item), item));
+    const byKey = new Map(ref.current.byKey);
+    const nextKeys = new Set<string>();
+    next.forEach((item) => {
+      const k = getKey(item);
+      nextKeys.add(k);
+      if (prevByKey.get(k) !== item) byKey.set(k, JSON.stringify(item));
+    });
+    prevByKey.forEach((_, k) => {
+      if (!nextKeys.has(k)) byKey.delete(k);
+    });
+    ref.current = { json: JSON.stringify(next), byKey, blocked: ref.current.blocked };
+  };
   // Corrección: cada sincronización hacia Supabase de una colección sube (hace
   // upsert de) los registros actuales — ver pushSharedCollection en
   // services/sync.ts. Si dos actualizaciones seguidas de la MISMA colección
@@ -194,15 +239,43 @@ export default function App() {
       queueRef: { current: Promise<void> }
     ) => {
       if (!isSupabaseConfigured || !isRemoteReady) return;
+      // Lectura inicial fallida: no subir nada de esta tabla (ver `blocked`).
+      if (ref.current.blocked) return;
       const json = JSON.stringify(items);
       if (json === ref.current.json) return;
-      ref.current = { json };
+
+      // Solo los registros nuevos o modificados desde la última sincronización.
+      // Si por error hubiera dos registros con la misma clave, se sube solo el
+      // último (Supabase rechaza un lote que toca dos veces la misma fila, y
+      // eso hacía fallar la subida COMPLETA de la colección).
+      const prevByKey = ref.current.byKey;
+      const nextByKey = new Map<string, string>();
+      const changedByKey = new Map<string, T>();
+      items.forEach((item) => {
+        const k = getKey(item);
+        const itemJson = JSON.stringify(item);
+        nextByKey.set(k, itemJson);
+        if (prevByKey.get(k) !== itemJson) changedByKey.set(k, item);
+        else changedByKey.delete(k);
+      });
+      ref.current = { json, byKey: nextByKey, blocked: false };
+      const changed = Array.from(changedByKey.values());
+      if (changed.length === 0) return;
+
       // Encadenada detrás de la sincronización anterior de esta misma colección
       // (ver el comentario de las *PushQueueRef arriba) para que nunca se
       // ejecuten dos en paralelo compitiendo por el mismo registro.
       queueRef.current = queueRef.current
         .catch(() => {})
-        .then(() => pushSharedCollection(table, items, getKey));
+        .then(async () => {
+          const ok = await pushSharedCollection(table, changed, getKey);
+          if (!ok) {
+            // No se guardó: se "olvida" que estaban sincronizados para que el
+            // próximo cambio en esta colección los vuelva a intentar subir.
+            changed.forEach((item) => ref.current.byKey.delete(getKey(item)));
+            ref.current.json = '';
+          }
+        });
     },
     [isRemoteReady]
   );
@@ -267,15 +340,24 @@ export default function App() {
           getKey: SyncKeyFn<T>
         ) {
           if (remoteRows === null) {
+            // Corrección: antes, aunque esta lectura fallara, en cuanto la app
+            // quedaba "lista" la sincronización normal subía la copia local
+            // (posiblemente vieja o de ejemplo) y PISABA los datos reales en
+            // Supabase. Ahora esta tabla queda bloqueada para escritura.
+            ref.current = { json: '', byKey: new Map(), blocked: true };
             console.error(
-              `No se pudo leer "${table}" de Supabase; se mantiene el estado local sin sincronizar por ahora.`
+              `No se pudo leer "${table}" de Supabase; no se subirán cambios de esta tabla hasta recargar la página.`
             );
             return;
           }
           const remoteList = remoteRows.map((row) => row.data);
           const finalList = remoteList.length > 0 ? remoteList : localList;
           setter(finalList);
-          ref.current = { json: JSON.stringify(finalList) };
+          ref.current = {
+            json: JSON.stringify(finalList),
+            byKey: buildSyncedMap(finalList, getKey),
+            blocked: false,
+          };
           if (remoteList.length === 0) {
             void pushSharedCollection(table, finalList, getKey);
             return;
@@ -333,35 +415,35 @@ export default function App() {
       subscribeToSharedCollection<Route>('app_routes', (updater) => {
         setRoutes((prev) => {
           const next = updater(prev);
-          routesSyncRef.current = { json: JSON.stringify(next) };
+          markRemoteApplied(routesSyncRef, prev, next, routeSyncKey);
           return next;
         });
       }, routeSyncKey),
       subscribeToSharedCollection<Route>('app_historical_routes', (updater) => {
         setHistoricalRoutes((prev) => {
           const next = updater(prev);
-          historySyncRef.current = { json: JSON.stringify(next) };
+          markRemoteApplied(historySyncRef, prev, next, routeSyncKey);
           return next;
         });
       }, routeSyncKey),
       subscribeToSharedCollection<Truck>('app_trucks', (updater) => {
         setTrucks((prev) => {
           const next = updater(prev);
-          trucksSyncRef.current = { json: JSON.stringify(next) };
+          markRemoteApplied(trucksSyncRef, prev, next, defaultSyncKey);
           return next;
         });
       }, defaultSyncKey),
       subscribeToSharedCollection<Staff>('app_staff', (updater) => {
         setStaff((prev) => {
           const next = updater(prev);
-          staffSyncRef.current = { json: JSON.stringify(next) };
+          markRemoteApplied(staffSyncRef, prev, next, defaultSyncKey);
           return next;
         });
       }, defaultSyncKey),
       subscribeToSharedCollection<AppUser>('app_users', (updater) => {
         setUsers((prev) => {
           const next = updater(prev);
-          usersSyncRef.current = { json: JSON.stringify(next) };
+          markRemoteApplied(usersSyncRef, prev, next, defaultSyncKey);
           return next;
         });
       }, defaultSyncKey),
@@ -646,6 +728,21 @@ export default function App() {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
   }, []);
+
+  // Avisos en pantalla cuando falla la lectura/escritura en la base de datos
+  // compartida (ver setSyncErrorHandler en services/sync.ts). Se limita a un
+  // aviso cada 10 segundos para no llenar la pantalla si la red se cae.
+  const lastSyncToastRef = useRef(0);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    setSyncErrorHandler((message) => {
+      const now = Date.now();
+      if (now - lastSyncToastRef.current < 10000) return;
+      lastSyncToastRef.current = now;
+      showToast(`⚠ ${message} Revisa tu conexión y recarga la página.`, 'error');
+    });
+    return () => setSyncErrorHandler(null);
+  }, [showToast]);
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
