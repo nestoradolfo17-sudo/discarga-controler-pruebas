@@ -2347,7 +2347,29 @@ export default function App() {
     // Se conserva todo menos las liquidadas de la agencia cargada (que ya se
     // archivaron arriba): rutas vigentes de todas las agencias y liquidadas de
     // otras agencias que aún no han hecho su propia carga del día.
-    const keptRoutes = routes.filter((r) => !(r.estado === 'Liquidada' && inScope(r)));
+    // Corrección: si el Excel trae rutas que YA estaban cargadas (mismo número,
+    // fecha y agencia — p. ej. se vuelve a subir el archivo del día para
+    // agregar el detalle de clientes), la ruta existente se conserva, pero ahora
+    // se le agrega la lista de clientes del archivo si todavía no tenía. Antes
+    // esa lista se descartaba junto con la fila duplicada. No se reemplaza una
+    // lista que ya existía (en una liquidación parcial queda reducida a los
+    // clientes pendientes y no debe perderse ese avance).
+    const importedClientesByKey = new Map(
+      importedRoutes
+        .filter((r) => r.clientesRuta && r.clientesRuta.length > 0)
+        .map((r) => [getRouteKey(r), r.clientesRuta!] as const)
+    );
+    let clientesAgregados = 0;
+    const keptRoutes = routes
+      .filter((r) => !(r.estado === 'Liquidada' && inScope(r)))
+      .map((r) => {
+        const clientes = importedClientesByKey.get(getRouteKey(r));
+        if (clientes && (!r.clientesRuta || r.clientesRuta.length === 0)) {
+          clientesAgregados++;
+          return { ...r, clientesRuta: clientes };
+        }
+        return r;
+      });
 
     setRoutes([...freshDailyRoutes, ...keptRoutes]);
     setActiveTab('board');
@@ -2364,7 +2386,12 @@ export default function App() {
             scopedPendientes > 0 ? ` (${scopedPendientes} pendiente(s) de días anteriores)` : ''
           }.`
         : `Se importaron ${freshDailyRoutes.length} rutas a ${destino}, listas para asignar.`;
-    showToast(msg, 'success');
+    showToast(
+      clientesAgregados > 0
+        ? `${msg} Se agregó la lista de clientes a ${clientesAgregados} ruta(s) que ya estaban cargadas.`
+        : msg,
+      'success'
+    );
   };
 
   // Agrega/actualiza la lista de clientes de referencia (clientesRuta) de rutas
