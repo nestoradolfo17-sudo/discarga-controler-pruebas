@@ -1,3 +1,4 @@
+import { getRouteKey } from '../../utils/routeKey';
 import React, { useState, useEffect } from 'react';
 import { Route, MotivoDevolucionReason, CajaAbiertaReason, ClientePendiente } from '../../types';
 import { X, CheckCircle, ClipboardCheck, RotateCcw, AlertTriangle, Lock, Users, Search } from 'lucide-react';
@@ -211,7 +212,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
     const finalDetalle = isRutaAbierta || !(devueltasNum === 0 && guiasRechazadas === 0) ? detalle : '';
     const finalMotivoDevolucion = [finalMotivos.join(', '), finalDetalle].filter(Boolean).join(', ');
 
-    onConfirmLiquidation(route.id, route.fecha, {
+    onConfirmLiquidation(route.id, getRouteKey(route), {
       guiasExitosas,
       guiasRechazadas,
       cajasEntregadas: parseFloat(cajasEntregadas.toFixed(3)),
