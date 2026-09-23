@@ -602,7 +602,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                           type="button"
                           onClick={() => {
                             setActiveDropdownId(null);
-                            onOpenLiquidateModal(route.id, route.fecha);
+                            onOpenLiquidateModal(route.id, getRouteKey(route));
                           }}
                           title={
                             route.estado === 'Abierta'
@@ -676,7 +676,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                     type="button"
                                     onClick={() => {
                                       setActiveDropdownId(null);
-                                      onOpenAssignModal(route.id, route.fecha);
+                                      onOpenAssignModal(route.id, getRouteKey(route));
                                     }}
                                     className="w-full text-left px-3 py-2 hover:bg-amber-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                   >
@@ -697,7 +697,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                       type="button"
                                       onClick={() => {
                                         setActiveDropdownId(null);
-                                        onOpenSplitRouteModal(route.id, route.fecha);
+                                        onOpenSplitRouteModal(route.id, getRouteKey(route));
                                       }}
                                       className="w-full text-left px-3 py-2 hover:bg-purple-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                     >
@@ -719,7 +719,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                       type="button"
                                       onClick={() => {
                                         setActiveDropdownId(null);
-                                        onOpenRevertSplitModal(route.id, route.fecha);
+                                        onOpenRevertSplitModal(route.id, getRouteKey(route));
                                       }}
                                       className="w-full text-left px-3 py-2 hover:bg-indigo-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                     >
@@ -746,7 +746,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                     type="button"
                                     onClick={() => {
                                       setActiveDropdownId(null);
-                                      onOpenAssignModal(route.id, route.fecha);
+                                      onOpenAssignModal(route.id, getRouteKey(route));
                                     }}
                                     className="w-full text-left px-3 py-2 hover:bg-blue-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                   >
@@ -768,7 +768,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                       setActiveDropdownId(null);
                                       if (onMoveToFloor) {
                                         const tomorrowDate = getTomorrowGuatemalaDate(route.fecha);
-                                        onMoveToFloor(route.id, route.fecha, tomorrowDate, 'Ruta a Piso para despacho de mañana');
+                                        onMoveToFloor(route.id, getRouteKey(route), tomorrowDate, 'Ruta a Piso para despacho de mañana');
                                       }
                                     }}
                                     className="w-full text-left px-3 py-2 hover:bg-amber-50/70 flex items-center gap-2.5 transition cursor-pointer group"
@@ -790,7 +790,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                       type="button"
                                       onClick={() => {
                                         setActiveDropdownId(null);
-                                        onOpenSplitRouteModal(route.id, route.fecha);
+                                        onOpenSplitRouteModal(route.id, getRouteKey(route));
                                       }}
                                       className="w-full text-left px-3 py-2 hover:bg-purple-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                     >
@@ -812,7 +812,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                       type="button"
                                       onClick={() => {
                                         setActiveDropdownId(null);
-                                        onOpenRevertSplitModal(route.id, route.fecha);
+                                        onOpenRevertSplitModal(route.id, getRouteKey(route));
                                       }}
                                       className="w-full text-left px-3 py-2 hover:bg-indigo-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                     >
@@ -847,7 +847,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setActiveDropdownId(null);
-                                  onOpenAssignModal(route.id, route.fecha);
+                                  onOpenAssignModal(route.id, getRouteKey(route));
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-blue-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                               >
@@ -869,7 +869,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                   setActiveDropdownId(null);
                                   if (onMoveToFloor) {
                                     const tomorrowDate = getTomorrowGuatemalaDate(route.fecha);
-                                    onMoveToFloor(route.id, route.fecha, tomorrowDate, 'Ruta a Piso para despacho de mañana');
+                                    onMoveToFloor(route.id, getRouteKey(route), tomorrowDate, 'Ruta a Piso para despacho de mañana');
                                   }
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-amber-50/70 flex items-center gap-2.5 transition cursor-pointer group"
@@ -901,7 +901,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setActiveDropdownId(null);
-                                  onOpenAssignModal(route.id, route.fecha);
+                                  onOpenAssignModal(route.id, getRouteKey(route));
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-indigo-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                               >
@@ -923,7 +923,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                   setActiveDropdownId(null);
                                   if (onMoveToFloor) {
                                     const tomorrowDate = getTomorrowGuatemalaDate(route.fecha);
-                                    onMoveToFloor(route.id, route.fecha, tomorrowDate, 'Ruta a Piso para despacho de mañana');
+                                    onMoveToFloor(route.id, getRouteKey(route), tomorrowDate, 'Ruta a Piso para despacho de mañana');
                                   }
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-amber-50/70 flex items-center gap-2.5 transition cursor-pointer group"
@@ -953,7 +953,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setActiveDropdownId(null);
-                                  onViewSettlementReceipt(route.id, route.fecha);
+                                  onViewSettlementReceipt(route.id, getRouteKey(route));
                                 }}
                                 className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2.5 transition cursor-pointer group"
                               >
