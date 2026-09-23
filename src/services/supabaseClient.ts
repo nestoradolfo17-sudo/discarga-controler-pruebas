@@ -19,11 +19,11 @@ export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl as string, supabaseAnonKey as string, {
       auth: {
-        // Esta fase de pruebas no usa Supabase Auth (la app sigue con su propio
-        // login de usuario/contraseña contra la tabla "app_users"), así que se
-        // desactiva la persistencia de sesión de Supabase para no interferir.
-        persistSession: false,
-        autoRefreshToken: false,
+        // El inicio de sesión ahora usa Supabase Auth (ver services/auth.ts):
+        // la sesión se guarda en el navegador y el token se renueva solo, para
+        // que el usuario no tenga que volver a entrar cada vez que recarga.
+        persistSession: true,
+        autoRefreshToken: true,
       },
     })
   : null;
