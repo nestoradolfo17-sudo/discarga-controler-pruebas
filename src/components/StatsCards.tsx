@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, Navigation, AlertTriangle, CheckCircle2, Warehouse, Package } from 'lucide-react';
+import { Clock, Navigation, AlertTriangle, CheckCircle2, Warehouse, Package, PackageCheck, PackageX, Percent, Lock } from 'lucide-react';
 
 interface StatsCardsProps {
   pendientes: number;
@@ -197,5 +197,46 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         </div>
       </div>
     </section>
+  );
+};
+
+// --- Indicadores compactos del módulo de Rutas Liquidadas ---
+// Reemplazan a los del Tablero cuando se está en "Rutas Liquidadas" y cambian
+// en vivo con los filtros de esa pantalla (búsqueda, agencia, fechas).
+export const LiquidatedStatsStrip: React.FC<{
+  rutas: number;
+  cajasSalida: number;
+  cajasEntregadas: number;
+  cajasDevueltas: number;
+  efectividad: string;
+  cajaAbierta: number;
+}> = ({ rutas, cajasSalida, cajasEntregadas, cajasDevueltas, efectividad, cajaAbierta }) => {
+  const fmt = (n: number) => Number(n.toFixed(1)).toLocaleString('es-GT', { maximumFractionDigits: 1 });
+  const pills = [
+    { label: 'Liquidadas', value: String(rutas), icon: CheckCircle2, cls: 'bg-slate-50 border-slate-200 text-slate-700', title: 'Rutas liquidadas (según filtros)' },
+    { label: 'Entregadas', value: fmt(cajasEntregadas), icon: PackageCheck, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700', title: `Cajas entregadas de ${fmt(cajasSalida)} de salida` },
+    { label: 'Devueltas', value: fmt(cajasDevueltas), icon: PackageX, cls: 'bg-rose-50 border-rose-200 text-rose-700', title: 'Cajas devueltas / rechazos' },
+    { label: 'Efectividad', value: `${efectividad}%`, icon: Percent, cls: 'bg-indigo-50 border-indigo-200 text-indigo-700', title: 'Efectividad de entrega (ratio de cajas)' },
+    ...(cajaAbierta > 0
+      ? [{ label: 'Caja Abierta', value: String(cajaAbierta), icon: Lock, cls: 'bg-amber-50 border-amber-300 text-amber-800', title: 'Pendientes de validar caja/boleta' }]
+      : []),
+  ];
+  return (
+    <div className="flex items-center gap-1.5 overflow-x-auto">
+      {pills.map((p) => {
+        const Icon = p.icon;
+        return (
+          <div
+            key={p.label}
+            title={p.title}
+            className={`flex items-center gap-1.5 min-h-[40px] px-2.5 rounded-xl border whitespace-nowrap ${p.cls}`}
+          >
+            <Icon className="w-3.5 h-3.5 shrink-0" />
+            <span className="text-sm font-bold leading-none">{p.value}</span>
+            <span className="text-[10.5px] font-semibold leading-none opacity-80">{p.label}</span>
+          </div>
+        );
+      })}
+    </div>
   );
 };
