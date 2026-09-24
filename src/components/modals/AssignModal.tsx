@@ -17,7 +17,9 @@ import {
   Sparkles,
   AlertCircle,
   CheckCircle2,
-  Trash2
+  Trash2,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { formatDateToGuatemala, getTomorrowGuatemalaDate } from '../../utils/date';
 import { ResourcePicker, PickerItem, PickerStatus } from '../ResourcePicker';
@@ -108,6 +110,25 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   const [motivoPiso, setMotivoPiso] = useState('Capacidad de flota / Reprogramación a piso para mañana');
   // Buscador táctil abierto: camión, piloto o auxiliares (ver ResourcePicker).
   const [pickerOpen, setPickerOpen] = useState<null | 'truck' | 'driver' | 'helpers'>(null);
+  // Ventana de asignación a pantalla completa (se recuerda en este navegador).
+  const [isMaximized, setIsMaximized] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dc_assign_maximized') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleMaximized = () => {
+    setIsMaximized((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('dc_assign_maximized', next ? '1' : '0');
+      } catch {
+        /* sin almacenamiento */
+      }
+      return next;
+    });
+  };
   const routeKeyStr = route ? getRouteKey(route) : '';
 
   useEffect(() => {
@@ -598,8 +619,12 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   const splitInfo = route.isSplitRoute ? ` [Viaje ${route.tripNumber} de ${route.totalTrips}]` : '';
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-5 md:p-6">
-      <div className="bg-white rounded-2xl max-w-4xl lg:max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all max-h-[94vh] flex flex-col">
+    <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center ${isMaximized ? 'p-0' : 'p-3 sm:p-5 md:p-6'}`}>
+      <div
+        className={`bg-white w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all flex flex-col ${
+          isMaximized ? 'h-full max-h-full rounded-none' : 'rounded-2xl max-w-4xl lg:max-w-5xl max-h-[94vh]'
+        }`}
+      >
         {/* Header */}
         <div className="px-6 sm:px-8 py-4.5 bg-slate-900 text-white flex items-center justify-between flex-shrink-0 border-b border-slate-800">
           <div>
@@ -635,6 +660,15 @@ export const AssignModal: React.FC<AssignModalProps> = ({
               <span className="text-blue-300 font-semibold">{route.cajasFisicas || 0} Cajas Físicas</span>
             </p>
           </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            type="button"
+            onClick={toggleMaximized}
+            className="text-slate-300 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+            title={isMaximized ? 'Restaurar tamaño de la ventana' : 'Ver a pantalla completa'}
+          >
+            {isMaximized ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+          </button>
           <button 
             onClick={onClose} 
             className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
@@ -642,6 +676,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
           >
             <X className="w-6 h-6" />
           </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 sm:p-7 space-y-4 sm:space-y-5 text-xs sm:text-sm overflow-y-auto flex-1">
