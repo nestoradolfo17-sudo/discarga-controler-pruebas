@@ -12,6 +12,9 @@ interface StatsCardsProps {
   cajasFisicasHoy?: number;
   cajasEntregadasHoy?: number;
   onSelectTab?: (tab: 'board' | 'liquidated') => void;
+  // Versión compacta (una sola fila de indicadores pequeños) para dejar el
+  // máximo espacio posible al Tablero de Rutas en la tablet.
+  compact?: boolean;
 }
 
 export const StatsCards: React.FC<StatsCardsProps> = ({
@@ -25,7 +28,48 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   cajasFisicasHoy,
   cajasEntregadasHoy,
   onSelectTab,
+  compact = false,
 }) => {
+  if (compact) {
+    const fmt = (n?: number) =>
+      n !== undefined ? Number(n.toFixed(1)).toLocaleString('es-GT', { maximumFractionDigits: 1 }) : '0';
+    const pills: {
+      label: string;
+      value: string | number;
+      icon: React.ComponentType<{ className?: string }>;
+      cls: string;
+      tab: 'board' | 'liquidated';
+      title: string;
+    }[] = [
+      { label: 'Pendientes', value: pendientes, icon: Clock, cls: 'bg-amber-50 border-amber-200 text-amber-700', tab: 'board', title: 'Rutas pendientes por asignar' },
+      { label: 'Tránsito', value: transito, icon: Navigation, cls: 'bg-blue-50 border-blue-200 text-blue-700', tab: 'board', title: 'Rutas en reparto' },
+      { label: 'Abiertas', value: abiertas, icon: AlertTriangle, cls: 'bg-orange-50 border-orange-200 text-orange-700', tab: 'board', title: 'Abiertas / con devolución, por reasignar' },
+      { label: 'A Piso', value: pisoHoy, icon: Warehouse, cls: 'bg-yellow-50 border-yellow-200 text-yellow-700', tab: 'board', title: fechaHoy ? `Rutas a piso · ${fechaHoy}` : 'Rutas a piso hoy' },
+      { label: 'Liquidadas', value: liquidadas, icon: CheckCircle2, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700', tab: 'liquidated', title: liquidadasTotal !== undefined ? `${liquidadas} hoy · ${liquidadasTotal} en histórico` : 'Ver liquidadas' },
+      { label: 'Cajas', value: fmt(cajasFisicasHoy), icon: Package, cls: 'bg-indigo-50 border-indigo-200 text-indigo-700', tab: 'board', title: cajasEntregadasHoy ? `Carga total del día · ${fmt(cajasEntregadasHoy)} entregadas` : 'Carga total del día (cajas físicas)' },
+    ];
+    return (
+      <div className="flex items-center gap-1.5 overflow-x-auto">
+        {pills.map((p) => {
+          const Icon = p.icon;
+          return (
+            <button
+              key={p.label}
+              type="button"
+              title={p.title}
+              onClick={() => onSelectTab && onSelectTab(p.tab)}
+              className={`flex items-center gap-1.5 min-h-[40px] px-2.5 rounded-xl border whitespace-nowrap cursor-pointer active:scale-95 transition ${p.cls}`}
+            >
+              <Icon className="w-3.5 h-3.5 shrink-0" />
+              <span className="text-sm font-bold leading-none">{p.value}</span>
+              <span className="text-[10.5px] font-semibold leading-none opacity-80">{p.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 md:gap-3">
       <div
