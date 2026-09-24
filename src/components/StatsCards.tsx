@@ -240,3 +240,32 @@ export const LiquidatedStatsStrip: React.FC<{
     </div>
   );
 };
+
+// --- Tira genérica de indicadores (mismo estilo que Tablero y Liquidadas) ---
+// Usada en Personal (VPP / VPPB / APP) y Camiones (cantidad por capacidad).
+export interface StatPill {
+  label: string;
+  value: string | number;
+  cls: string; // colores: fondo, borde y texto (Tailwind)
+  title?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+}
+
+export const StatPills: React.FC<{ pills: StatPill[] }> = ({ pills }) => (
+  <div className="flex items-center gap-1.5 overflow-x-auto">
+    {pills.map((p) => {
+      const Icon = p.icon;
+      return (
+        <div
+          key={p.label}
+          title={p.title || p.label}
+          className={`flex items-center gap-1.5 min-h-[40px] px-2.5 rounded-xl border whitespace-nowrap ${p.cls}`}
+        >
+          {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
+          <span className="text-sm font-bold leading-none">{p.value}</span>
+          <span className="text-[10.5px] font-semibold leading-none opacity-80">{p.label}</span>
+        </div>
+      );
+    })}
+  </div>
+);
