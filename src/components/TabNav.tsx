@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Download, RefreshCw, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, AlertTriangle, ShieldCheck, Gauge, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Search, Download, RefreshCw, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, AlertTriangle, ShieldCheck, Gauge, PanelLeftClose, PanelLeftOpen, Maximize2 } from 'lucide-react';
 
 export type ActiveTab = 'dashboard' | 'board' | 'liquidated' | 'trucks' | 'staff' | 'batch' | 'users';
 
@@ -46,6 +46,8 @@ interface TabNavProps {
   // Ocultar / mostrar el menú lateral para dar más ancho al tablero.
   railCollapsed?: boolean;
   onToggleRail?: () => void;
+  // Abre el Tablero de Rutas a pantalla completa (solo se muestra en el Tablero).
+  onFullscreen?: () => void;
 }
 
 interface NavItem {
@@ -86,6 +88,7 @@ export const TabNav: React.FC<TabNavProps> = ({
   leading,
   railCollapsed = false,
   onToggleRail,
+  onFullscreen,
 }) => {
   const items: NavItem[] = [
     { key: 'dashboard', label: 'Dashboard', short: 'Dashboard', icon: Gauge, activeClass: 'bg-slate-900 text-white', iconClass: 'text-slate-500', show: showDashboard },
@@ -200,6 +203,16 @@ export const TabNav: React.FC<TabNavProps> = ({
       </div>
 
       <div className="flex items-center gap-2 ml-auto">
+        {onFullscreen && (
+          <button
+            onClick={onFullscreen}
+            title="Ver el Tablero de Rutas a pantalla completa"
+            className="flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-slate-900 text-white text-xs font-semibold cursor-pointer active:scale-95"
+          >
+            <Maximize2 className="w-4 h-4" />
+            <span className="hidden sm:inline">Pantalla completa</span>
+          </button>
+        )}
         {onOpenUnassignedResourcesModal && (
           <button
             id="btnMotivosPendientes"
