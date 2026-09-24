@@ -823,6 +823,39 @@ export default function App() {
       return next;
     });
   };
+  // Tablero de Rutas a pantalla completa (sin barra superior, menú ni filas
+  // de arriba). También pide pantalla completa al navegador cuando es posible.
+  const [boardFullscreen, setBoardFullscreen] = useState(false);
+  const enterBoardFullscreen = () => {
+    setBoardFullscreen(true);
+    try {
+      const el = document.documentElement as any;
+      if (!document.fullscreenElement && el.requestFullscreen) void el.requestFullscreen().catch(() => {});
+    } catch {
+      /* algunos navegadores de tablet no lo permiten: queda el modo dentro de la página */
+    }
+  };
+  const exitBoardFullscreen = () => {
+    setBoardFullscreen(false);
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) void document.exitFullscreen().catch(() => {});
+    } catch {
+      /* nada */
+    }
+  };
+  useEffect(() => {
+    // Si el usuario sale de la pantalla completa del navegador (tecla Esc o gesto),
+    // también se sale del modo pantalla completa del tablero.
+    const onFsChange = () => {
+      if (!document.fullscreenElement) setBoardFullscreen(false);
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+  useEffect(() => {
+    if (activeTab !== 'board' && boardFullscreen) exitBoardFullscreen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
   // Indicadores del módulo de Rutas Liquidadas (los calcula esa vista según sus filtros).
   const [liqKpis, setLiqKpis] = useState<LiquidatedKpis | null>(null);
 
@@ -3054,6 +3087,7 @@ export default function App() {
             mode="toolbar"
             railCollapsed={railCollapsed}
             onToggleRail={toggleRail}
+            onFullscreen={activeTab === 'board' ? enterBoardFullscreen : undefined}
             leading={
               // Indicadores según la sección: los principales (pendientes, tránsito,
               // etc.) en el Tablero de Rutas; los de liquidación en Rutas Liquidadas.
@@ -3117,7 +3151,49 @@ export default function App() {
         )}
 
         {activeTab === 'board' && (
-          <div className="flex-1 min-h-[320px]">
+          <div
+            className={
+              boardFullscreen
+                ? 'fixed inset-0 z-40 bg-slate-100 flex flex-col gap-2 p-2 sm:p-3'
+                : 'flex-1 min-h-[320px]'
+            }
+          >
+          {boardFullscreen && (
+            <div className="shrink-0 flex flex-wrap items-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm px-2.5 py-2">
+              <span className="font-bold text-sm text-slate-800 px-1 whitespace-nowrap">
+                Tablero de Rutas{selectedAgency !== 'TODAS' ? ` · ${selectedAgency}` : ''}
+              </span>
+              <div className="min-w-0">
+                <StatsCards
+                  compact
+                  pendientes={stats.pendientes}
+                  transito={stats.transito}
+                  abiertas={stats.abiertas}
+                  liquidadas={stats.liquidadas}
+                  liquidadasTotal={stats.liquidadasTotal}
+                  pisoHoy={stats.pisoHoy}
+                  fechaHoy={stats.fechaHoy}
+                  cajasFisicasHoy={stats.cajasFisicasHoy}
+                  cajasEntregadasHoy={stats.cajasEntregadasHoy}
+                />
+              </div>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar ruta, camión, piloto..."
+                className="flex-1 min-w-[160px] max-w-xs px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={exitBoardFullscreen}
+                className="ml-auto min-h-[40px] px-3.5 rounded-xl bg-slate-900 text-white text-xs font-semibold cursor-pointer active:scale-95"
+                title="Salir de pantalla completa"
+              >
+                Salir de pantalla completa
+              </button>
+            </div>
+          )}
+          <div className={boardFullscreen ? 'flex-1 min-h-0' : 'h-full'}>
           <RoutesTable
             fillHeight
             routes={filteredActiveRoutes}
@@ -3149,6 +3225,7 @@ export default function App() {
             onBulkMoveToFloor={handleBulkMoveToFloor}
             onOpenDeleteModal={canDeleteData ? (ids) => setDeleteRoutesTargetIds(ids) : undefined}
           />
+          </div>
           </div>
         )}
 
