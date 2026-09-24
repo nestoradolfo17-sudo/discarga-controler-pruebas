@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Route, Staff } from '../types';
 import { exportHistoricalToExcel, getRouteAssignmentType } from '../utils/excel';
 import { parseFlexibleDate, formatDateToGuatemala, formatDateTimeToGuatemala } from '../utils/date';
@@ -6,7 +6,20 @@ import { CheckCircle2, FileText, Download, Search, Filter, Calendar, PackageChec
 import { ClientesRutaList } from './ClientesRutaList';
 import { getRouteKey } from '../utils/routeKey';
 
+// Indicadores del módulo de Rutas Liquidadas. Se calculan con los filtros
+// aplicados (búsqueda, agencia, fechas) y se muestran arriba, en la barra de
+// indicadores de la app (en lugar de los indicadores del Tablero de Rutas).
+export interface LiquidatedKpis {
+  rutas: number;
+  cajasSalida: number;
+  cajasEntregadas: number;
+  cajasDevueltas: number;
+  efectividad: string;
+  cajaAbierta: number;
+}
+
 interface LiquidatedBoardViewProps {
+  onKpisChange?: (kpis: LiquidatedKpis) => void;
   liquidatedRoutes: Route[];
   allRoutes: Route[];
   staff: Staff[];
@@ -20,6 +33,7 @@ interface LiquidatedBoardViewProps {
 }
 
 export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
+  onKpisChange,
   liquidatedRoutes,
   allRoutes,
   staff,
@@ -125,6 +139,18 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
     [filteredList]
   );
 
+  useEffect(() => {
+    onKpisChange?.({
+      rutas: filteredList.length,
+      cajasSalida: totalCajasSalida,
+      cajasEntregadas: totalCajasEntregadas,
+      cajasDevueltas: totalCajasDevueltas,
+      efectividad,
+      cajaAbierta: cajaAbiertaCount,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredList.length, totalCajasSalida, totalCajasEntregadas, totalCajasDevueltas, efectividad, cajaAbiertaCount]);
+
   const handleExport = () => {
     const success = exportHistoricalToExcel(filteredList, staff);
     if (success) {
@@ -156,7 +182,12 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
         </button>
       </div>
 
-      {/* KPI Cards */}
+      {/* Los indicadores (Rutas, Entregadas, Devueltas, Efectividad, Caja
+          Abierta) ahora se muestran arriba, en la barra de indicadores de la app,
+          y cambian con los filtros de esta pantalla. Solo se dibujan aquí si la
+          vista se usa sin esa barra (sin onKpisChange). */}
+      {!onKpisChange && (
+      <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
           <span className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Rutas Liquidadas</span>
@@ -200,6 +231,9 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
           </div>
         )}
       </div>
+
+      </>
+      )}
 
       {/* Filters */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
