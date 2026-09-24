@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Download, RefreshCw, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, AlertTriangle, ShieldCheck, Gauge } from 'lucide-react';
+import { Search, Download, RefreshCw, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, AlertTriangle, ShieldCheck, Gauge, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 export type ActiveTab = 'dashboard' | 'board' | 'liquidated' | 'trucks' | 'staff' | 'batch' | 'users';
 
@@ -43,6 +43,9 @@ interface TabNavProps {
   //    los indicadores compactos (StatsCards compact).
   mode?: 'rail' | 'bar' | 'toolbar';
   leading?: React.ReactNode;
+  // Ocultar / mostrar el menú lateral para dar más ancho al tablero.
+  railCollapsed?: boolean;
+  onToggleRail?: () => void;
 }
 
 interface NavItem {
@@ -81,6 +84,8 @@ export const TabNav: React.FC<TabNavProps> = ({
   isAdmin = false,
   mode = 'toolbar',
   leading,
+  railCollapsed = false,
+  onToggleRail,
 }) => {
   const items: NavItem[] = [
     { key: 'dashboard', label: 'Dashboard', short: 'Dashboard', icon: Gauge, activeClass: 'bg-slate-900 text-white', iconClass: 'text-slate-500', show: showDashboard },
@@ -96,6 +101,16 @@ export const TabNav: React.FC<TabNavProps> = ({
   if (mode === 'rail') {
     return (
       <nav className="flex flex-col gap-1.5 p-2" aria-label="Secciones">
+        {onToggleRail && (
+          <button
+            onClick={onToggleRail}
+            title="Ocultar menú para ampliar el tablero"
+            className="w-full min-h-[40px] flex items-center justify-center gap-1 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 cursor-pointer active:scale-95"
+          >
+            <PanelLeftClose className="w-4 h-4" />
+            <span className="text-[10px] font-semibold">Ocultar</span>
+          </button>
+        )}
         {items.map((it) => {
           const active = activeTab === it.key;
           const Icon = it.icon;
@@ -162,6 +177,16 @@ export const TabNav: React.FC<TabNavProps> = ({
   // --- Barra de herramientas: indicadores + búsqueda + acciones (una sola fila) ---
   return (
     <div className="flex flex-wrap items-center gap-2 bg-white rounded-2xl border border-slate-200/80 shadow-sm px-2.5 py-2">
+      {onToggleRail && railCollapsed && (
+        <button
+          onClick={onToggleRail}
+          title="Mostrar menú (Tablero, Liquidadas, Camiones, Personal, Carga Excel...)"
+          className="hidden md:flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-slate-900 text-white text-xs font-semibold cursor-pointer active:scale-95"
+        >
+          <PanelLeftOpen className="w-4 h-4" />
+          Menú
+        </button>
+      )}
       {leading && <div className="min-w-0 flex-shrink">{leading}</div>}
       <div className="relative flex-1 min-w-[180px] max-w-sm">
         <input
