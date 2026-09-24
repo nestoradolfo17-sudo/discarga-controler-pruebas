@@ -20,6 +20,30 @@ import {
   Trash2
 } from 'lucide-react';
 import { formatDateToGuatemala, getTomorrowGuatemalaDate } from '../../utils/date';
+import { ResourcePicker, PickerItem, PickerStatus } from '../ResourcePicker';
+import { suggestCrewForRoute } from '../../utils/crewSuggestion';
+
+// Recursos ocupados ahora mismo en OTRAS rutas en tránsito (para no
+// precargarlos como sugerencia por defecto).
+function busyNamesAndTrucks(routes: Route[], excludeKey: string) {
+  const people = new Set<string>();
+  const trucksBusy = new Set<string>();
+  routes.forEach((r) => {
+    if (r.estado !== 'En Tránsito' || !r.asignacion || getRouteKey(r) === excludeKey) return;
+    const a = r.asignacion;
+    if (a.camionId) trucksBusy.add(a.camionId);
+    [a.conductor, a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].forEach((n) => n && people.add(n));
+  });
+  return { people, trucks: trucksBusy };
+}
+
+// ¿Tiene un motivo de no asignación registrado HOY? (vacaciones, suspensión,
+// etc.). Un motivo de un día anterior ya no cuenta.
+function isNotAvailableToday(motivo?: string | null, fecha?: string | null, todayStr?: string): boolean {
+  if (!motivo) return false;
+  if (!fecha) return true;
+  return String(fecha).slice(0, 10) === (todayStr || formatDateToGuatemala(new Date()));
+}
 
 interface AssignModalProps {
   isOpen: boolean;
@@ -28,6 +52,9 @@ interface AssignModalProps {
   trucks: Truck[];
   staff: Staff[];
   activeRoutes?: Route[];
+  // Histórico de rutas liquidadas: junto con activeRoutes se usa para sugerir
+  // la tripulación más frecuente de esta misma ruta (ver utils/crewSuggestion).
+  historyRoutes?: Route[];
   // Corrección: se agrega "fecha" a ambos callbacks porque el mismo ID de ruta
   // puede repetirse en fechas distintas (ver src/utils/routeKey.ts) — sin esto, la
   // asignación o el envío a piso podían terminar aplicándose también a otra fila
@@ -63,6 +90,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   trucks,
   staff,
   activeRoutes = [],
+  historyRoutes = [],
   onConfirmAssignment,
   onMoveToFloor,
   onShowToast,
@@ -78,6 +106,9 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   const [allowPilotsAsHelpers, setAllowPilotsAsHelpers] = useState(false);
   const [selectedActiveCrewRouteId, setSelectedActiveCrewRouteId] = useState('');
   const [motivoPiso, setMotivoPiso] = useState('Capacidad de flota / Reprogramación a piso para mañana');
+  // Buscador táctil abierto: camión, piloto o auxiliares (ver ResourcePicker).
+  const [pickerOpen, setPickerOpen] = useState<null | 'truck' | 'driver' | 'helpers'>(null);
+  const routeKeyStr = route ? getRouteKey(route) : '';
 
   useEffect(() => {
     if (isOpen && route) {
@@ -150,24 +181,44 @@ export const AssignModal: React.FC<AssignModalProps> = ({
         );
         setAllowPilotsAsHelpers(hasPilotHelper);
       } else {
-        // default select first available truck and driver
-        const firstAvailTruck = trucks.find((t) => t.estado === 'Disponible');
-        setTruckId(firstAvailTruck ? firstAvailTruck.id : '');
-
-        const firstAvailDriver = staff.find(
-          (s) =>
-            (s.puesto === 'VPP' || s.puesto === 'VPPB' || s.rol === 'Conductor') &&
-            s.estado === 'Disponible'
+        // Corrección: antes se preseleccionaba el PRIMER camión y el PRIMER piloto
+        // "Disponible" de toda la lista (incluso de otra agencia). Ahora se
+        // precarga la tripulación MÁS FRECUENTE de esta misma ruta (mismo número
+        // y agencia en días anteriores), omitiendo a quien hoy esté en tránsito
+        // en otra ruta o marcado como no disponible. Si no hay historial, los
+        // campos quedan vacíos para elegirlos con el buscador.
+        const sug = suggestCrewForRoute(route, [...activeRoutes, ...historyRoutes], trucks, staff);
+        const busy = busyNamesAndTrucks(activeRoutes, getRouteKey(route));
+        const todayStr = formatDateToGuatemala(new Date());
+        const unavailableToday = (name: string) => {
+          const st = staff.find((x) => x.nombre === name);
+          return !!st && isNotAvailableToday(st.motivoNoAsignado, st.motivoNoAsignadoFecha, todayStr);
+        };
+        const okTruck = sug?.truckId && !busy.trucks.has(sug.truckId) ? sug.truckId : '';
+        const okDriver =
+          sug?.driverName && !busy.people.has(sug.driverName) && !unavailableToday(sug.driverName)
+            ? sug.driverName
+            : '';
+        const okHelpers = (sug?.helpers || []).filter((h) => !busy.people.has(h) && !unavailableToday(h));
+        setTruckId(okTruck);
+        setDriverName(okDriver);
+        setHelper1(okHelpers[0] || '');
+        setHelper2(okHelpers[1] || '');
+        setHelper3(okHelpers[2] || '');
+        setHelper4(okHelpers[3] || '');
+        const hasPilotHelper = staff.some(
+          (x) => okHelpers.includes(x.nombre) && (x.puesto === 'VPP' || x.puesto === 'VPPB' || x.rol === 'Conductor')
         );
-        setDriverName(firstAvailDriver ? firstAvailDriver.nombre : '');
-        setHelper1('');
-        setHelper2('');
-        setHelper3('');
-        setHelper4('');
-        setAllowPilotsAsHelpers(false);
+        setAllowPilotsAsHelpers(hasPilotHelper);
       }
+      setPickerOpen(null);
     }
-  }, [isOpen, route, trucks, staff]);
+    // Corrección: solo se reinicia el formulario al ABRIR el modal o cambiar de
+    // ruta. Antes también se reiniciaba cada vez que llegaba un cambio de
+    // camiones/personal por tiempo real, borrando lo que el usuario estaba
+    // eligiendo en la tablet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, routeKeyStr]);
 
   if (!isOpen || !route) return null;
 
@@ -239,10 +290,6 @@ export const AssignModal: React.FC<AssignModalProps> = ({
 
   const selectedTruckObj = trucks.find((t) => t.id === truckId);
   const selectedDriverObj = staff.find((s) => s.nombre === driverName);
-  const helper1IsPilot = getIsPilot(helper1);
-  const helper2IsPilot = getIsPilot(helper2);
-  const helper3IsPilot = getIsPilot(helper3);
-  const helper4IsPilot = getIsPilot(helper4);
 
   // Exclusión mutua dentro de la misma ruta:
   // Al asignar un piloto o auxiliar no debe aparecer si ya está asignado dentro de la misma ruta
@@ -252,27 +299,6 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     return otherAssigned.some((other) => other && other.trim().toLowerCase() === cleanName);
   };
 
-  const selectableDrivers = availableDrivers.filter(
-    (d) => !isAssignedInRoute(d.nombre, helper1, helper2, helper3, helper4)
-  );
-
-  const selectableHelpers1 = availableHelpers.filter(
-    (h) => !isAssignedInRoute(h.nombre, driverName, helper2, helper3, helper4)
-  );
-
-  const selectableHelpers2 = availableHelpers.filter(
-    (h) => !isAssignedInRoute(h.nombre, driverName, helper1, helper3, helper4)
-  );
-
-  const selectableHelpers3 = availableHelpers.filter(
-    (h) => !isAssignedInRoute(h.nombre, driverName, helper1, helper2, helper4)
-  );
-
-  const selectableHelpers4 = availableHelpers.filter(
-    (h) => !isAssignedInRoute(h.nombre, driverName, helper1, helper2, helper3)
-  );
-
-  // Active routes with assigned crews for quick reload autofill
   const activeRoutesWithCrew = activeRoutes.filter(
     (r) => r.estado === 'En Tránsito' && getRouteKey(r) !== getRouteKey(route) && r.asignacion
   );
@@ -354,6 +380,168 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       tipoAsignacion: isPiso ? 'Ruta a Piso' : assignmentType,
     });
   };
+
+  // --- Buscador táctil: listas de camiones, pilotos y auxiliares ---
+  const todayStr = formatDateToGuatemala(new Date());
+  const suggestion = suggestCrewForRoute(route, [...activeRoutes, ...historyRoutes], trucks, staff);
+  const helpersSelected = [helper1, helper2, helper3, helper4].filter(Boolean);
+  const inTransitOthers = activeRoutes.filter(
+    (ar) => ar.estado === 'En Tránsito' && getRouteKey(ar) !== getRouteKey(route) && ar.asignacion
+  );
+  const isPilotStaff = (s: Staff) => s.puesto === 'VPP' || s.puesto === 'VPPB' || s.rol === 'Conductor';
+  const outOfToday = (s: Staff) =>
+    s.estatus === 'BAJA' || isNotAvailableToday(s.motivoNoAsignado, s.motivoNoAsignadoFecha, todayStr);
+
+  const truckItems: PickerItem[] = availableTrucks.map((t) => {
+    const routesOnTruck = inTransitOthers.filter((ar) => ar.asignacion?.camionId === t.id);
+    const isCurrent = t.id === route.asignacion?.camionId;
+    const isBaja = t.estado === 'Baja' && !isCurrent;
+    const isSug = suggestion?.truckId === t.id;
+    const unavailable = !isCurrent && !isBaja && isNotAvailableToday(t.motivoNoAsignado, t.motivoNoAsignadoFecha, todayStr);
+    let status: PickerStatus = 'disponible';
+    let label = 'Disponible';
+    if (isBaja) {
+      status = 'baja';
+      label = 'Baja';
+    } else if (unavailable) {
+      status = 'no_disponible';
+      label = `No disponible: ${t.motivoNoAsignado}`;
+    } else if (routesOnTruck.length > 0) {
+      status = 'compartida';
+      label = `Carga compartida: ${routesOnTruck.map((r) => r.id).join(', ')}`;
+    } else if (t.estado === 'En Ruta') {
+      status = 'enruta';
+      label = 'En ruta';
+    } else if (isSug) {
+      status = 'sugerido';
+      label = `Sugerido · ${suggestion!.truckCount} de ${suggestion!.samples}`;
+    }
+    return {
+      id: t.id,
+      title: t.placa,
+      subtitle: `ID ${t.idCamion || t.id} · Capacidad ${t.capacidad}${t.proveedor ? ` · ${t.proveedor}` : ''}`,
+      searchText: `${t.placa} ${t.idCamion || ''} ${t.id} ${t.proveedor || ''} ${t.capacidad}`,
+      status,
+      statusLabel: label,
+      disabled: isBaja,
+      hidden: unavailable,
+      extraBadge: isSug && status !== 'sugerido' ? 'Sugerido' : undefined,
+    };
+  });
+
+  const driverItems: PickerItem[] = availableDrivers.map((d) => {
+    const routesOnDriver = inTransitOthers.filter((ar) => ar.asignacion?.conductor === d.nombre);
+    const sameTruck = routesOnDriver.filter((ar) => truckId && ar.asignacion?.camionId === truckId);
+    const otherTruck = routesOnDriver.filter((ar) => !truckId || ar.asignacion?.camionId !== truckId);
+    const isSug = suggestion?.driverName === d.nombre;
+    const unavailable = d.nombre !== driverName && outOfToday(d);
+    let status: PickerStatus = 'disponible';
+    let label = 'Disponible';
+    if (unavailable) {
+      status = 'no_disponible';
+      label = d.estatus === 'BAJA' ? 'Estatus BAJA' : `No disponible: ${d.motivoNoAsignado}`;
+    } else if (otherTruck.length > 0) {
+      status = 'conflicto';
+      label = `Conflicto: en ruta ${otherTruck.map((r) => r.id).join(', ')} con otro camión`;
+    } else if (sameTruck.length > 0) {
+      status = 'compartida';
+      label = `Carga compartida: ${sameTruck.map((r) => r.id).join(', ')}`;
+    } else if (d.estado === 'En Ruta') {
+      status = 'enruta';
+      label = 'En ruta';
+    } else if (isSug) {
+      status = 'sugerido';
+      label = `Sugerido · ${suggestion!.driverCount} de ${suggestion!.samples}`;
+    }
+    return {
+      id: d.nombre,
+      title: d.nombre,
+      subtitle: `${d.puesto || 'VPP'} · Cód. ${d.codigoCorto || d.codigo || '—'} · DPI ${d.dpi || 'N/A'}`,
+      searchText: `${d.nombre} ${d.codigoCorto || ''} ${d.codigo || ''} ${d.dpi || ''} ${String(d.dpi || '').replace(/\s+/g, '')} ${d.puesto || ''}`,
+      status,
+      statusLabel: label,
+      hidden: unavailable,
+      extraBadge: isSug && status !== 'sugerido' ? 'Sugerido' : undefined,
+    };
+  });
+
+  const helperItems: PickerItem[] = availableHelpers
+    .filter((h) => h.nombre !== driverName)
+    .map((h) => {
+      const routesOnHelper = inTransitOthers.filter((ar) =>
+        [ar.asignacion?.auxiliar1, ar.asignacion?.auxiliar2, ar.asignacion?.auxiliar3, ar.asignacion?.auxiliar4].includes(h.nombre)
+      );
+      const isSug = !!suggestion?.helpers.includes(h.nombre);
+      const unavailable = !helpersSelected.includes(h.nombre) && outOfToday(h);
+      let status: PickerStatus = 'disponible';
+      let label = 'Disponible';
+      if (unavailable) {
+        status = 'no_disponible';
+        label = h.estatus === 'BAJA' ? 'Estatus BAJA' : `No disponible: ${h.motivoNoAsignado}`;
+      } else if (routesOnHelper.length > 0) {
+        status = 'compartida';
+        label = `En ruta ${routesOnHelper.map((r) => r.id).join(', ')}`;
+      } else if (h.estado === 'En Ruta') {
+        status = 'enruta';
+        label = 'En ruta';
+      } else if (isSug) {
+        status = 'sugerido';
+        label = `Sugerido · ${suggestion!.helperCounts[h.nombre] || 0} de ${suggestion!.samples}`;
+      }
+      return {
+        id: h.nombre,
+        title: h.nombre,
+        subtitle: `${h.puesto || 'APP'} · Cód. ${h.codigoCorto || h.codigo || '—'} · DPI ${h.dpi || 'N/A'}`,
+        searchText: `${h.nombre} ${h.codigoCorto || ''} ${h.codigo || ''} ${h.dpi || ''} ${String(h.dpi || '').replace(/\s+/g, '')} ${h.puesto || ''}`,
+        status,
+        statusLabel: label,
+        hidden: unavailable,
+        extraBadge: isPilotStaff(h) ? 'Piloto como auxiliar' : isSug && status !== 'sugerido' ? 'Sugerido' : undefined,
+      };
+    });
+
+  const setHelpersList = (list: string[]) => {
+    setHelper1(list[0] || '');
+    setHelper2(list[1] || '');
+    setHelper3(list[2] || '');
+    setHelper4(list[3] || '');
+  };
+
+  const handlePickTruck = (id: string) => {
+    setTruckId(id);
+    // Flujo guiado: si falta el piloto, se abre de una vez su buscador.
+    setPickerOpen(driverName ? null : 'driver');
+  };
+
+  const handlePickDriver = (name: string) => {
+    setDriverName(name);
+    const clean = name.trim().toLowerCase();
+    const remaining = helpersSelected.filter((h) => h.trim().toLowerCase() !== clean);
+    if (remaining.length !== helpersSelected.length) setHelpersList(remaining);
+    setPickerOpen(remaining.length === 0 ? 'helpers' : null);
+  };
+
+  const handleAddHelper = (name: string) => {
+    if (helpersSelected.includes(name) || helpersSelected.length >= 4) return;
+    if (driverName.trim().toLowerCase() === name.trim().toLowerCase()) setDriverName('');
+    setHelpersList([...helpersSelected, name]);
+  };
+
+  const handleRemoveHelper = (name: string) => {
+    setHelpersList(helpersSelected.filter((h) => h !== name));
+  };
+
+  const applySuggestion = () => {
+    if (!suggestion) return;
+    if (suggestion.truckId) setTruckId(suggestion.truckId);
+    if (suggestion.driverName) setDriverName(suggestion.driverName);
+    const helpersSug = suggestion.helpers.filter((h) => h !== suggestion.driverName);
+    setHelpersList(helpersSug);
+    if (staff.some((x) => helpersSug.includes(x.nombre) && isPilotStaff(x))) setAllowPilotsAsHelpers(true);
+    onShowToast('Se cargó la tripulación más frecuente de esta ruta. Revísala y confirma.', 'info');
+  };
+
+  const sugTruck = suggestion?.truckId ? trucks.find((t) => t.id === suggestion.truckId) : undefined;
 
   const isReassign =
     route.estado === 'Abierta' ||
@@ -743,548 +931,209 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                 </div>
               ) : null}
 
-              {/* Camión y Piloto en cuadrícula práctica */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Camión / Unidad */}
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between space-y-2.5">
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label htmlFor="assignTruckSelect" className="font-bold text-slate-800 text-xs sm:text-sm flex items-center">
-                        <TruckIcon className="w-4 h-4 mr-1.5 text-blue-600" />
-                        Camión / Unidad Asignada *
-                      </label>
-                      {isRecarga && (
-                        <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
-                          Modo Recarga
-                        </span>
-                      )}
+              {/* Tripulación sugerida: la más frecuente de esta misma ruta */}
+              {suggestion && (
+                <div className="p-3.5 sm:p-4 bg-violet-50 border border-violet-200 rounded-xl space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="font-bold text-xs sm:text-sm text-violet-900 flex items-center">
+                      <Sparkles className="w-4 h-4 mr-1.5 text-violet-600 flex-shrink-0" />
+                      Tripulación más frecuente de la ruta {route.id}
+                      <span className="ml-1.5 font-medium text-violet-700">
+                        ({suggestion.samples} salida{suggestion.samples === 1 ? '' : 's'} anterior{suggestion.samples === 1 ? '' : 'es'})
+                      </span>
                     </div>
-                    <select
-                      id="assignTruckSelect"
-                      value={truckId}
-                      onChange={(e) => setTruckId(e.target.value)}
-                      required
-                      className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold bg-white text-slate-800 outline-none text-xs sm:text-sm cursor-pointer shadow-2xs"
+                    <button
+                      type="button"
+                      onClick={applySuggestion}
+                      className="min-h-[44px] px-4 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm flex items-center gap-1.5 cursor-pointer active:scale-95"
                     >
-                      {availableTrucks.length === 0 ? (
-                        <option value="">-- No hay camiones disponibles --</option>
-                      ) : (
-                        <>
-                          <option value="">-- Seleccionar Camión --</option>
-                          {availableTrucks.map((t) => {
-                            const routesOnTruck = activeRoutes.filter(
-                              (ar) =>
-                                ar.estado === 'En Tránsito' &&
-                                getRouteKey(ar) !== getRouteKey(route) &&
-                                ar.asignacion?.camionId === t.id
-                            );
-                            const isCurrentlyAssignedHere = t.id === route.asignacion?.camionId;
-                            const isBaja = t.estado === 'Baja' && !isCurrentlyAssignedHere;
-                            let tag = '[Disponible]';
-                            if (isBaja) {
-                              tag = '[Baja - No disponible]';
-                            } else if (routesOnTruck.length > 0) {
-                              tag = `[En Ruta: ${routesOnTruck.map((r) => `Ruta ${r.id}`).join(', ')} - Optimización Carga Compartida]`;
-                            } else if (t.estado === 'En Ruta') {
-                              tag = '[En Ruta]';
-                            }
-                            return (
-                              <option key={t.id} value={t.id} disabled={isBaja}>
-                                ID: {t.idCamion || t.id} - Placa: {t.placa} ({t.capacidad}) {tag}
-                              </option>
-                            );
-                          })}
-                        </>
-                      )}
-                    </select>
+                      <Sparkles className="w-4 h-4" />
+                      Usar sugerencia
+                    </button>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                    <div className="bg-white rounded-lg border border-violet-100 px-3 py-2">
+                      <div className="text-[10px] font-bold uppercase text-violet-500">Camión</div>
+                      <div className="font-bold text-slate-800 truncate">
+                        {sugTruck ? sugTruck.placa : '—'}
+                        {sugTruck && <span className="font-medium text-slate-500"> · {suggestion.truckCount} de {suggestion.samples}</span>}
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border border-violet-100 px-3 py-2">
+                      <div className="text-[10px] font-bold uppercase text-violet-500">Piloto</div>
+                      <div className="font-bold text-slate-800 truncate">
+                        {suggestion.driverName || '—'}
+                        {suggestion.driverName && <span className="font-medium text-slate-500"> · {suggestion.driverCount} de {suggestion.samples}</span>}
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border border-violet-100 px-3 py-2">
+                      <div className="text-[10px] font-bold uppercase text-violet-500">Auxiliares</div>
+                      <div className="font-bold text-slate-800 truncate">
+                        {suggestion.helpers.length > 0 ? suggestion.helpers.join(', ') : '—'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                  {selectedTruckObj && (() => {
-                    const routesOnTruck = activeRoutes.filter(
-                      (ar) =>
-                        ar.estado === 'En Tránsito' &&
-                        getRouteKey(ar) !== getRouteKey(route) &&
-                        ar.asignacion?.camionId === selectedTruckObj.id
-                    );
-                    const otherBoxes = routesOnTruck.reduce(
-                      (acc, r) => acc + (parseFloat(String(r.cajasFisicas || 0)) || 0),
-                      0
-                    );
-                    const currentBoxes = parseFloat(String(route.cajasFisicas || 0)) || 0;
-                    const combinedBoxes = (currentBoxes + otherBoxes).toFixed(1);
-
-                    return (
-                      <div className="pt-2.5 border-t border-slate-200/80 space-y-1.5 text-xs">
-                        <div className="flex items-center justify-between text-slate-600">
-                          <span className="flex items-center font-medium">
-                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-1.5"></span>
-                            Capacidad: <strong className="ml-1 text-slate-800">{selectedTruckObj.capacidad}</strong>
-                          </span>
-                          <span className="text-xs font-mono bg-blue-50 text-blue-800 px-2 py-0.5 rounded border border-blue-200 font-semibold">
-                            Carga ruta: {route.cajasFisicas} cajas
-                          </span>
+              {/* Camión y Piloto: botones grandes que abren el buscador táctil */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800 text-xs sm:text-sm flex items-center">
+                      <TruckIcon className="w-4 h-4 mr-1.5 text-blue-600" />
+                      1. Camión / Unidad *
+                    </span>
+                    {isRecarga && (
+                      <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">Modo Recarga</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen('truck')}
+                    className={`w-full min-h-[64px] text-left px-4 py-3 rounded-xl border-2 flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] transition ${
+                      selectedTruckObj ? 'border-blue-300 bg-blue-50/60' : 'border-dashed border-slate-300 bg-slate-50 hover:border-blue-400'
+                    }`}
+                  >
+                    {selectedTruckObj ? (
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 text-base truncate">{selectedTruckObj.placa}</div>
+                        <div className="text-xs text-slate-500 truncate">
+                          ID {selectedTruckObj.idCamion || selectedTruckObj.id} · Capacidad {selectedTruckObj.capacidad} · Carga ruta {route.cajasFisicas} cajas
                         </div>
-                        {routesOnTruck.length > 0 && (
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-sky-50 border border-sky-200 rounded px-2.5 py-1.5 text-sky-900 gap-1">
-                            <span className="text-[11px]">
-                              <strong>Carga compartida</strong> con {routesOnTruck.map((r) => `Ruta ${r.id}`).join(', ')} ({otherBoxes.toFixed(1)} cajas)
-                            </span>
-                            <span className="text-[11px] font-bold font-mono text-sky-950">
-                              Total camión: {combinedBoxes} cajas
-                            </span>
-                          </div>
-                        )}
+                      </div>
+                    ) : (
+                      <span className="text-sm font-semibold text-slate-500">Tocar para buscar camión (placa o ID)</span>
+                    )}
+                    <span className="text-xs font-bold text-blue-700 flex-shrink-0">{selectedTruckObj ? 'Cambiar' : 'Elegir'}</span>
+                  </button>
+                  {selectedTruckObj && (() => {
+                    const routesOnTruck = inTransitOthers.filter((ar) => ar.asignacion?.camionId === selectedTruckObj.id);
+                    if (routesOnTruck.length === 0) return null;
+                    const otherBoxes = routesOnTruck.reduce((acc, r) => acc + (parseFloat(String(r.cajasFisicas || 0)) || 0), 0);
+                    const combined = (otherBoxes + (parseFloat(String(route.cajasFisicas || 0)) || 0)).toFixed(1);
+                    return (
+                      <div className="text-[11px] bg-sky-50 border border-sky-200 rounded-lg px-2.5 py-1.5 text-sky-900">
+                        <strong>Carga compartida</strong> con {routesOnTruck.map((r) => `Ruta ${r.id}`).join(', ')} ({otherBoxes.toFixed(1)} cajas) · Total camión: <strong>{combined} cajas</strong>
                       </div>
                     );
                   })()}
                 </div>
 
-                {/* Piloto Titular */}
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between space-y-2.5">
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label htmlFor="assignDriverSelect" className="font-bold text-slate-800 text-xs sm:text-sm flex items-center">
-                        <User className="w-4 h-4 mr-1.5 text-indigo-600" />
-                        Piloto Titular (VPP / VPPB) *
-                      </label>
-                      {isRecarga && (
-                        <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
-                          Segundo Viaje
-                        </span>
-                      )}
-                    </div>
-                    <select
-                      id="assignDriverSelect"
-                      value={driverName}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setDriverName(val);
-                        if (val) {
-                          const clean = val.trim().toLowerCase();
-                          if (helper1.trim().toLowerCase() === clean) setHelper1('');
-                          if (helper2.trim().toLowerCase() === clean) setHelper2('');
-                          if (helper3.trim().toLowerCase() === clean) setHelper3('');
-                          if (helper4.trim().toLowerCase() === clean) setHelper4('');
-                        }
-                      }}
-                      required
-                      className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white font-medium text-slate-800 outline-none text-xs sm:text-sm cursor-pointer shadow-2xs"
-                    >
-                      {selectableDrivers.length === 0 ? (
-                        <option value="">-- No hay pilotos disponibles (VPP / VPPB) --</option>
-                      ) : (
-                        <>
-                          <option value="">-- Seleccionar Piloto Titular --</option>
-                          {selectableDrivers.map((d) => {
-                            const routesOnDriver = activeRoutes.filter(
-                              (ar) =>
-                                ar.estado === 'En Tránsito' &&
-                                getRouteKey(ar) !== getRouteKey(route) &&
-                                ar.asignacion?.conductor === d.nombre
-                            );
-                            // Corrección: "Carga Compartida" solo aplica cuando las otras
-                            // rutas activas del piloto usan el MISMO camión (es la misma
-                            // salida física). Si usan un camión distinto, el piloto no puede
-                            // estar físicamente en dos camiones a la vez — es un conflicto de
-                            // agenda, no una optimización de carga.
-                            const sameTruckRoutes = routesOnDriver.filter(
-                              (ar) => truckId && ar.asignacion?.camionId === truckId
-                            );
-                            const differentTruckRoutes = routesOnDriver.filter(
-                              (ar) => !truckId || ar.asignacion?.camionId !== truckId
-                            );
-                            let tag = '[Disponible]';
-                            if (differentTruckRoutes.length > 0) {
-                              tag = `[⚠ CONFLICTO - Ya asignado en: ${differentTruckRoutes.map((r) => `Ruta ${r.id}`).join(', ')} con otro camión]`;
-                            } else if (sameTruckRoutes.length > 0) {
-                              tag = `[En Ruta: ${sameTruckRoutes.map((r) => `Ruta ${r.id}`).join(', ')} - Carga Compartida]`;
-                            } else if (d.estado === 'En Ruta') {
-                              tag = '[En Ruta]';
-                            }
-                            return (
-                              <option key={d.id} value={d.nombre}>
-                                {d.nombre} [{d.puesto || 'VPP'}] {tag} (DPI: {d.dpi || 'N/A'})
-                              </option>
-                            );
-                          })}
-                        </>
-                      )}
-                    </select>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800 text-xs sm:text-sm flex items-center">
+                      <User className="w-4 h-4 mr-1.5 text-indigo-600" />
+                      2. Piloto Titular (VPP / VPPB) *
+                    </span>
+                    {isRecarga && (
+                      <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">Segundo Viaje</span>
+                    )}
                   </div>
-
-                  {selectedDriverObj && (() => {
-                    const routesOnDriver = activeRoutes.filter(
-                      (ar) =>
-                        ar.estado === 'En Tránsito' &&
-                        getRouteKey(ar) !== getRouteKey(route) &&
-                        ar.asignacion?.conductor === selectedDriverObj.nombre
-                    );
-                    // Corrección: distinguir entre Carga Compartida real (mismo camión)
-                    // y un conflicto de agenda (camión distinto, mismo piloto en tránsito).
-                    const sameTruckRoutes = routesOnDriver.filter(
-                      (ar) => truckId && ar.asignacion?.camionId === truckId
-                    );
-                    const differentTruckRoutes = routesOnDriver.filter(
-                      (ar) => !truckId || ar.asignacion?.camionId !== truckId
-                    );
-                    return (
-                      <div className="pt-2.5 border-t border-slate-200/80 space-y-1 text-xs text-slate-600">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-indigo-900 truncate">
-                            Puesto: {selectedDriverObj.puesto || 'VPP'}
-                          </span>
-                          <span className="text-xs font-mono text-slate-500">
-                            DPI: {selectedDriverObj.dpi || 'N/A'}
-                          </span>
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen('driver')}
+                    className={`w-full min-h-[64px] text-left px-4 py-3 rounded-xl border-2 flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] transition ${
+                      selectedDriverObj ? 'border-indigo-300 bg-indigo-50/60' : 'border-dashed border-slate-300 bg-slate-50 hover:border-indigo-400'
+                    }`}
+                  >
+                    {selectedDriverObj ? (
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 text-base truncate">{selectedDriverObj.nombre}</div>
+                        <div className="text-xs text-slate-500 truncate">
+                          {selectedDriverObj.puesto || 'VPP'} · Cód. {selectedDriverObj.codigoCorto || selectedDriverObj.codigo || '—'} · DPI {selectedDriverObj.dpi || 'N/A'}
                         </div>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-semibold text-slate-500">Tocar para buscar piloto (nombre, código o DPI)</span>
+                    )}
+                    <span className="text-xs font-bold text-indigo-700 flex-shrink-0">{selectedDriverObj ? 'Cambiar' : 'Elegir'}</span>
+                  </button>
+                  {selectedDriverObj && (() => {
+                    const routesOnDriver = inTransitOthers.filter((ar) => ar.asignacion?.conductor === selectedDriverObj.nombre);
+                    const sameTruckRoutes = routesOnDriver.filter((ar) => truckId && ar.asignacion?.camionId === truckId);
+                    const differentTruckRoutes = routesOnDriver.filter((ar) => !truckId || ar.asignacion?.camionId !== truckId);
+                    return (
+                      <>
                         {sameTruckRoutes.length > 0 && (
-                          <div className="text-[11px] bg-indigo-50 border border-indigo-200 rounded px-2 py-0.5 text-indigo-900">
+                          <div className="text-[11px] bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5 text-indigo-900">
                             Asignado también en: <strong>{sameTruckRoutes.map((r) => `Ruta ${r.id}`).join(', ')}</strong> (Carga Compartida)
                           </div>
                         )}
                         {differentTruckRoutes.length > 0 && (
-                          <div className="text-[11px] bg-rose-50 border border-rose-200 rounded px-2 py-0.5 text-rose-800 font-semibold">
+                          <div className="text-[11px] bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5 text-rose-800 font-semibold">
                             ⚠ Conflicto: ya está En Tránsito en <strong>{differentTruckRoutes.map((r) => `Ruta ${r.id}`).join(', ')}</strong> con otro camión.
                           </div>
                         )}
-                      </div>
+                      </>
                     );
                   })()}
                 </div>
               </div>
 
-              {/* Auxiliares de Reparto con opción de asignar pilotos */}
-              <div className="bg-indigo-50/40 p-4 sm:p-5 rounded-xl border border-indigo-100 space-y-3.5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <div>
-                    <label className="font-bold text-indigo-950 text-xs sm:text-sm flex items-center">
-                      <Users className="w-4 h-4 mr-1.5 text-indigo-700" />
-                      Auxiliares de Reparto (Máximo 3)
-                    </label>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Selecciona los peones o ayudantes para la descarga y entrega
-                    </p>
-                  </div>
-
-                  <div className="flex items-center space-x-2.5 flex-wrap gap-y-1.5">
-                    {/* Switch/Checkbox: Permitir pilotos como auxiliares */}
+              {/* Auxiliares: etiquetas táctiles + un solo botón para agregar */}
+              <div className="bg-indigo-50/40 p-4 rounded-xl border border-indigo-100 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="font-bold text-indigo-950 text-xs sm:text-sm flex items-center">
+                    <Users className="w-4 h-4 mr-1.5 text-indigo-700" />
+                    3. Auxiliares de Reparto (hasta 4)
+                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
                     <label
-                      className={`inline-flex items-center px-3 py-1.5 rounded-lg border text-xs sm:text-sm font-semibold cursor-pointer transition-all select-none ${
-                        allowPilotsAsHelpers
-                          ? 'bg-indigo-600 border-indigo-700 text-white shadow-2xs'
-                          : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400'
+                      className={`inline-flex items-center min-h-[40px] px-3 rounded-lg border text-xs font-semibold cursor-pointer select-none ${
+                        allowPilotsAsHelpers ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-300 text-slate-700'
                       }`}
-                      title="Habilitar para poder seleccionar pilotos (VPP/VPPB) disponibles como auxiliares en esta ruta"
+                      title="Permite elegir pilotos (VPP/VPPB) como auxiliares en esta ruta"
                     >
                       <input
                         type="checkbox"
                         checked={allowPilotsAsHelpers}
                         onChange={(e) => setAllowPilotsAsHelpers(e.target.checked)}
-                        className="w-4 h-4 rounded text-indigo-600 accent-indigo-600 focus:ring-0 mr-2 cursor-pointer"
+                        className="w-4 h-4 mr-2 accent-indigo-600 cursor-pointer"
                       />
-                      <span>Permitir piloto como auxiliar</span>
-                      {allowPilotsAsHelpers && (
-                        <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-white/25 text-white rounded">
-                          Habilitado
-                        </span>
-                      )}
+                      Permitir piloto como auxiliar
                     </label>
-
-                    {/* Botón rápido para limpiar auxiliares */}
-                    {(helper1 || helper2 || helper3 || helper4) && (
+                    {helpersSelected.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setHelper1('');
-                          setHelper2('');
-                          setHelper3('');
-                          setHelper4('');
-                        }}
-                        className="text-xs text-slate-500 hover:text-red-600 font-semibold px-2.5 py-1.5 rounded-lg border border-transparent hover:border-red-200 hover:bg-red-50 flex items-center transition-colors cursor-pointer"
-                        title="Quitar todos los auxiliares seleccionados"
+                        onClick={() => setHelpersList([])}
+                        className="min-h-[40px] px-3 rounded-lg text-xs font-semibold text-slate-500 hover:text-red-600 border border-transparent hover:border-red-200 hover:bg-red-50 flex items-center cursor-pointer"
                       >
-                        <Trash2 className="w-3.5 h-3.5 mr-1 text-slate-400 hover:text-red-500" />
-                        Limpiar auxiliares
+                        <Trash2 className="w-3.5 h-3.5 mr-1" />
+                        Quitar todos
                       </button>
                     )}
                   </div>
                 </div>
-
-                {/* Notificación cuando la opción de pilotos de auxiliar está habilitada */}
-                {allowPilotsAsHelpers && (
-                  <div className="px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg flex items-center text-xs text-indigo-900">
-                    <Sparkles className="w-4 h-4 mr-2 text-indigo-600 flex-shrink-0" />
-                    <span>
-                      <strong>Opción habilitada:</strong> Los pilotos disponibles (VPP/VPPB) ahora están incluidos en los selectores de auxiliar identificados con etiqueta especial.
+                <div className="flex flex-wrap gap-2">
+                  {helpersSelected.map((h) => (
+                    <span
+                      key={h}
+                      className={`inline-flex items-center min-h-[48px] pl-4 pr-1.5 rounded-xl border-2 text-sm font-semibold ${
+                        getIsPilot(h) ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-white border-indigo-200 text-slate-800'
+                      }`}
+                    >
+                      {h}
+                      {getIsPilot(h) && <span className="ml-1.5 text-[10px] font-bold text-amber-700">(Piloto)</span>}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveHelper(h)}
+                        className="ml-1.5 w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                        title={`Quitar a ${h}`}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     </span>
-                  </div>
-                )}
-
-                {/* Grid de 4 selectores de auxiliares */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {/* Auxiliar 1 */}
-                  <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs flex flex-col justify-between">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label htmlFor="helperSelect1" className="text-xs sm:text-sm font-bold text-slate-700">
-                        Auxiliar 1 (Principal):
-                      </label>
-                      {helper1 && (
-                        <button
-                          type="button"
-                          onClick={() => setHelper1('')}
-                          className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-slate-100 transition cursor-pointer"
-                          title="Quitar Auxiliar 1"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    <select
-                      id="helperSelect1"
-                      value={helper1}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setHelper1(val);
-                        if (val) {
-                          const clean = val.trim().toLowerCase();
-                          if (driverName.trim().toLowerCase() === clean) setDriverName('');
-                          if (helper2.trim().toLowerCase() === clean) setHelper2('');
-                          if (helper3.trim().toLowerCase() === clean) setHelper3('');
-                          if (helper4.trim().toLowerCase() === clean) setHelper4('');
-                        }
-                      }}
-                      className="w-full p-2.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 bg-white font-medium text-xs sm:text-sm text-slate-800 outline-none cursor-pointer"
+                  ))}
+                  {helpersSelected.length < 4 && (
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen('helpers')}
+                      className="min-h-[48px] px-4 rounded-xl border-2 border-dashed border-indigo-300 text-indigo-700 font-semibold text-sm hover:bg-indigo-50 cursor-pointer active:scale-95"
                     >
-                      <option value="">-- Sin Auxiliar 1 --</option>
-                      {selectableHelpers1.map((h) => {
-                        const isPilot = h.puesto === 'VPP' || h.puesto === 'VPPB' || h.rol === 'Conductor';
-                        const routesOnHelper = activeRoutes.filter(
-                          (ar) =>
-                            ar.estado === 'En Tránsito' &&
-                            getRouteKey(ar) !== getRouteKey(route) &&
-                            (ar.asignacion?.auxiliar1 === h.nombre ||
-                              ar.asignacion?.auxiliar2 === h.nombre ||
-                              ar.asignacion?.auxiliar3 === h.nombre ||
-                              ar.asignacion?.auxiliar4 === h.nombre)
-                        );
-                        let helperTag = '';
-                        if (routesOnHelper.length > 0) {
-                          helperTag = `(En Ruta: ${routesOnHelper.map((r) => `Ruta ${r.id}`).join(', ')})`;
-                        } else if (h.estado === 'En Ruta') {
-                          helperTag = '(En Ruta)';
-                        }
-                        return (
-                          <option key={h.id} value={h.nombre}>
-                            {h.nombre} {isPilot ? `[PILOTO ${h.puesto || 'VPP'} como Auxiliar]` : `[${h.puesto || 'APP'}]`} {helperTag}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    {helper1 && helper1IsPilot && (
-                      <div className="mt-1.5 flex items-center text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                        <User className="w-3 h-3 mr-1 text-amber-600" />
-                        Piloto como Auxiliar
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Auxiliar 2 */}
-                  <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs flex flex-col justify-between">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label htmlFor="helperSelect2" className="text-xs sm:text-sm font-bold text-slate-700">
-                        Auxiliar 2 (Opcional):
-                      </label>
-                      {helper2 && (
-                        <button
-                          type="button"
-                          onClick={() => setHelper2('')}
-                          className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-slate-100 transition cursor-pointer"
-                          title="Quitar Auxiliar 2"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    <select
-                      id="helperSelect2"
-                      value={helper2}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setHelper2(val);
-                        if (val) {
-                          const clean = val.trim().toLowerCase();
-                          if (driverName.trim().toLowerCase() === clean) setDriverName('');
-                          if (helper1.trim().toLowerCase() === clean) setHelper1('');
-                          if (helper3.trim().toLowerCase() === clean) setHelper3('');
-                          if (helper4.trim().toLowerCase() === clean) setHelper4('');
-                        }
-                      }}
-                      className="w-full p-2.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 bg-white font-medium text-xs sm:text-sm text-slate-800 outline-none cursor-pointer"
-                    >
-                      <option value="">-- Sin Auxiliar 2 --</option>
-                      {selectableHelpers2.map((h) => {
-                        const isPilot = h.puesto === 'VPP' || h.puesto === 'VPPB' || h.rol === 'Conductor';
-                        const routesOnHelper = activeRoutes.filter(
-                          (ar) =>
-                            ar.estado === 'En Tránsito' &&
-                            getRouteKey(ar) !== getRouteKey(route) &&
-                            (ar.asignacion?.auxiliar1 === h.nombre ||
-                              ar.asignacion?.auxiliar2 === h.nombre ||
-                              ar.asignacion?.auxiliar3 === h.nombre ||
-                              ar.asignacion?.auxiliar4 === h.nombre)
-                        );
-                        let helperTag = '';
-                        if (routesOnHelper.length > 0) {
-                          helperTag = `(En Ruta: ${routesOnHelper.map((r) => `Ruta ${r.id}`).join(', ')})`;
-                        } else if (h.estado === 'En Ruta') {
-                          helperTag = '(En Ruta)';
-                        }
-                        return (
-                          <option key={h.id} value={h.nombre}>
-                            {h.nombre} {isPilot ? `[PILOTO ${h.puesto || 'VPP'} como Auxiliar]` : `[${h.puesto || 'APP'}]`} {helperTag}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    {helper2 && helper2IsPilot && (
-                      <div className="mt-1.5 flex items-center text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                        <User className="w-3 h-3 mr-1 text-amber-600" />
-                        Piloto como Auxiliar
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Auxiliar 3 */}
-                  <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs flex flex-col justify-between">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label htmlFor="helperSelect3" className="text-xs sm:text-sm font-bold text-slate-700">
-                        Auxiliar 3 (Opcional):
-                      </label>
-                      {helper3 && (
-                        <button
-                          type="button"
-                          onClick={() => setHelper3('')}
-                          className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-slate-100 transition cursor-pointer"
-                          title="Quitar Auxiliar 3"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    <select
-                      id="helperSelect3"
-                      value={helper3}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setHelper3(val);
-                        if (val) {
-                          const clean = val.trim().toLowerCase();
-                          if (driverName.trim().toLowerCase() === clean) setDriverName('');
-                          if (helper1.trim().toLowerCase() === clean) setHelper1('');
-                          if (helper2.trim().toLowerCase() === clean) setHelper2('');
-                          if (helper4.trim().toLowerCase() === clean) setHelper4('');
-                        }
-                      }}
-                      className="w-full p-2.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 bg-white font-medium text-xs sm:text-sm text-slate-800 outline-none cursor-pointer"
-                    >
-                      <option value="">-- Sin Auxiliar 3 --</option>
-                      {selectableHelpers3.map((h) => {
-                        const isPilot = h.puesto === 'VPP' || h.puesto === 'VPPB' || h.rol === 'Conductor';
-                        const routesOnHelper = activeRoutes.filter(
-                          (ar) =>
-                            ar.estado === 'En Tránsito' &&
-                            getRouteKey(ar) !== getRouteKey(route) &&
-                            (ar.asignacion?.auxiliar1 === h.nombre ||
-                              ar.asignacion?.auxiliar2 === h.nombre ||
-                              ar.asignacion?.auxiliar3 === h.nombre ||
-                              ar.asignacion?.auxiliar4 === h.nombre)
-                        );
-                        let helperTag = '';
-                        if (routesOnHelper.length > 0) {
-                          helperTag = `(En Ruta: ${routesOnHelper.map((r) => `Ruta ${r.id}`).join(', ')})`;
-                        } else if (h.estado === 'En Ruta') {
-                          helperTag = '(En Ruta)';
-                        }
-                        return (
-                          <option key={h.id} value={h.nombre}>
-                            {h.nombre} {isPilot ? `[PILOTO ${h.puesto || 'VPP'} como Auxiliar]` : `[${h.puesto || 'APP'}]`} {helperTag}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    {helper3 && helper3IsPilot && (
-                      <div className="mt-1.5 flex items-center text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                        <User className="w-3 h-3 mr-1 text-amber-600" />
-                        Piloto como Auxiliar
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Auxiliar 4 */}
-                  <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs flex flex-col justify-between">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label htmlFor="helperSelect4" className="text-xs sm:text-sm font-bold text-slate-700">
-                        Auxiliar 4 (Opcional):
-                      </label>
-                      {helper4 && (
-                        <button
-                          type="button"
-                          onClick={() => setHelper4('')}
-                          className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-slate-100 transition cursor-pointer"
-                          title="Quitar Auxiliar 4"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    <select
-                      id="helperSelect4"
-                      value={helper4}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setHelper4(val);
-                        if (val) {
-                          const clean = val.trim().toLowerCase();
-                          if (driverName.trim().toLowerCase() === clean) setDriverName('');
-                          if (helper1.trim().toLowerCase() === clean) setHelper1('');
-                          if (helper2.trim().toLowerCase() === clean) setHelper2('');
-                          if (helper3.trim().toLowerCase() === clean) setHelper3('');
-                        }
-                      }}
-                      className="w-full p-2.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 bg-white font-medium text-xs sm:text-sm text-slate-800 outline-none cursor-pointer"
-                    >
-                      <option value="">-- Sin Auxiliar 4 --</option>
-                      {selectableHelpers4.map((h) => {
-                        const isPilot = h.puesto === 'VPP' || h.puesto === 'VPPB' || h.rol === 'Conductor';
-                        const routesOnHelper = activeRoutes.filter(
-                          (ar) =>
-                            ar.estado === 'En Tránsito' &&
-                            getRouteKey(ar) !== getRouteKey(route) &&
-                            (ar.asignacion?.auxiliar1 === h.nombre ||
-                              ar.asignacion?.auxiliar2 === h.nombre ||
-                              ar.asignacion?.auxiliar3 === h.nombre ||
-                              ar.asignacion?.auxiliar4 === h.nombre)
-                        );
-                        let helperTag = '';
-                        if (routesOnHelper.length > 0) {
-                          helperTag = `(En Ruta: ${routesOnHelper.map((r) => `Ruta ${r.id}`).join(', ')})`;
-                        } else if (h.estado === 'En Ruta') {
-                          helperTag = '(En Ruta)';
-                        }
-                        return (
-                          <option key={h.id} value={h.nombre}>
-                            {h.nombre} {isPilot ? `[PILOTO ${h.puesto || 'VPP'} como Auxiliar]` : `[${h.puesto || 'APP'}]`} {helperTag}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    {helper4 && helper4IsPilot && (
-                      <div className="mt-1.5 flex items-center text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                        <User className="w-3 h-3 mr-1 text-amber-600" />
-                        Piloto como Auxiliar
-                      </div>
-                    )}
-                  </div>
+                      + Agregar auxiliar
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1360,11 +1209,11 @@ export const AssignModal: React.FC<AssignModalProps> = ({
           )}
 
           {/* Footer Buttons */}
-          <div className="pt-4 sm:pt-5 border-t border-slate-100 flex items-center justify-end space-x-3 flex-shrink-0">
+          <div className="sticky bottom-0 -mx-5 sm:-mx-7 -mb-5 sm:-mb-7 px-5 sm:px-7 py-3 sm:py-4 bg-white/95 backdrop-blur border-t border-slate-200 flex items-center justify-end space-x-3 z-10">
             <button
               type="button"
               onClick={onClose}
-              className="px-4.5 py-2.5 border border-slate-300 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 cursor-pointer text-xs sm:text-sm transition"
+              className="min-h-[48px] px-5 border border-slate-300 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 cursor-pointer text-xs sm:text-sm transition"
             >
               Cancelar
             </button>
@@ -1372,7 +1221,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             {isPiso ? (
               <button
                 type="submit"
-                className="px-5 sm:px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
+                className="min-h-[48px] px-5 sm:px-6 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
               >
                 <Warehouse className="w-4 h-4 mr-2" />
                 Confirmar y Pasar a Ruta de Mañana (A Piso)
@@ -1380,7 +1229,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             ) : isRecarga ? (
               <button
                 type="submit"
-                className="px-5 sm:px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
+                className="min-h-[48px] px-5 sm:px-6 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
               >
                 <Repeat className="w-4 h-4 mr-2" />
                 Confirmar Despacho como Recarga (2do Viaje)
@@ -1388,7 +1237,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             ) : isRevisita || isReassign ? (
               <button
                 type="submit"
-                className="px-5 sm:px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
+                className="min-h-[48px] px-5 sm:px-6 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
               >
                 <RotateCcw className="w-4 h-4 mr-2" />
                 Confirmar Despacho como Revisita
@@ -1396,7 +1245,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             ) : (
               <button
                 type="submit"
-                className="px-5 sm:px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
+                className="min-h-[48px] px-5 sm:px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
               >
                 <Send className="w-4 h-4 mr-2" />
                 Confirmar Despacho (Primer Viaje)
@@ -1404,6 +1253,49 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             )}
           </div>
         </form>
+
+        {/* Buscadores táctiles (camión, piloto, auxiliares) */}
+        <ResourcePicker
+          isOpen={pickerOpen === 'truck'}
+          title={`Camión · Agencia ${route.agencia}`}
+          placeholder="Buscar por placa, ID o proveedor..."
+          items={truckItems}
+          selectedIds={truckId ? [truckId] : []}
+          onSelect={handlePickTruck}
+          onClose={() => setPickerOpen(null)}
+        />
+        <ResourcePicker
+          isOpen={pickerOpen === 'driver'}
+          title="Piloto titular"
+          placeholder="Buscar por nombre, código corto o DPI..."
+          items={driverItems}
+          selectedIds={driverName ? [driverName] : []}
+          onSelect={handlePickDriver}
+          onClose={() => setPickerOpen(null)}
+        />
+        <ResourcePicker
+          isOpen={pickerOpen === 'helpers'}
+          title="Auxiliares de reparto"
+          placeholder="Buscar por nombre, código corto o DPI..."
+          items={helperItems}
+          selectedIds={helpersSelected}
+          multi
+          maxSelect={4}
+          onSelect={handleAddHelper}
+          onRemove={handleRemoveHelper}
+          onClose={() => setPickerOpen(null)}
+          headerExtra={
+            <label className="min-h-[36px] px-3 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allowPilotsAsHelpers}
+                onChange={(e) => setAllowPilotsAsHelpers(e.target.checked)}
+                className="w-4 h-4 accent-indigo-600"
+              />
+              Incluir pilotos
+            </label>
+          }
+        />
       </div>
     </div>
   );
