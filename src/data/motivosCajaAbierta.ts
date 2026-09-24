@@ -16,4 +16,5 @@ export const CAJA_ABIERTA_OPTIONS: CajaAbiertaOption[] = [
   { reason: 'PIN de Abasto', icon: '🔑' },
   { reason: 'Pendiente Validación de Boleta', icon: '🧾' },
   { reason: 'Fuera POS', icon: '📴' },
+  { reason: 'Nota de Crédito', icon: '📝' },
 ];
