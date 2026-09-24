@@ -944,6 +944,27 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routes, historicalRoutes, currentUser]);
 
+  // Filtro superior de Agencia: solo las agencias que tienen rutas ACTIVAS en el
+  // Tablero (todo lo que no está Liquidada) y que el usuario en sesión tiene
+  // permiso de ver. El Resumen Diario y el Acta de Cierre siguen usando la lista
+  // completa (`agencies`).
+  const boardAgencies = useMemo(() => {
+    const set = new Set<string>();
+    routes.forEach((r) => {
+      if (r.agencia && r.estado !== 'Liquidada' && canViewAgency(r.agencia)) set.add(r.agencia);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routes, currentUser]);
+
+  // Si la agencia elegida en el filtro superior ya no tiene rutas activas (o el
+  // usuario perdió el permiso), se vuelve a "Todas las Agencias".
+  useEffect(() => {
+    if (selectedAgency !== 'TODAS' && !boardAgencies.includes(selectedAgency)) {
+      setSelectedAgency('TODAS');
+    }
+  }, [boardAgencies, selectedAgency]);
+
   // Unified collection of all liquidated routes (including each completed trip: Primer Viaje and Revisita)
   const allLiquidatedRoutes = useMemo(() => {
     const list: Route[] = [];
@@ -2873,7 +2894,7 @@ export default function App() {
   return (
     <div className="bg-gradient-to-b from-slate-100 to-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
       <Navbar
-        agencies={agencies}
+        agencies={boardAgencies}
         selectedAgency={selectedAgency}
         onSelectAgency={setSelectedAgency}
         onOpenNewRouteModal={() => setIsRouteTypeSelectModalOpen(true)}
@@ -3124,6 +3145,7 @@ export default function App() {
         trucks={trucks}
         staff={staff}
         activeRoutes={routes}
+        historyRoutes={historicalRoutes}
         onConfirmAssignment={handleConfirmAssignment}
         onMoveToFloor={handleMoveToFloor}
         onShowToast={showToast}
