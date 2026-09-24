@@ -49,14 +49,14 @@ import {
   normalizeUsername,
 } from './services/auth';
 import { Navbar } from './components/Navbar';
-import { StatsCards } from './components/StatsCards';
+import { StatsCards, LiquidatedStatsStrip } from './components/StatsCards';
 import { TabNav, ActiveTab } from './components/TabNav';
 import { RoutesTable } from './components/RoutesTable';
 import { ResourcesView } from './components/ResourcesView';
 import { BatchImportView, BatchImportTarget } from './components/BatchImportView';
 import { AGENCIA_LOCATION_OPTIONS } from './data/agencies';
 import { ClientesImportView } from './components/ClientesImportView';
-import { LiquidatedBoardView } from './components/LiquidatedBoardView';
+import { LiquidatedBoardView, LiquidatedKpis } from './components/LiquidatedBoardView';
 import { NewRouteModal } from './components/modals/NewRouteModal';
 import { NewTrasladoRouteModal } from './components/modals/NewTrasladoRouteModal';
 import { RouteTypeSelectModal } from './components/modals/RouteTypeSelectModal';
@@ -804,6 +804,27 @@ export default function App() {
   }, [currentUser]);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('board');
+  // Menú lateral oculto/visible (se recuerda en este navegador).
+  const [railCollapsed, setRailCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dc_rail_collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleRail = () => {
+    setRailCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('dc_rail_collapsed', next ? '1' : '0');
+      } catch {
+        /* sin almacenamiento: solo dura esta sesión */
+      }
+      return next;
+    });
+  };
+  // Indicadores del módulo de Rutas Liquidadas (los calcula esa vista según sus filtros).
+  const [liqKpis, setLiqKpis] = useState<LiquidatedKpis | null>(null);
 
   // Si el usuario en sesión no tiene permiso para ver la pestaña activa (por ejemplo,
   // justo después de iniciar sesión o si el administrador le quitó un permiso),
@@ -2908,9 +2929,10 @@ export default function App() {
           una fila completa arriba) e indicadores compactos en la misma fila de la
           búsqueda, para que el Tablero de Rutas use casi toda la pantalla. */}
       <div className={`flex-1 flex w-full min-h-0 ${(isDailySummaryModalOpen || isClosingActaModalOpen) ? 'no-print print:hidden' : ''}`}>
-        <aside className="hidden md:block w-[88px] shrink-0 bg-white/90 border-r border-slate-200 h-[calc(100dvh-68px)] sticky top-[68px] overflow-y-auto z-20">
+        <aside className={`${railCollapsed ? 'hidden' : 'hidden md:block'} w-[88px] shrink-0 bg-white/90 border-r border-slate-200 h-[calc(100dvh-68px)] sticky top-[68px] overflow-y-auto z-20`}>
           <TabNav
             mode="rail"
+            onToggleRail={toggleRail}
           activeTab={activeTab}
           onTabChange={setActiveTab}
           searchQuery={searchQuery}
@@ -2968,7 +2990,12 @@ export default function App() {
         <div className="shrink-0">
           <TabNav
             mode="toolbar"
+            railCollapsed={railCollapsed}
+            onToggleRail={toggleRail}
             leading={
+              // Indicadores según la sección: los principales (pendientes, tránsito,
+              // etc.) en el Tablero de Rutas; los de liquidación en Rutas Liquidadas.
+              activeTab === 'board' ? (
               <StatsCards
                 compact
           pendientes={stats.pendientes}
@@ -2982,6 +3009,9 @@ export default function App() {
           cajasEntregadasHoy={stats.cajasEntregadasHoy}
           onSelectTab={setActiveTab}
         />
+              ) : activeTab === 'liquidated' && liqKpis ? (
+                <LiquidatedStatsStrip {...liqKpis} />
+              ) : null
             }
           activeTab={activeTab}
           onTabChange={setActiveTab}
@@ -3058,6 +3088,7 @@ export default function App() {
 
         {activeTab === 'liquidated' && (
           <LiquidatedBoardView
+            onKpisChange={setLiqKpis}
             liquidatedRoutes={allLiquidatedRoutes}
             allRoutes={routes}
             staff={staff}
