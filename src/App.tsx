@@ -49,7 +49,7 @@ import {
   normalizeUsername,
 } from './services/auth';
 import { Navbar } from './components/Navbar';
-import { StatsCards, LiquidatedStatsStrip } from './components/StatsCards';
+import { StatsCards, LiquidatedStatsStrip, StatPills, StatPill } from './components/StatsCards';
 import { TabNav, ActiveTab } from './components/TabNav';
 import { RoutesTable } from './components/RoutesTable';
 import { ResourcesView } from './components/ResourcesView';
@@ -1249,6 +1249,68 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [staff, selectedAgency, currentUser]
   );
+
+  // Indicadores de Personal: activos por puesto (VPP / VPPB / APP). Respetan el
+  // filtro de agencia y los permisos del usuario (visibleStaff).
+  const staffPills = useMemo<StatPill[]>(() => {
+    const activos = visibleStaff.filter((s) => s.estado !== 'Baja' && s.estatus !== 'BAJA');
+    const bajas = visibleStaff.length - activos.length;
+    const by = (p: string) => activos.filter((s) => (s.puesto || '').toUpperCase() === p).length;
+    const otros = activos.length - by('VPP') - by('VPPB') - by('APP');
+    const pills: StatPill[] = [
+      { label: 'Activos', value: activos.length, cls: 'bg-slate-50 border-slate-200 text-slate-700', title: 'Personal activo (sin bajas)' },
+      { label: 'VPP', value: by('VPP'), cls: 'bg-indigo-50 border-indigo-200 text-indigo-700', title: 'Pilotos VPP' },
+      { label: 'VPPB', value: by('VPPB'), cls: 'bg-violet-50 border-violet-200 text-violet-700', title: 'Pilotos VPPB' },
+      { label: 'APP', value: by('APP'), cls: 'bg-sky-50 border-sky-200 text-sky-700', title: 'Auxiliares APP' },
+      { label: 'Disponibles', value: activos.filter((s) => s.estado === 'Disponible').length, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700', title: 'Activos disponibles para asignar' },
+      { label: 'En ruta', value: activos.filter((s) => s.estado === 'En Ruta').length, cls: 'bg-blue-50 border-blue-200 text-blue-700', title: 'Activos actualmente en ruta' },
+    ];
+    if (otros > 0) pills.push({ label: 'Otro puesto', value: otros, cls: 'bg-slate-50 border-slate-200 text-slate-600', title: 'Activos sin puesto VPP/VPPB/APP' });
+    if (bajas > 0) pills.push({ label: 'Baja', value: bajas, cls: 'bg-slate-100 border-slate-300 text-slate-500', title: 'Personal de baja (no se asigna)' });
+    return pills;
+  }, [visibleStaff]);
+
+  // Indicadores de Camiones: total activo y cantidad por capacidad (de menor a
+  // mayor). Si hay muchas capacidades distintas, se muestran las 8 más comunes
+  // y el resto se agrupa en "Otras".
+  const truckPills = useMemo<StatPill[]>(() => {
+    const activos = visibleTrucks.filter((t) => t.estado !== 'Baja');
+    const bajas = visibleTrucks.length - activos.length;
+    const counts = new Map<string, number>();
+    activos.forEach((t) => {
+      const raw = String(t.capacidad ?? '').trim();
+      const key = raw && raw !== '0' ? raw : 'Sin capacidad';
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    const byFreq = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    const shown = byFreq.slice(0, 8);
+    const rest = byFreq.slice(8);
+    const num = (k: string) => {
+      const n = parseFloat(k.replace(',', '.'));
+      return Number.isFinite(n) ? n : Number.MAX_VALUE;
+    };
+    shown.sort((a, b) => num(a[0]) - num(b[0]) || a[0].localeCompare(b[0], 'es'));
+    const pills: StatPill[] = [
+      { label: 'Activos', value: activos.length, cls: 'bg-slate-50 border-slate-200 text-slate-700', title: 'Camiones activos (sin bajas)' },
+      ...shown.map(([cap, n]) => ({
+        label: cap === 'Sin capacidad' ? cap : `Cap. ${cap}`,
+        value: n,
+        cls: 'bg-blue-50 border-blue-200 text-blue-700',
+        title: cap === 'Sin capacidad' ? 'Camiones sin capacidad registrada' : `Camiones con capacidad ${cap}`,
+      })),
+    ];
+    if (rest.length > 0) {
+      pills.push({
+        label: 'Otras cap.',
+        value: rest.reduce((acc, [, n]) => acc + n, 0),
+        cls: 'bg-slate-50 border-slate-200 text-slate-600',
+        title: rest.map(([cap, n]) => `Cap. ${cap}: ${n}`).join(' · '),
+      });
+    }
+    pills.push({ label: 'En ruta', value: activos.filter((t) => t.estado === 'En Ruta').length, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700', title: 'Camiones en ruta ahora' });
+    if (bajas > 0) pills.push({ label: 'Baja', value: bajas, cls: 'bg-slate-100 border-slate-300 text-slate-500', title: 'Camiones de baja' });
+    return pills;
+  }, [visibleTrucks]);
 
   // Rutas activas (no liquidadas) visibles para el usuario SIN aplicar el filtro de
   // agencia seleccionada arriba, usadas para mostrar la distribución entre agencias
@@ -3011,6 +3073,10 @@ export default function App() {
         />
               ) : activeTab === 'liquidated' && liqKpis ? (
                 <LiquidatedStatsStrip {...liqKpis} />
+              ) : activeTab === 'staff' ? (
+                <StatPills pills={staffPills} />
+              ) : activeTab === 'trucks' ? (
+                <StatPills pills={truckPills} />
               ) : null
             }
           activeTab={activeTab}
