@@ -34,6 +34,9 @@ import { ClientesRutaList } from './ClientesRutaList';
 import { getRouteKey } from '../utils/routeKey';
 
 interface RoutesTableProps {
+  // Rediseño tablet: el tablero ocupa toda la altura disponible de la pantalla
+  // (con su propio scroll y encabezado fijo) en vez de un máximo de 70vh.
+  fillHeight?: boolean;
   routes: Route[];
   allRoutes: Route[];
   trucks?: Truck[];
@@ -71,6 +74,7 @@ type SortKey =
 type SortOrder = 'asc' | 'desc';
 
 export const RoutesTable: React.FC<RoutesTableProps> = ({
+  fillHeight = false,
   routes,
   allRoutes,
   trucks = [],
@@ -338,7 +342,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   };
 
   return (
-    <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm w-full">
+    <div className={`bg-white border border-slate-200/80 rounded-2xl shadow-sm w-full ${fillHeight ? 'h-full flex flex-col' : ''}`}>
       {/* Barra de acción masiva cuando hay rutas seleccionadas */}
       {selectedRouteIds.length > 0 && (
         <div className="bg-rose-50 border-b border-rose-200 px-3 md:px-4 py-2 flex flex-wrap items-center justify-between gap-2 animate-in fade-in slide-in-from-top-1 text-xs">
@@ -405,7 +409,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
           limitado ("overflow-auto" + "max-h-[70vh]"), y el encabezado se fija con
           "top-0" respecto a SU PROPIO borde superior — ya no depende del scroll de
           la ventana ni de la Navbar. */}
-      <div className="overflow-auto min-h-[280px] max-h-[70vh] pb-8 md:pb-10">
+      <div className={`overflow-auto pb-8 md:pb-10 ${fillHeight ? 'flex-1 min-h-0' : 'min-h-[280px] max-h-[70vh]'}`}>
         <table className="w-full divide-y divide-slate-200 text-left text-xs">
           {/* El "sticky" real se aplica celda por celda (ver renderSortHeader y los
               <th> de abajo), no aquí en el <thead> — ver la nota en renderSortHeader. */}
