@@ -2904,21 +2904,13 @@ export default function App() {
         onLogout={handleLogout}
       />
 
-      <main className={`flex-1 w-full max-w-[1920px] mx-auto px-2.5 sm:px-4 md:px-6 lg:px-10 py-3 md:py-4 space-y-3 md:space-y-4 ${(isDailySummaryModalOpen || isClosingActaModalOpen) ? 'no-print print:hidden' : ''}`}>
-        <StatsCards
-          pendientes={stats.pendientes}
-          transito={stats.transito}
-          abiertas={stats.abiertas}
-          liquidadas={stats.liquidadas}
-          liquidadasTotal={stats.liquidadasTotal}
-          pisoHoy={stats.pisoHoy}
-          fechaHoy={stats.fechaHoy}
-          cajasFisicasHoy={stats.cajasFisicasHoy}
-          cajasEntregadasHoy={stats.cajasEntregadasHoy}
-          onSelectTab={setActiveTab}
-        />
-
-        <TabNav
+      {/* Rediseño para tablet: navegación en una barra lateral fija (en vez de
+          una fila completa arriba) e indicadores compactos en la misma fila de la
+          búsqueda, para que el Tablero de Rutas use casi toda la pantalla. */}
+      <div className={`flex-1 flex w-full min-h-0 ${(isDailySummaryModalOpen || isClosingActaModalOpen) ? 'no-print print:hidden' : ''}`}>
+        <aside className="hidden md:block w-[88px] shrink-0 bg-white/90 border-r border-slate-200 h-[calc(100dvh-68px)] sticky top-[68px] overflow-y-auto z-20">
+          <TabNav
+            mode="rail"
           activeTab={activeTab}
           onTabChange={setActiveTab}
           searchQuery={searchQuery}
@@ -2942,6 +2934,79 @@ export default function App() {
           showUsers={!!currentUser.isAdmin}
           isAdmin={!!currentUser.isAdmin}
         />
+        </aside>
+
+      <main className="flex-1 min-w-0 h-[calc(100dvh-68px)] overflow-y-auto flex flex-col gap-2.5 px-2 sm:px-3 md:px-4 py-2.5">
+        <div className="md:hidden shrink-0">
+          <TabNav
+            mode="bar"
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onExportExcel={handleExportActiveRoutesExcel}
+          onResetDemo={handleResetDemo}
+          allowResetDemo={!isSupabaseConfigured}
+          onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
+          pendingReasonsCount={pendingReasonsCount}
+          activeCount={filteredActiveRoutes.length}
+          liquidatedCount={allLiquidatedRoutes.length}
+          trucksCount={visibleTrucks.length}
+          staffCount={visibleStaff.length}
+          usersCount={users.length}
+          showDashboard={canView('dashboard')}
+          showBoard={canView('board')}
+          showLiquidated={canView('liquidated')}
+          showTrucks={canView('trucks')}
+          showStaff={canView('staff')}
+          showBatch={canView('batch')}
+          showUsers={!!currentUser.isAdmin}
+          isAdmin={!!currentUser.isAdmin}
+        />
+        </div>
+
+        <div className="shrink-0">
+          <TabNav
+            mode="toolbar"
+            leading={
+              <StatsCards
+                compact
+          pendientes={stats.pendientes}
+          transito={stats.transito}
+          abiertas={stats.abiertas}
+          liquidadas={stats.liquidadas}
+          liquidadasTotal={stats.liquidadasTotal}
+          pisoHoy={stats.pisoHoy}
+          fechaHoy={stats.fechaHoy}
+          cajasFisicasHoy={stats.cajasFisicasHoy}
+          cajasEntregadasHoy={stats.cajasEntregadasHoy}
+          onSelectTab={setActiveTab}
+        />
+            }
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onExportExcel={handleExportActiveRoutesExcel}
+          onResetDemo={handleResetDemo}
+          allowResetDemo={!isSupabaseConfigured}
+          onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
+          pendingReasonsCount={pendingReasonsCount}
+          activeCount={filteredActiveRoutes.length}
+          liquidatedCount={allLiquidatedRoutes.length}
+          trucksCount={visibleTrucks.length}
+          staffCount={visibleStaff.length}
+          usersCount={users.length}
+          showDashboard={canView('dashboard')}
+          showBoard={canView('board')}
+          showLiquidated={canView('liquidated')}
+          showTrucks={canView('trucks')}
+          showStaff={canView('staff')}
+          showBatch={canView('batch')}
+          showUsers={!!currentUser.isAdmin}
+          isAdmin={!!currentUser.isAdmin}
+        />
+        </div>
 
         {activeTab === 'dashboard' && (
           <DashboardView
@@ -2956,7 +3021,9 @@ export default function App() {
         )}
 
         {activeTab === 'board' && (
+          <div className="flex-1 min-h-[320px]">
           <RoutesTable
+            fillHeight
             routes={filteredActiveRoutes}
             allRoutes={routes}
             trucks={trucks}
@@ -2986,6 +3053,7 @@ export default function App() {
             onBulkMoveToFloor={handleBulkMoveToFloor}
             onOpenDeleteModal={canDeleteData ? (ids) => setDeleteRoutesTargetIds(ids) : undefined}
           />
+          </div>
         )}
 
         {activeTab === 'liquidated' && (
@@ -3079,6 +3147,7 @@ export default function App() {
           />
         )}
       </main>
+      </div>
 
       {/* Modals */}
       <RouteTypeSelectModal
