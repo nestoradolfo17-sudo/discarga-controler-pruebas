@@ -60,7 +60,7 @@ export type MotivoDevolucionReason =
 // tienen que ver con la mercadería entregada/devuelta, sino con el cierre de
 // caja/boleta del punto de venta al momento de liquidar. Ver
 // '../data/motivosCajaAbierta' para el catálogo con íconos.
-export type CajaAbiertaReason = 'PIN de Abasto' | 'Pendiente Validación de Boleta' | 'Fuera POS';
+export type CajaAbiertaReason = 'PIN de Abasto' | 'Pendiente Validación de Boleta' | 'Fuera POS' | 'Nota de Crédito';
 
 // Un cliente/punto de venta dentro de una ruta, tal como viene en el archivo
 // "Clientes N" que envía el cliente (operador logístico) junto con el resumen de
