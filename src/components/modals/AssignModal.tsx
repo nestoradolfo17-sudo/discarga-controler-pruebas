@@ -358,6 +358,18 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       return;
     }
 
+    // Un camión o persona ya asignado a otra ruta en tránsito solo se puede usar
+    // si viene de "Optimización de Carga" (tripulación copiada de esa ruta).
+    if (isBusyTruck(truckId)) {
+      onShowToast('Ese camión ya está asignado a otra ruta en tránsito. Para cargar dos rutas en el mismo camión usa "Optimización de Carga".', 'error');
+      return;
+    }
+    const busyPeople = [driverName, helper1, helper2, helper3, helper4].filter((n) => n && isBusyPerson(n));
+    if (busyPeople.length > 0) {
+      onShowToast(`${busyPeople.join(', ')} ya está(n) asignado(s) a otra ruta en tránsito. Para compartir tripulación usa "Optimización de Carga".`, 'error');
+      return;
+    }
+
     const allAssigned = [driverName, helper1, helper2, helper3, helper4].filter(Boolean);
     const uniqueStaff = new Set(allAssigned.map((s) => s.trim().toLowerCase()));
     if (allAssigned.length !== uniqueStaff.size) {
@@ -388,11 +400,28 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   const inTransitOthers = activeRoutes.filter(
     (ar) => ar.estado === 'En Tránsito' && getRouteKey(ar) !== getRouteKey(route) && ar.asignacion
   );
+  // Recursos ya asignados a OTRA ruta en tránsito: se quitan de los buscadores.
+  // Para unir dos rutas en un mismo camión (carga compartida) la única vía es
+  // "Optimización de Carga" / "Autocompletar con tripulación en ruta": los
+  // recursos de la ruta elegida ahí son los únicos ocupados que se permiten.
+  const busyNow = busyNamesAndTrucks(activeRoutes, getRouteKey(route));
+  const sharedRoute = selectedActiveCrewRouteId
+    ? activeRoutes.find((r) => getRouteKey(r) === selectedActiveCrewRouteId && r.asignacion)
+    : undefined;
+  const sharedAsig = sharedRoute?.asignacion || null;
+  const sharedPeople = new Set(
+    [sharedAsig?.conductor, sharedAsig?.auxiliar1, sharedAsig?.auxiliar2, sharedAsig?.auxiliar3, sharedAsig?.auxiliar4].filter(
+      Boolean
+    ) as string[]
+  );
+  const isBusyTruck = (id: string) => busyNow.trucks.has(id) && id !== sharedAsig?.camionId;
+  const isBusyPerson = (name: string) => busyNow.people.has(name) && !sharedPeople.has(name);
+
   const isPilotStaff = (s: Staff) => s.puesto === 'VPP' || s.puesto === 'VPPB' || s.rol === 'Conductor';
   const outOfToday = (s: Staff) =>
     s.estatus === 'BAJA' || isNotAvailableToday(s.motivoNoAsignado, s.motivoNoAsignadoFecha, todayStr);
 
-  const truckItems: PickerItem[] = availableTrucks.map((t) => {
+  const truckItems: PickerItem[] = availableTrucks.filter((t) => !isBusyTruck(t.id)).map((t) => {
     const routesOnTruck = inTransitOthers.filter((ar) => ar.asignacion?.camionId === t.id);
     const isCurrent = t.id === route.asignacion?.camionId;
     const isBaja = t.estado === 'Baja' && !isCurrent;
@@ -429,7 +458,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     };
   });
 
-  const driverItems: PickerItem[] = availableDrivers.map((d) => {
+  const driverItems: PickerItem[] = availableDrivers.filter((d) => !isBusyPerson(d.nombre)).map((d) => {
     const routesOnDriver = inTransitOthers.filter((ar) => ar.asignacion?.conductor === d.nombre);
     const sameTruck = routesOnDriver.filter((ar) => truckId && ar.asignacion?.camionId === truckId);
     const otherTruck = routesOnDriver.filter((ar) => !truckId || ar.asignacion?.camionId !== truckId);
@@ -466,7 +495,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   });
 
   const helperItems: PickerItem[] = availableHelpers
-    .filter((h) => h.nombre !== driverName)
+    .filter((h) => h.nombre !== driverName && !isBusyPerson(h.nombre))
     .map((h) => {
       const routesOnHelper = inTransitOthers.filter((ar) =>
         [ar.asignacion?.auxiliar1, ar.asignacion?.auxiliar2, ar.asignacion?.auxiliar3, ar.asignacion?.auxiliar4].includes(h.nombre)
@@ -533,12 +562,27 @@ export const AssignModal: React.FC<AssignModalProps> = ({
 
   const applySuggestion = () => {
     if (!suggestion) return;
-    if (suggestion.truckId) setTruckId(suggestion.truckId);
-    if (suggestion.driverName) setDriverName(suggestion.driverName);
+    // No se cargan recursos que ya están asignados a otra ruta en tránsito.
+    const skipped: string[] = [];
+    if (suggestion.truckId) {
+      if (isBusyTruck(suggestion.truckId)) skipped.push('camión');
+      else setTruckId(suggestion.truckId);
+    }
+    if (suggestion.driverName) {
+      if (isBusyPerson(suggestion.driverName)) skipped.push('piloto');
+      else setDriverName(suggestion.driverName);
+    }
     const helpersSug = suggestion.helpers.filter((h) => h !== suggestion.driverName);
-    setHelpersList(helpersSug);
-    if (staff.some((x) => helpersSug.includes(x.nombre) && isPilotStaff(x))) setAllowPilotsAsHelpers(true);
-    onShowToast('Se cargó la tripulación más frecuente de esta ruta. Revísala y confirma.', 'info');
+    const helpersFree = helpersSug.filter((h) => !isBusyPerson(h));
+    if (helpersFree.length < helpersSug.length) skipped.push(`${helpersSug.length - helpersFree.length} auxiliar(es)`);
+    setHelpersList(helpersFree);
+    if (staff.some((x) => helpersFree.includes(x.nombre) && isPilotStaff(x))) setAllowPilotsAsHelpers(true);
+    onShowToast(
+      skipped.length > 0
+        ? `Se cargó la tripulación sugerida, excepto ${skipped.join(', ')} ya asignado(s) a otra ruta en tránsito.`
+        : 'Se cargó la tripulación más frecuente de esta ruta. Revísala y confirma.',
+      'info'
+    );
   };
 
   const sugTruck = suggestion?.truckId ? trucks.find((t) => t.id === suggestion.truckId) : undefined;
@@ -975,6 +1019,11 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   </div>
                 </div>
               )}
+
+              <p className="text-[11px] text-slate-500 -mt-1">
+                Las unidades, pilotos y auxiliares que ya están asignados a otra ruta en tránsito no aparecen en los buscadores.
+                Para cargar dos rutas en un mismo camión usa <strong>Optimización de Carga</strong>.
+              </p>
 
               {/* Camión y Piloto: botones grandes que abren el buscador táctil */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
