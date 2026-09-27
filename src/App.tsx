@@ -32,8 +32,8 @@ import {
 } from './services/sync';
 import { TRUCK_REASON_REMUNERA, STAFF_REASON_REMUNERA } from './data/unavailableReasons';
 import { exportRoutesToExcel } from './utils/excel';
-import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate } from './utils/date';
-import { getRouteKey, routeMatchesKey } from './utils/routeKey';
+import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate, parseFlexibleDate } from './utils/date';
+import { getRouteKey, routeMatchesKey, isSameSplitGroup } from './utils/routeKey';
 import {
   getSessionUserId,
   onAuthChange,
@@ -95,6 +95,12 @@ const STORAGE_KEY_SESSION = 'rutamaster_session_v1';
 // quedaba en la tablet aunque se cerrara sesión, y con miles de registros podía
 // llenar el almacenamiento del navegador sin avisar. Solo en modo local (sin
 // Supabase) se sigue usando, igual que antes.
+// Punto 15 del análisis: al abrir la app solo se descargan las liquidadas de
+// los últimos 45 días (el historial crece todos los días y cargarlo completo
+// cada vez volvía lenta la entrada). El resto se trae a pedido desde
+// "Rutas Liquidadas" → "Cargar historial completo".
+const HISTORY_INITIAL_DAYS = 45;
+
 const LOCAL_DATA_KEYS = [STORAGE_KEY_ROUTES, STORAGE_KEY_TRUCKS, STORAGE_KEY_STAFF, STORAGE_KEY_HISTORY, STORAGE_KEY_USERS];
 if (isSupabaseConfigured) {
   try {
@@ -181,7 +187,16 @@ export default function App() {
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(!isSupabaseConfigured);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
-  const [loginNotice, setLoginNotice] = useState('');
+  const [loginNotice, setLoginNotice] = useState<string>(() => {
+    // Aviso que sobrevive a la recarga tras un cierre de sesión automático.
+    try {
+      const reason = sessionStorage.getItem('dc_logout_reason') || '';
+      sessionStorage.removeItem('dc_logout_reason');
+      return reason;
+    } catch {
+      return '';
+    }
+  });
 
   const currentUser = useMemo(() => {
     if (isSupabaseConfigured) {
@@ -245,6 +260,12 @@ export default function App() {
   // localStorage, un usuario por navegador). Esto evita que agregar la base de
   // datos compartida cambie el comportamiento de nadie que siga sin configurarla.
   const [isRemoteReady, setIsRemoteReady] = useState(!isSupabaseConfigured);
+  // Estado de conexión y contador para reenviar cambios al volver la señal
+  // (ver punto 11 más abajo, junto a los avisos de sincronización).
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine
+  );
+  const [resyncTick, setResyncTick] = useState(0);
   // Corrección: este ref ya NO guarda un set de "ids anteriores" — ver la nota
   // de seguridad en pushSharedCollection (services/sync.ts): el borrado en
   // Supabase ya nunca se infiere comparando snapshots, así que ya no hace
@@ -408,6 +429,32 @@ export default function App() {
     });
   }, []);
 
+  const [historyLimited, setHistoryLimited] = useState<boolean>(isSupabaseConfigured);
+  const [isLoadingFullHistory, setIsLoadingFullHistory] = useState(false);
+  const loadFullHistory = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    setIsLoadingFullHistory(true);
+    const rows = await fetchSharedCollection<Route>('app_historical_routes');
+    setIsLoadingFullHistory(false);
+    if (!rows) return;
+    setHistoricalRoutes((prev) => {
+      const byKey = new Map(prev.map((r) => [getRouteKey(r), r]));
+      rows.forEach((row) => {
+        const k = getRouteKey(row.data);
+        if (!byKey.has(k)) byKey.set(k, row.data);
+      });
+      const next = Array.from(byKey.values());
+      // Lo recién descargado ya está guardado en la base: no se vuelve a subir.
+      historySyncRef.current = {
+        json: JSON.stringify(next),
+        byKey: new Map(next.map((r) => [getRouteKey(r), JSON.stringify(r)])),
+        blocked: historySyncRef.current.blocked,
+      };
+      return next;
+    });
+    setHistoryLimited(false);
+  }, []);
+
   // Claves de sincronización por tabla (ver SyncKeyFn en services/sync.ts). Todas
   // usan el "id" del objeto tal cual, EXCEPTO Rutas e Historial: ahí se usa la
   // clave compuesta id+fecha (getRouteKey) porque el mismo número de ruta puede
@@ -447,7 +494,7 @@ export default function App() {
       try {
         const [remoteRoutes, remoteHistory, remoteTrucks, remoteStaff] = await Promise.all([
           fetchSharedCollection<Route>('app_routes'),
-          fetchSharedCollection<Route>('app_historical_routes'),
+          fetchSharedCollection<Route>('app_historical_routes', { sinceDays: HISTORY_INITIAL_DAYS }),
           fetchSharedCollection<Truck>('app_trucks'),
           fetchSharedCollection<Staff>('app_staff'),
         ]);
@@ -802,6 +849,69 @@ export default function App() {
     }
   };
 
+  // Punto 19 del análisis: respaldo manual descargable (solo administrador).
+  // Se lee todo directamente de la base compartida (incluido el historial
+  // completo) y se descarga como archivo .json con fecha y hora.
+  const handleDownloadBackup = async () => {
+    const tables: SyncableTable[] = ['app_routes', 'app_historical_routes', 'app_trucks', 'app_staff'];
+    const result: Record<string, unknown> = { generado: new Date().toISOString(), por: currentUser?.username };
+    for (const t of tables) {
+      const rows = await fetchSharedCollection(t);
+      if (!rows) {
+        showToast(`No se pudo leer "${t}". Revisa tu conexión e intenta de nuevo.`, 'error');
+        return;
+      }
+      result[t] = rows.map((r) => ({ id: r.key, data: r.data }));
+    }
+    const blob = new Blob([JSON.stringify(result)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    a.href = url;
+    a.download = `respaldo_discarga_${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('Respaldo descargado.', 'success');
+  };
+
+  // Punto 20 del análisis: en tablets compartidas la sesión quedaba abierta
+  // indefinidamente. Ahora se cierra sola tras 30 minutos sin tocar la pantalla
+  // (con aviso 1 minuto antes). Cualquier toque o tecla reinicia el conteo.
+  const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
+  const lastActivityRef = useRef(Date.now());
+  const inactivityWarnedRef = useRef(false);
+  useEffect(() => {
+    if (!isSupabaseConfigured || !currentUser) return;
+    const touch = () => {
+      lastActivityRef.current = Date.now();
+      inactivityWarnedRef.current = false;
+    };
+    const events: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'wheel'];
+    events.forEach((ev) => window.addEventListener(ev, touch, { passive: true }));
+    lastActivityRef.current = Date.now();
+    const timer = window.setInterval(() => {
+      const idle = Date.now() - lastActivityRef.current;
+      if (idle >= INACTIVITY_LIMIT_MS) {
+        try {
+          sessionStorage.setItem('dc_logout_reason', 'Tu sesión se cerró por 30 minutos de inactividad. Vuelve a ingresar.');
+        } catch {
+          /* sin almacenamiento */
+        }
+        void signOut().finally(() => window.location.reload());
+      } else if (idle >= INACTIVITY_LIMIT_MS - 60 * 1000 && !inactivityWarnedRef.current) {
+        inactivityWarnedRef.current = true;
+        showToast('Tu sesión se cerrará en 1 minuto por inactividad. Toca la pantalla para continuar.', 'info');
+      }
+    }, 15 * 1000);
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, touch));
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
   // Confirmación de acciones delicadas en Usuarios con la contraseña del admin.
   const handleVerifyPassword = async (password: string): Promise<boolean> => {
     if (!currentUser) return false;
@@ -971,22 +1081,22 @@ export default function App() {
   useEffect(() => {
     writeLocal(STORAGE_KEY_ROUTES, routes);
     pushIfChanged('app_routes', routes, routeSyncKey, routesSyncRef, routesPushQueueRef, restoreRoutesFromServer);
-  }, [routes, pushIfChanged]);
+  }, [routes, pushIfChanged, resyncTick]);
 
   useEffect(() => {
     writeLocal(STORAGE_KEY_TRUCKS, trucks);
     pushIfChanged('app_trucks', trucks, defaultSyncKey, trucksSyncRef, trucksPushQueueRef);
-  }, [trucks, pushIfChanged]);
+  }, [trucks, pushIfChanged, resyncTick]);
 
   useEffect(() => {
     writeLocal(STORAGE_KEY_STAFF, staff);
     pushIfChanged('app_staff', staff, defaultSyncKey, staffSyncRef, staffPushQueueRef);
-  }, [staff, pushIfChanged]);
+  }, [staff, pushIfChanged, resyncTick]);
 
   useEffect(() => {
     writeLocal(STORAGE_KEY_HISTORY, historicalRoutes);
     pushIfChanged('app_historical_routes', historicalRoutes, routeSyncKey, historySyncRef, historyPushQueueRef);
-  }, [historicalRoutes, pushIfChanged]);
+  }, [historicalRoutes, pushIfChanged, resyncTick]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -996,6 +1106,25 @@ export default function App() {
     }, 4000);
   }, []);
 
+  // Punto 11 del análisis: aviso de conexión. Sin señal, los cambios no se
+  // pueden guardar en la base compartida; se muestra un aviso fijo y, al volver
+  // la señal, se reenvían automáticamente los cambios que quedaron pendientes.
+  useEffect(() => {
+    const goOnline = () => {
+      setIsOnline(true);
+      setResyncTick((t) => t + 1);
+      if (isSupabaseConfigured) showToast('Conexión recuperada. Guardando los cambios pendientes...', 'info');
+    };
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Avisos en pantalla cuando falla la lectura/escritura en la base de datos
   // compartida (ver setSyncErrorHandler en services/sync.ts). Se limita a un
   // aviso cada 10 segundos para no llenar la pantalla si la red se cae.
@@ -1003,6 +1132,8 @@ export default function App() {
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     setSyncErrorHandler((message) => {
+      // Sin señal ya se muestra el aviso fijo de conexión; no se repite en avisos.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
       const now = Date.now();
       if (message.startsWith('No se guardó la asignación')) {
         showToast(`⚠ ${message}`, 'error');
@@ -1230,12 +1361,12 @@ export default function App() {
         if (a.id === b.id && a.tripNumber && b.tripNumber) {
           return a.tripNumber - b.tripNumber;
         }
-        const timeA = a.liquidacion?.fechaLiquidacion
-          ? new Date(a.liquidacion.fechaLiquidacion).getTime()
-          : 0;
-        const timeB = b.liquidacion?.fechaLiquidacion
-          ? new Date(b.liquidacion.fechaLiquidacion).getTime()
-          : 0;
+        // Punto 10 del análisis: la fecha de liquidación se guarda como
+        // "dd/mm/aaaa hh:mm"; new Date() no entiende ese formato (lo lee al revés
+        // o como inválido) y el orden de Liquidadas salía mal. Se usa el lector
+        // de fechas de la app, que sí respeta día/mes/año.
+        const timeA = parseFlexibleDate(a.liquidacion?.fechaLiquidacion || a.fechaLiquidacion)?.getTime() || 0;
+        const timeB = parseFlexibleDate(b.liquidacion?.fechaLiquidacion || b.fechaLiquidacion)?.getTime() || 0;
         return timeB - timeA;
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1301,25 +1432,64 @@ export default function App() {
   // agencia podía dejar el selector en "-- Todas las Agencias --" (disponible
   // para todos) y ver igual los camiones/personal de agencias a las que no tenía
   // acceso — el permiso solo se aplicaba a las Rutas, no a estos dos módulos.
+  // Punto 9 del análisis: el estado "En Ruta" / "Disponible" de camiones y
+  // personal se CALCULA a partir de las rutas en tránsito, en vez de confiar en
+  // el valor guardado (que podía quedar desactualizado si una acción fallaba a
+  // medias). "Baja" se respeta tal cual. Las pantallas usan estas listas; el
+  // estado guardado solo se sigue actualizando por compatibilidad.
+  const busyResources = useMemo(() => {
+    const truckIds = new Set<string>();
+    const people = new Set<string>();
+    routes.forEach((r) => {
+      if (r.estado !== 'En Tránsito' || !r.asignacion) return;
+      const a = r.asignacion;
+      if (a.camionId) truckIds.add(a.camionId);
+      [a.conductor, a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].forEach((n) => {
+        if (n) people.add(`${r.agencia || ''}|${n.trim().toLowerCase()}`);
+      });
+    });
+    return { truckIds, people };
+  }, [routes]);
+  const trucksLive = useMemo(
+    () =>
+      trucks.map((t) => {
+        if (t.estado === 'Baja') return t;
+        const estado = busyResources.truckIds.has(t.id) ? 'En Ruta' : 'Disponible';
+        return t.estado === estado ? t : { ...t, estado };
+      }),
+    [trucks, busyResources]
+  );
+  const staffLive = useMemo(
+    () =>
+      staff.map((s) => {
+        if (s.estado === 'Baja') return s;
+        const estado = busyResources.people.has(`${s.agencia || ''}|${(s.nombre || '').trim().toLowerCase()}`)
+          ? 'En Ruta'
+          : 'Disponible';
+        return s.estado === estado ? s : { ...s, estado };
+      }),
+    [staff, busyResources]
+  );
+
   const visibleTrucks = useMemo(
     () =>
-      trucks.filter(
+      trucksLive.filter(
         (t) =>
           (selectedAgency === 'TODAS' || t.agencia === selectedAgency) &&
           (!t.agencia || canViewAgency(t.agencia))
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [trucks, selectedAgency, currentUser]
+    [trucksLive, selectedAgency, currentUser]
   );
   const visibleStaff = useMemo(
     () =>
-      staff.filter(
+      staffLive.filter(
         (s) =>
           (selectedAgency === 'TODAS' || s.agencia === selectedAgency) &&
           (!s.agencia || canViewAgency(s.agencia))
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [staff, selectedAgency, currentUser]
+    [staffLive, selectedAgency, currentUser]
   );
 
   // Indicadores de Personal: activos por puesto (VPP / VPPB / APP). Respetan el
@@ -1567,12 +1737,8 @@ export default function App() {
     );
   };
 
-  const handleConfirmRevert = (parentRouteId: string) => {
-    const siblings = routes.filter(
-      (r) =>
-        r.parentRouteId === parentRouteId ||
-        (r.isSplitRoute && String(r.id).startsWith(parentRouteId + '.'))
-    );
+  const handleConfirmRevert = (parentRouteId: string, ref?: Route | null) => {
+    const siblings = routes.filter((r) => isSameSplitGroup(r, parentRouteId, ref));
 
     if (siblings.length === 0) return;
 
@@ -1702,18 +1868,8 @@ export default function App() {
     }
 
     setRoutes((prev) => {
-      const firstIdx = prev.findIndex(
-        (r) =>
-          r.parentRouteId === parentRouteId ||
-          (r.isSplitRoute && String(r.id).startsWith(parentRouteId + '.'))
-      );
-      const filtered = prev.filter(
-        (r) =>
-          !(
-            r.parentRouteId === parentRouteId ||
-            (r.isSplitRoute && String(r.id).startsWith(parentRouteId + '.'))
-          )
-      );
+      const firstIdx = prev.findIndex((r) => isSameSplitGroup(r, parentRouteId, ref));
+      const filtered = prev.filter((r) => !isSameSplitGroup(r, parentRouteId, ref));
       filtered.splice(firstIdx >= 0 ? firstIdx : 0, 0, restoredRoute);
       return filtered;
     });
@@ -1733,6 +1889,17 @@ export default function App() {
   // aplicando la misma asignación también a otra fila con el mismo ID pero de otra
   // fecha. Ahora se identifica la fila exacta con ID + Fecha (ver
   // src/utils/routeKey.ts).
+  // Id del colaborador por nombre dentro de la agencia de la ruta (si hay
+  // homónimos en la misma agencia, se toma el primero que no esté de baja).
+  const staffIdByName = (agencia: string, nombre?: string | null): string | undefined => {
+    if (!nombre) return undefined;
+    const clean = nombre.trim().toLowerCase();
+    const candidates = staff.filter((st) => (st.nombre || '').trim().toLowerCase() === clean);
+    const sameAgency = candidates.filter((st) => st.agencia === agencia);
+    const pool = sameAgency.length ? sameAgency : candidates;
+    return (pool.find((st) => st.estado !== 'Baja') || pool[0])?.id;
+  };
+
   const handleConfirmAssignment = (
     routeId: string,
     fecha: string,
@@ -1793,6 +1960,13 @@ export default function App() {
               auxiliar2: assignment.helper2 || null,
               auxiliar3: assignment.helper3 || null,
               auxiliar4: assignment.helper4 || null,
+              // Punto 7 del análisis: además del nombre se guarda el código
+              // interno (id) del piloto y de cada auxiliar, para no depender
+              // solo del nombre (homónimos, correcciones de ortografía).
+              conductorId: staffIdByName(r.agencia, assignment.driverName),
+              auxiliarIds: [assignment.helper1, assignment.helper2, assignment.helper3, assignment.helper4].map((n) =>
+                n ? staffIdByName(r.agencia, n) || null : null
+              ),
               horaSalida: assignment.horaSalida,
               fechaDespacho: formatDateToGuatemala(new Date()),
               fechaAsignacion: fechaHoraAsignacion,
@@ -2387,7 +2561,7 @@ export default function App() {
 
     // Check if part of split
     if (targetRoute.isSplitRoute && targetRoute.parentRouteId) {
-      const siblings = routes.filter((r) => r.parentRouteId === targetRoute.parentRouteId);
+      const siblings = routes.filter((r) => isSameSplitGroup(r, targetRoute.parentRouteId!, targetRoute));
       const allSettled = siblings.every(
         (s) => String(s.id) === String(routeId) || s.estado === 'Liquidada'
       );
@@ -2396,7 +2570,7 @@ export default function App() {
           `¡Completados todos los viajes de la ruta ${targetRoute.parentRouteId}!${cajaAbiertaSuffix}`,
           data.isCajaAbierta ? 'info' : 'success'
         );
-        handleViewConsolidatedReceipt(targetRoute.parentRouteId);
+        handleViewConsolidatedReceipt(targetRoute.parentRouteId, targetRoute);
         return;
       } else {
         showToast(`Línea ${targetRoute.id} liquidada y transferida al Tablero de Rutas Liquidadas.${cajaAbiertaSuffix}`, 'info');
@@ -2956,11 +3130,11 @@ export default function App() {
     setReceiptConsolidatedSiblings(undefined);
   };
 
-  const handleViewConsolidatedReceipt = (parentRouteId: string) => {
+  const handleViewConsolidatedReceipt = (parentRouteId: string, ref?: Route | null) => {
     const allKnown = [...routes, ...allLiquidatedRoutes];
     const uniqueMap = new Map<string, Route>();
     allKnown.forEach((r) => {
-      if (r.parentRouteId === parentRouteId) {
+      if (r.parentRouteId === parentRouteId && isSameSplitGroup(r, parentRouteId, ref)) {
         uniqueMap.set(String(r.id), r);
       }
     });
@@ -3256,8 +3430,8 @@ export default function App() {
             fillHeight
             routes={filteredActiveRoutes}
             allRoutes={routes}
-            trucks={trucks}
-            staff={staff}
+            trucks={trucksLive}
+            staff={staffLive}
             onOpenAssignModal={(id, fecha) => {
               const r = routes.find((item) => routeMatchesKey(item, id, fecha));
               if (r) setAssignTarget(r);
@@ -3275,8 +3449,8 @@ export default function App() {
               if (r) setRevertSplitTarget(r);
             }}
             onViewSettlementReceipt={(id, fecha) => handleViewSettlementReceipt(id, undefined, fecha)}
-            onViewConsolidatedReceipt={(parentRouteId) =>
-              handleViewConsolidatedReceipt(parentRouteId)
+            onViewConsolidatedReceipt={(parentRouteId, ref) =>
+              handleViewConsolidatedReceipt(parentRouteId, ref)
             }
             onOpenNewRouteModal={() => setIsRouteTypeSelectModalOpen(true)}
             onMoveToFloor={handleMoveToFloor}
@@ -3290,13 +3464,16 @@ export default function App() {
         {activeTab === 'liquidated' && (
           <LiquidatedBoardView
             onKpisChange={setLiqKpis}
+            historyLimitedDays={historyLimited ? HISTORY_INITIAL_DAYS : undefined}
+            onLoadFullHistory={loadFullHistory}
+            isLoadingFullHistory={isLoadingFullHistory}
             liquidatedRoutes={allLiquidatedRoutes}
             allRoutes={routes}
-            staff={staff}
+            staff={staffLive}
             allAgencies={agencies}
             onViewSettlementReceipt={(id, routeObj) => handleViewSettlementReceipt(id, routeObj)}
-            onViewConsolidatedReceipt={(parentRouteId) =>
-              handleViewConsolidatedReceipt(parentRouteId)
+            onViewConsolidatedReceipt={(parentRouteId, ref) =>
+              handleViewConsolidatedReceipt(parentRouteId, ref)
             }
             onOpenFinalizeCajaAbierta={(routeObj) => setFinalizeCajaAbiertaTarget(routeObj)}
             onShowToast={showToast}
@@ -3376,6 +3553,7 @@ export default function App() {
             onResetPassword={handleResetPassword}
             onDeleteUser={handleDeleteUser}
             onVerifyPassword={handleVerifyPassword}
+            onDownloadBackup={isSupabaseConfigured ? handleDownloadBackup : undefined}
           />
         )}
       </main>
@@ -3424,15 +3602,12 @@ export default function App() {
         route={revertSplitTarget}
         siblings={
           revertSplitTarget
-            ? routes.filter(
-                (r) =>
-                  r.parentRouteId ===
-                    (revertSplitTarget.parentRouteId || String(revertSplitTarget.id).split('.')[0]) ||
-                  (r.isSplitRoute &&
-                    String(r.id).startsWith(
-                      (revertSplitTarget.parentRouteId ||
-                        String(revertSplitTarget.id).split('.')[0]) + '.'
-                    ))
+            ? routes.filter((r) =>
+                isSameSplitGroup(
+                  r,
+                  revertSplitTarget.parentRouteId || String(revertSplitTarget.id).split('.')[0],
+                  revertSplitTarget
+                )
               )
             : []
         }
@@ -3443,8 +3618,8 @@ export default function App() {
         isOpen={!!assignTarget}
         onClose={() => setAssignTarget(null)}
         route={assignTarget}
-        trucks={trucks}
-        staff={staff}
+        trucks={trucksLive}
+        staff={staffLive}
         activeRoutes={routes}
         historyRoutes={historicalRoutes}
         onConfirmAssignment={handleConfirmAssignment}
@@ -3475,7 +3650,7 @@ export default function App() {
         }}
         route={receiptTarget}
         consolidatedSiblings={receiptConsolidatedSiblings}
-        staff={staff}
+        staff={staffLive}
       />
 
       <NewTruckModal
@@ -3548,6 +3723,12 @@ export default function App() {
         onSetStaffReason={handleSetStaffReason}
       />
 
+      {isSupabaseConfigured && !isOnline && (
+        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[80] max-w-[92vw] px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold shadow-xl flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+          Sin conexión: los cambios se guardarán cuando vuelva la señal. No cierres la app.
+        </div>
+      )}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
