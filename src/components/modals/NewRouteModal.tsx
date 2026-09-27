@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Route } from '../../types';
 import { getGuatemalaDateForInput, formatDateToGuatemala } from '../../utils/date';
 import { X, PlusCircle, Lock } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 
 interface NewRouteModalProps {
   isOpen: boolean;
@@ -69,9 +71,7 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
             <span className="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
             <h3 className="font-bold text-sm">Registrar Nueva Ruta de Entrega</h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <IconButton icon={ACTION_ICONS.cerrar} label="Cerrar" onClick={onClose} className="text-slate-400 hover:text-white hover:bg-white/10" />
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
@@ -81,7 +81,7 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
                 Agencia / Sucursal
                 <Lock className="w-3 h-3 text-slate-400" />
               </label>
-              <div className="w-full p-2.5 border border-slate-200 bg-slate-50 rounded-lg font-medium text-slate-600">
+              <div className="w-full min-h-[44px] p-2.5 border border-slate-200 bg-slate-50 rounded-lg font-medium text-slate-600">
                 {agencia}
               </div>
             </div>
@@ -90,7 +90,7 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
                 ID de Ruta
                 <Lock className="w-3 h-3 text-slate-400" />
               </label>
-              <div className="w-full p-2.5 border border-slate-200 bg-slate-50 rounded-lg uppercase font-mono font-semibold text-slate-600">
+              <div className="w-full min-h-[44px] p-2.5 border border-slate-200 bg-slate-50 rounded-lg uppercase font-mono font-semibold text-slate-600">
                 {nextSuggestedId}
               </div>
             </div>
@@ -103,7 +103,7 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
                 type="text"
                 value={mercado}
                 onChange={(e) => setMercado(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium outline-none"
               />
             </div>
             <div>
@@ -112,7 +112,7 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
                 type="date"
                 value={fecha}
                 onChange={(e) => setFecha(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
           </div>
@@ -126,7 +126,7 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
                 value={paradas}
                 onChange={(e) => setParadas(parseInt(e.target.value) || 1)}
                 required
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold outline-none"
               />
             </div>
             <div>
@@ -138,7 +138,7 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
                 required
                 value={cajasFisicas}
                 onChange={(e) => setCajasFisicas(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono outline-none"
               />
             </div>
             <div>
@@ -149,7 +149,7 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
                 min="0"
                 value={peso}
                 onChange={(e) => setPeso(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono outline-none"
               />
             </div>
           </div>
@@ -162,7 +162,7 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
                 min="0"
                 value={equipoFrio}
                 onChange={(e) => setEquipoFrio(parseInt(e.target.value) || 0)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono outline-none"
               />
             </div>
             <div>
@@ -172,7 +172,7 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
                 value={capacidad}
                 onChange={(e) => setCapacidad(e.target.value)}
                 placeholder="Ej. 100%"
-                className="w-full p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
               />
             </div>
             <div>
@@ -184,26 +184,18 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
                 required
                 value={distancia}
                 onChange={(e) => setDistancia(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
               />
             </div>
           </div>
 
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg font-semibold hover:bg-slate-50 cursor-pointer"
-            >
+<div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+            <Button variant="secondary" size="lg" onClick={onClose}>
               Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold shadow-sm flex items-center cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4 mr-1.5" />
-              Crear Ruta
-            </button>
+            </Button>
+            <Button type="submit" variant="primary" size="lg" icon={ACTION_ICONS.nuevo}>
+              Crear ruta
+            </Button>
           </div>
         </form>
       </div>
