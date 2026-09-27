@@ -2,6 +2,10 @@ import { getRouteKey } from '../../utils/routeKey';
 import React, { useState, useEffect } from 'react';
 import { Route, MotivoDevolucionReason, CajaAbiertaReason, ClientePendiente } from '../../types';
 import { X, CheckCircle, ClipboardCheck, RotateCcw, AlertTriangle, Lock, Users, Search } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ModalFooter } from '../ui/ModalFooter';
+import { ACTION_ICONS } from '../ui/actionIcons';
+import { useMaximized } from '../ui/useMaximized';
 import { MOTIVO_DEVOLUCION_OPTIONS, MOTIVO_REVISITA } from '../../data/motivosDevolucion';
 import { CAJA_ABIERTA_OPTIONS } from '../../data/motivosCajaAbierta';
 
@@ -51,6 +55,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   defaultAuditor,
   onConfirmLiquidation,
 }) => {
+  const [isMaximized, toggleMaximized] = useMaximized('dc_liquidate_maximized');
   const [guiasExitosas, setGuiasExitosas] = useState(0);
   const [guiasRechazadas, setGuiasRechazadas] = useState(0);
   const [cajasDevueltas, setCajasDevueltas] = useState<number | string>('0.000');
@@ -241,8 +246,12 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
     : '';
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all max-h-[90vh] flex flex-col">
+    <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center ${isMaximized ? 'p-0' : 'p-3 sm:p-4'}`}>
+      <div
+        className={`bg-white w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all flex flex-col ${
+          isMaximized ? 'h-full max-h-full rounded-none' : 'rounded-2xl max-w-2xl lg:max-w-3xl max-h-[92vh]'
+        }`}
+      >
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
           <div>
             <div className="flex items-center space-x-2">
@@ -254,9 +263,20 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
               {isSplitNotice} | Agencia: {route.agencia} | {route.cajasFisicas || 0} Cajas Físicas
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <IconButton
+              icon={isMaximized ? ACTION_ICONS.restaurar : ACTION_ICONS.pantallaCompleta}
+              label={isMaximized ? 'Restaurar tamaño de la ventana' : 'Ver a pantalla completa'}
+              onClick={toggleMaximized}
+              className="text-slate-300 hover:text-white hover:bg-slate-800"
+            />
+            <IconButton
+              icon={ACTION_ICONS.cerrar}
+              label="Cerrar sin guardar"
+              onClick={onClose}
+              className="text-slate-300 hover:text-white hover:bg-slate-800"
+            />
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
@@ -302,7 +322,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                   value={guiasExitosas}
                   onChange={(e) => handleExitosasChange(parseInt(e.target.value) || 0)}
                   required
-                  className="w-full p-2 border border-emerald-300 rounded-lg font-bold text-emerald-700 bg-emerald-50/40 outline-none"
+                  className="w-full min-h-[44px] p-2 border border-emerald-300 rounded-lg font-bold text-emerald-700 bg-emerald-50/40 outline-none"
                 />
               </div>
               <div>
@@ -313,7 +333,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                   max={totalParadas}
                   value={guiasRechazadas}
                   onChange={(e) => handleRechazadasChange(parseInt(e.target.value) || 0)}
-                  className="w-full p-2 border border-rose-300 rounded-lg font-bold text-rose-700 bg-rose-50/40 outline-none"
+                  className="w-full min-h-[44px] p-2 border border-rose-300 rounded-lg font-bold text-rose-700 bg-rose-50/40 outline-none"
                 />
               </div>
             </div>
@@ -341,7 +361,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                   min="0"
                   value={cajasDevueltas}
                   onChange={(e) => setCajasDevueltas(e.target.value)}
-                  className="w-full p-2 border-2 border-rose-300 focus:border-rose-500 rounded-lg font-mono font-bold text-rose-700 bg-rose-50/50 outline-none"
+                  className="w-full min-h-[44px] p-2 border-2 border-rose-300 focus:border-rose-500 rounded-lg font-mono font-bold text-rose-700 bg-rose-50/50 outline-none"
                 />
               </div>
               <div>
@@ -353,7 +373,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                   step="0.001"
                   value={cajasEntregadas.toFixed(3)}
                   readOnly
-                  className="w-full p-2 border border-emerald-300 bg-emerald-50/60 rounded-lg font-mono font-extrabold text-emerald-700 outline-none"
+                  className="w-full min-h-[44px] p-2 border border-emerald-300 bg-emerald-50/60 rounded-lg font-mono font-extrabold text-emerald-700 outline-none"
                 />
               </div>
             </div>
@@ -368,10 +388,19 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
             <label className="block font-bold text-slate-800 text-xs">
               Modalidad de Cierre / Resolución de la Ruta *
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div role="radiogroup" aria-label="Modalidad de cierre" className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div
+                role="radio"
+                tabIndex={0}
+                aria-checked={tipoResolucion === 'liquidada'}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setTipoResolucion('liquidada');
+                  }
+                }}
                 onClick={() => setTipoResolucion('liquidada')}
-                className={`p-3 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                className={`p-3 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between outline-none focus-visible:ring-4 focus-visible:ring-blue-200 ${
                   tipoResolucion === 'liquidada'
                     ? 'border-emerald-500 bg-emerald-50/60 shadow-xs'
                     : 'border-slate-200 bg-white hover:border-slate-300'
@@ -398,8 +427,17 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
               </div>
 
               <div
+                role="radio"
+                tabIndex={0}
+                aria-checked={tipoResolucion === 'abierta'}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setTipoResolucion('abierta');
+                  }
+                }}
                 onClick={() => setTipoResolucion('abierta')}
-                className={`p-3 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                className={`p-3 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between outline-none focus-visible:ring-4 focus-visible:ring-blue-200 ${
                   tipoResolucion === 'abierta'
                     ? 'border-indigo-500 bg-indigo-50/70 shadow-xs ring-1 ring-indigo-200'
                     : 'border-slate-200 bg-white hover:border-slate-300'
@@ -426,8 +464,17 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
               </div>
 
               <div
+                role="radio"
+                tabIndex={0}
+                aria-checked={tipoResolucion === 'cajaAbierta'}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setTipoResolucion('cajaAbierta');
+                  }
+                }}
                 onClick={() => setTipoResolucion('cajaAbierta')}
-                className={`p-3 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                className={`p-3 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between outline-none focus-visible:ring-4 focus-visible:ring-blue-200 ${
                   tipoResolucion === 'cajaAbierta'
                     ? 'border-amber-500 bg-amber-50/70 shadow-xs ring-1 ring-amber-200'
                     : 'border-slate-200 bg-white hover:border-slate-300'
@@ -470,7 +517,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                           setMotivoCajaAbierta(opt.reason);
                           setCajaAbiertaError('');
                         }}
-                        className={`px-2.5 py-1 text-[11px] font-bold border rounded-md transition cursor-pointer shadow-xs ${
+                        className={`min-h-[44px] px-3 text-xs font-bold border rounded-lg transition cursor-pointer shadow-xs ${
                           isActive
                             ? 'bg-amber-600 text-white border-amber-700 ring-2 ring-amber-200'
                             : 'bg-white hover:bg-amber-100 border-amber-300 text-amber-800'
@@ -558,7 +605,8 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                         value={clientesFiltro}
                         onChange={(e) => setClientesFiltro(e.target.value)}
                         placeholder="Buscar código o nombre..."
-                        className="w-full pl-7 pr-2 py-1 text-[11px] border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                        aria-label="Buscar cliente por código o nombre"
+                        className="w-full min-h-[40px] pl-7 pr-2 text-xs border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                   </div>
@@ -572,13 +620,13 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                       : 'Opcional: marca los clientes cuya caja/boleta queda pendiente y el motivo (PIN de Abasto, Boleta, Fuera POS, Nota de Crédito).'}
                   </p>
 
-                  <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                  <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
                     {clientesFiltrados.map((c) => {
                       const isMarcado = clientesMarcados.has(c.codigo);
                       return (
                         <div
                           key={c.codigo}
-                          className={`flex items-center justify-between gap-2 py-1.5 px-2 ${
+                          className={`flex items-center justify-between gap-2 min-h-[48px] py-1 px-2 ${
                             isMarcado ? 'bg-amber-50/60' : ''
                           }`}
                         >
@@ -587,9 +635,9 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                               type="checkbox"
                               checked={isMarcado}
                               onChange={() => toggleCliente(c.codigo)}
-                              className="cursor-pointer shrink-0"
+                              className="cursor-pointer shrink-0 w-5 h-5"
                             />
-                            <span className="truncate text-[11px]">
+                            <span className="truncate text-xs">
                               <span className="font-mono text-slate-500">{c.codigo}</span>{' '}
                               <span className="font-medium text-slate-800">{c.nombre || '-'}</span>{' '}
                               <span className="text-slate-400">({Number(c.cajas || 0).toFixed(3)} cajas)</span>
@@ -599,7 +647,8 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                             <select
                               value={clientesMarcados.get(c.codigo) || ''}
                               onChange={(e) => setMotivoCliente(c.codigo, e.target.value)}
-                              className="text-[10px] border border-amber-300 bg-white rounded px-1.5 py-1 outline-none shrink-0 cursor-pointer font-semibold text-amber-900"
+                              aria-label={`Motivo del cliente ${c.codigo}`}
+                              className="min-h-[40px] text-xs border border-amber-300 bg-white rounded-lg px-2 outline-none shrink-0 cursor-pointer font-semibold text-amber-900 focus-visible:ring-2 focus-visible:ring-amber-400"
                             >
                               <option value="">-- Motivo --</option>
                               {motivoOptions.map((opt) => (
@@ -642,7 +691,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                         setMotivoGeneral(isActive ? '' : opt.reason);
                         setMotivoGeneralError('');
                       }}
-                      className={`min-h-[36px] px-2.5 py-1 text-[11px] font-semibold border rounded-lg transition cursor-pointer ${
+                      className={`min-h-[44px] px-3 text-xs font-semibold border rounded-lg transition cursor-pointer ${
                         isActive
                           ? 'bg-slate-800 text-white border-slate-900'
                           : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
@@ -671,7 +720,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
               onChange={(e) => setComentario(e.target.value)}
               rows={2}
               placeholder="Agrega cualquier observación adicional sobre esta liquidación..."
-              className="w-full p-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"
             />
           </div>
 
@@ -684,7 +733,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setAuditor(defaultAuditor)}
-                  className="text-[10px] text-indigo-500 hover:text-indigo-700 underline cursor-pointer"
+                  className="min-h-[40px] px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 rounded-lg cursor-pointer"
                 >
                   Usar mi usuario ({defaultAuditor})
                 </button>
@@ -695,7 +744,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
               value={auditor}
               onChange={(e) => setAuditor(e.target.value)}
               required
-              className="w-full p-2 border border-slate-300 rounded-lg outline-none"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg outline-none"
             />
             {defaultAuditor && auditor === defaultAuditor && (
               <p className="text-[10px] text-slate-400 mt-1">
@@ -704,40 +753,29 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
             )}
           </div>
 
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-between flex-shrink-0">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg font-semibold hover:bg-slate-50 cursor-pointer"
-            >
-              Cerrar sin guardar
-            </button>
+          {/* Pie fijo con el verbo exacto de lo que va a pasar. */}
+          <ModalFooter
+            bleed="p-6"
+            secondary={
+              <Button variant="secondary" size="lg" onClick={onClose}>
+                Cancelar
+              </Button>
+            }
+          >
             {tipoResolucion === 'abierta' ? (
-              <button
-                type="submit"
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold shadow-md flex items-center space-x-1.5 cursor-pointer"
-              >
-                <RotateCcw className="w-4 h-4 mr-1.5" />
-                <span>Registrar Retorno y Dejar Ruta Abierta para Reasignar</span>
-              </button>
+              <Button type="submit" variant="primary" size="lg" icon={ACTION_ICONS.reasignar}>
+                Dejar abierta para reasignar
+              </Button>
             ) : tipoResolucion === 'cajaAbierta' ? (
-              <button
-                type="submit"
-                className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold shadow-md flex items-center space-x-1.5 cursor-pointer"
-              >
-                <Lock className="w-4 h-4 mr-1.5" />
-                <span>Liquidar con Caja Abierta (Pendiente de Validar)</span>
-              </button>
+              <Button type="submit" variant="warning" size="lg" icon={Lock}>
+                Liquidar con caja abierta
+              </Button>
             ) : (
-              <button
-                type="submit"
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-md flex items-center space-x-1.5 cursor-pointer"
-              >
-                <CheckCircle className="w-4 h-4 mr-1.5" />
-                <span>Liquidar y Cerrar Definitivamente</span>
-              </button>
+              <Button type="submit" variant="success" size="lg" icon={ACTION_ICONS.liquidar}>
+                Liquidar ruta {route.id}
+              </Button>
             )}
-          </div>
+          </ModalFooter>
         </form>
       </div>
     </div>
