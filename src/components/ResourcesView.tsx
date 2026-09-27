@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Truck, Staff, ResourceStatus, StaffEstatus } from '../types';
-import { Truck as TruckIcon, UserPlus, Users, ChevronDown, FileSpreadsheet, Download, Trash2 } from 'lucide-react';
+import { Truck as TruckIcon, UserPlus, Users, ChevronDown, FileSpreadsheet, Download, Trash2, Plus } from 'lucide-react';
 import { BatchStaffModal } from './modals/BatchStaffModal';
 import { BatchTruckModal } from './modals/BatchTruckModal';
 import { DeleteAuthModal } from './modals/DeleteAuthModal';
@@ -21,6 +21,8 @@ interface ResourcesViewProps {
   onDeleteStaffMembers?: (staffIds: string[]) => void;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   canDelete?: boolean;
+  // Confirmación de eliminación con la contraseña del usuario en sesión.
+  onVerifyPassword?: (password: string) => Promise<boolean>;
   // Corrección: permisos independientes para poder subir Excel masivo o agregar
   // manualmente Camiones/Personal, sin dar permiso para editar lo ya cargado (la
   // carga masiva en sí ya nunca sobrescribe registros existentes, ver App.tsx).
@@ -47,6 +49,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
   onDeleteStaffMembers,
   onShowToast,
   canDelete = true,
+  onVerifyPassword = async () => false,
   canBulkUploadTrucks = true,
   canManualAddTrucks = true,
   canBulkUploadStaff = true,
@@ -92,7 +95,8 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
           setLimit(PAGE);
         }}
         placeholder={placeholder}
-        className="flex-1 min-w-[200px] max-w-sm px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500"
+        aria-label={placeholder}
+        className="flex-1 min-w-[200px] max-w-sm min-h-[44px] px-3 text-sm border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500"
       />
       <span className="text-xs text-slate-500">
         Mostrando {shown} de {total}
@@ -165,18 +169,18 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                 downloadTruckExcelTemplate();
                 onShowToast?.('Plantilla de Excel para camiones descargada exitosamente.', 'success');
               }}
-              className="text-xs bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center shadow-2xs"
+              className="min-h-[44px] text-sm bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3.5 rounded-xl font-semibold transition cursor-pointer flex items-center shadow-2xs"
               title="Descargar plantilla de Excel (.xlsx) con el formato oficial de camiones"
             >
               <Download className="w-3.5 h-3.5 mr-1 text-blue-600" />
-              Descargar Plantilla
+              Plantilla
             </button>
             {canBulkUploadTrucks && (
               <button
                 type="button"
                 id="btn-subir-excel-camiones"
                 onClick={() => setIsBatchTruckModalOpen(true)}
-                className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center shadow-2xs"
+                className="min-h-[44px] text-sm bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3.5 rounded-xl font-semibold transition cursor-pointer flex items-center shadow-2xs"
                 title="Cargar camiones masivamente desde archivo Excel"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 mr-1" />
@@ -187,15 +191,16 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
               <button
                 id="btn-agregar-camion"
                 onClick={onOpenNewTruckModal}
-                className="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-slate-800 transition cursor-pointer flex items-center"
+                className="min-h-[44px] text-sm bg-blue-600 text-white px-4 rounded-xl font-semibold hover:bg-blue-700 shadow-sm transition cursor-pointer flex items-center"
               >
-                + Agregar Camión
+                <Plus className="w-4 h-4 mr-1" />
+                Agregar camión
               </button>
             )}
           </div>
         </div>
         {canDelete && selectedTruckIds.size > 0 && (
-          <div className="flex items-center justify-between bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+          <div className="flex items-center justify-between bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
             <span className="text-rose-800 font-semibold">
               {selectedTruckIds.size} camión(es) seleccionado(s)
             </span>
@@ -208,7 +213,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                   label: `${selectedTruckIds.size} camión(es) seleccionado(s)`,
                 })
               }
-              className="text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center"
+              className="min-h-[44px] text-sm bg-rose-600 hover:bg-rose-700 text-white px-4 rounded-xl font-semibold transition cursor-pointer flex items-center"
             >
               <Trash2 className="w-3.5 h-3.5 mr-1" />
               Eliminar seleccionados
@@ -225,8 +230,9 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                     type="checkbox"
                     checked={trucks.length > 0 && selectedTruckIds.size === trucks.length}
                     onChange={toggleAllTrucks}
-                    className="cursor-pointer"
+                    className="cursor-pointer w-5 h-5"
                     title="Seleccionar todos"
+                    aria-label="Seleccionar todos"
                   />
                 </th>
                 <th className="py-3 px-4">ID Camión</th>
@@ -248,7 +254,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                       type="checkbox"
                       checked={selectedTruckIds.has(t.id)}
                       onChange={() => toggleTruckSelection(t.id)}
-                      className="cursor-pointer"
+                      className="cursor-pointer w-5 h-5"
                     />
                   </td>
                   <td className="py-3 px-4 font-mono text-slate-600">{t.idCamion || '-'}</td>
@@ -305,6 +311,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                       <button
                         type="button"
                         title="Eliminar camión"
+                        aria-label={`Eliminar camión ${t.placa}`}
                         onClick={() =>
                           setPendingDelete({
                             type: 'truck',
@@ -312,7 +319,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                             label: `el camión ${t.idCamion ? `#${t.idCamion} - ` : ''}${t.placa}`,
                           })
                         }
-                        className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition cursor-pointer"
+                        className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-lg transition cursor-pointer"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -349,18 +356,18 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                 downloadStaffExcelTemplate();
                 onShowToast?.('Plantilla de Excel para personal descargada exitosamente.', 'success');
               }}
-              className="text-xs bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center shadow-2xs"
+              className="min-h-[44px] text-sm bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3.5 rounded-xl font-semibold transition cursor-pointer flex items-center shadow-2xs"
               title="Descargar plantilla de Excel (.xlsx) con el formato oficial de personal"
             >
               <Download className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-              Descargar Plantilla
+              Plantilla
             </button>
             {canBulkUploadStaff && (
               <button
                 type="button"
                 id="btn-subir-excel-personal"
                 onClick={() => setIsBatchStaffModalOpen(true)}
-                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center shadow-2xs"
+                className="min-h-[44px] text-sm bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3.5 rounded-xl font-semibold transition cursor-pointer flex items-center shadow-2xs"
                 title="Cargar personal masivamente desde archivo Excel"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 mr-1" />
@@ -371,16 +378,16 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
               <button
                 id="btn-agregar-personal"
                 onClick={onOpenNewStaffModal}
-                className="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-slate-800 transition cursor-pointer flex items-center"
+                className="min-h-[44px] text-sm bg-blue-600 text-white px-4 rounded-xl font-semibold hover:bg-blue-700 shadow-sm transition cursor-pointer flex items-center"
               >
-                <UserPlus className="w-3.5 h-3.5 mr-1" />
-                Agregar Personal
+                <UserPlus className="w-4 h-4 mr-1" />
+                Agregar personal
               </button>
             )}
           </div>
         </div>
         {canDelete && selectedStaffIds.size > 0 && (
-          <div className="flex items-center justify-between bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+          <div className="flex items-center justify-between bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
             <span className="text-rose-800 font-semibold">
               {selectedStaffIds.size} colaborador(es) seleccionado(s)
             </span>
@@ -393,7 +400,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                   label: `${selectedStaffIds.size} colaborador(es) seleccionado(s)`,
                 })
               }
-              className="text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center"
+              className="min-h-[44px] text-sm bg-rose-600 hover:bg-rose-700 text-white px-4 rounded-xl font-semibold transition cursor-pointer flex items-center"
             >
               <Trash2 className="w-3.5 h-3.5 mr-1" />
               Eliminar seleccionados
@@ -410,8 +417,9 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                     type="checkbox"
                     checked={staff.length > 0 && selectedStaffIds.size === staff.length}
                     onChange={toggleAllStaff}
-                    className="cursor-pointer"
+                    className="cursor-pointer w-5 h-5"
                     title="Seleccionar todos"
+                    aria-label="Seleccionar todos"
                   />
                 </th>
                 <th className="py-3 px-4">DPI</th>
@@ -450,7 +458,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                         type="checkbox"
                         checked={selectedStaffIds.has(s.id)}
                         onChange={() => toggleStaffSelection(s.id)}
-                        className="cursor-pointer"
+                        className="cursor-pointer w-5 h-5"
                       />
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-700 font-semibold text-xs">
@@ -568,6 +576,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                         <button
                           type="button"
                           title="Eliminar colaborador"
+                          aria-label={`Eliminar a ${s.nombre}`}
                           onClick={() =>
                             setPendingDelete({
                               type: 'staff',
@@ -575,7 +584,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                               label: `a ${s.nombre}${s.codigo ? ` (${s.codigo})` : ''}`,
                             })
                           }
-                          className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition cursor-pointer"
+                          className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-lg transition cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -621,6 +630,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
         onClose={() => setPendingDelete(null)}
         itemLabel={pendingDelete?.label || ''}
         itemCount={pendingDelete?.ids.length || 1}
+        onVerifyPassword={onVerifyPassword}
         onConfirm={() => {
           if (!pendingDelete) return;
           if (pendingDelete.type === 'truck') {
