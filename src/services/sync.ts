@@ -78,7 +78,10 @@ const UPSERT_BATCH_SIZE = 500;
  * memoria/localStorage).
  */
 export async function fetchSharedCollection<T>(
-  table: SyncableTable
+  table: SyncableTable,
+  // Punto 15: permite traer solo lo modificado en los últimos N días (se usa
+  // para el historial de liquidadas, que crece todos los días).
+  opts?: { sinceDays?: number }
 ): Promise<SyncedRow<T>[] | null> {
   if (!supabase) return null;
   try {
@@ -86,11 +89,12 @@ export async function fetchSharedCollection<T>(
     // Lectura paginada (ver PAGE_SIZE arriba). Se ordena por "id" para que
     // las páginas sean estables y no se salte ni se repita ninguna fila.
     for (let from = 0; ; from += PAGE_SIZE) {
-      const { data, error } = await supabase
-        .from(table)
-        .select('id, data')
-        .order('id', { ascending: true })
-        .range(from, from + PAGE_SIZE - 1);
+      let query = supabase.from(table).select('id, data');
+      if (opts?.sinceDays) {
+        const since = new Date(Date.now() - opts.sinceDays * 24 * 60 * 60 * 1000).toISOString();
+        query = query.gte('updated_at', since);
+      }
+      const { data, error } = await query.order('id', { ascending: true }).range(from, from + PAGE_SIZE - 1);
       if (error) throw error;
       const rows = (data || []) as { id: string; data: T }[];
       rows.forEach((row) => all.push({ key: row.id, data: row.data }));
