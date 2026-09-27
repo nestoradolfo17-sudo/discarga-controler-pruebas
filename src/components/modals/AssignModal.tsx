@@ -21,6 +21,9 @@ import {
   Maximize2,
   Minimize2
 } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ModalFooter } from '../ui/ModalFooter';
+import { ACTION_ICONS } from '../ui/actionIcons';
 import { formatDateToGuatemala, getTomorrowGuatemalaDate } from '../../utils/date';
 import { ResourcePicker, PickerItem, PickerStatus } from '../ResourcePicker';
 import { suggestCrewForRoute } from '../../utils/crewSuggestion';
@@ -661,21 +664,18 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             </p>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            type="button"
+          <IconButton
+            icon={isMaximized ? ACTION_ICONS.restaurar : ACTION_ICONS.pantallaCompleta}
+            label={isMaximized ? 'Restaurar tamaño de la ventana' : 'Ver a pantalla completa'}
             onClick={toggleMaximized}
-            className="text-slate-300 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition cursor-pointer"
-            title={isMaximized ? 'Restaurar tamaño de la ventana' : 'Ver a pantalla completa'}
-          >
-            {isMaximized ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
-          </button>
-          <button 
-            onClick={onClose} 
-            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
-            title="Cerrar ventana"
-          >
-            <X className="w-6 h-6" />
-          </button>
+            className="text-slate-300 hover:text-white hover:bg-slate-800"
+          />
+          <IconButton
+            icon={ACTION_ICONS.cerrar}
+            label="Cerrar ventana"
+            onClick={onClose}
+            className="text-slate-300 hover:text-white hover:bg-slate-800"
+          />
           </div>
         </div>
 
@@ -854,7 +854,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                     id="quickCrewSelect"
                     value={selectedActiveCrewRouteId}
                     onChange={(e) => handleActiveCrewSelect(e.target.value)}
-                    className="w-full p-2 border border-purple-300 rounded-lg text-xs font-semibold bg-white text-purple-950 outline-none cursor-pointer"
+                    className="w-full min-h-[44px] p-2 border border-purple-300 rounded-lg text-xs font-semibold bg-white text-purple-950 outline-none cursor-pointer"
                   >
                     <option value="">-- Seleccionar tripulación en tránsito --</option>
                     {activeRoutesWithCrew.map((ar) => (
@@ -893,7 +893,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   id="quickSharedCrewSelect"
                   value={selectedActiveCrewRouteId}
                   onChange={(e) => handleActiveCrewSelect(e.target.value)}
-                  className="w-full p-2 border border-sky-300 rounded-lg text-xs font-semibold bg-white text-sky-950 outline-none cursor-pointer"
+                  className="w-full min-h-[44px] p-2 border border-sky-300 rounded-lg text-xs font-semibold bg-white text-sky-950 outline-none cursor-pointer"
                 >
                   <option value="">-- Seleccionar ruta activa para combinar carga --</option>
                   {activeRoutesWithCrew.map((ar) => (
@@ -966,7 +966,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   value={motivoPiso}
                   onChange={(e) => setMotivoPiso(e.target.value)}
                   placeholder="Ej. Capacidad de flota copada, corte operativo, etc."
-                  className="w-full p-2.5 border border-slate-300 rounded-lg text-xs font-medium bg-white text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg text-xs font-medium bg-white text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
                 />
                 <p className="text-[10px] text-slate-500">
                   Esta observación quedará registrada en el historial de la ruta.
@@ -1024,7 +1024,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                     <button
                       type="button"
                       onClick={applySuggestion}
-                      className="min-h-[44px] px-4 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm flex items-center gap-1.5 cursor-pointer active:scale-95"
+                      className="min-h-[48px] px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm flex items-center gap-1.5 cursor-pointer active:scale-95"
                     >
                       <Sparkles className="w-4 h-4" />
                       Usar sugerencia
@@ -1181,7 +1181,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setHelpersList([])}
-                        className="min-h-[40px] px-3 rounded-lg text-xs font-semibold text-slate-500 hover:text-red-600 border border-transparent hover:border-red-200 hover:bg-red-50 flex items-center cursor-pointer"
+                        className="min-h-[44px] px-3 rounded-lg text-xs font-semibold text-slate-500 hover:text-red-600 border border-transparent hover:border-red-200 hover:bg-red-50 flex items-center cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5 mr-1" />
                         Quitar todos
@@ -1202,8 +1202,9 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                       <button
                         type="button"
                         onClick={() => handleRemoveHelper(h)}
-                        className="ml-1.5 w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                        className="ml-1.5 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
                         title={`Quitar a ${h}`}
+                        aria-label={`Quitar a ${h}`}
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -1245,7 +1246,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                       const n = new Date();
                       setHoraSalida(`${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`);
                     }}
-                    className="px-3.5 py-2.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs sm:text-sm font-semibold rounded-lg transition-colors cursor-pointer shadow-2xs active:scale-95"
+                    className="min-h-[44px] px-3.5 py-2.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs sm:text-sm font-semibold rounded-lg transition-colors cursor-pointer shadow-2xs active:scale-95"
                     title="Asignar hora actual del sistema"
                   >
                     Hora Actual
@@ -1292,50 +1293,39 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             </div>
           )}
 
-          {/* Footer Buttons */}
-          <div className="sticky bottom-0 -mx-5 sm:-mx-7 -mb-5 sm:-mb-7 px-5 sm:px-7 py-3 sm:py-4 bg-white/95 backdrop-blur border-t border-slate-200 flex items-center justify-end space-x-3 z-10">
-            <button
-              type="button"
-              onClick={onClose}
-              className="min-h-[48px] px-5 border border-slate-300 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 cursor-pointer text-xs sm:text-sm transition"
-            >
-              Cancelar
-            </button>
-
+          {/* Pie fijo: Cancelar a la izquierda, acción principal a la derecha
+              con un verbo específico (ver ui/ModalFooter.tsx). */}
+          <ModalFooter
+            bleed="p-5 sm:p-7"
+            secondary={
+              <Button variant="secondary" size="lg" onClick={onClose}>
+                Cancelar
+              </Button>
+            }
+            info={
+              <span className="hidden md:inline">
+                Ruta <b className="text-slate-700">{route.id}</b> · {route.cajasFisicas || 0} cajas
+              </span>
+            }
+          >
             {isPiso ? (
-              <button
-                type="submit"
-                className="min-h-[48px] px-5 sm:px-6 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
-              >
-                <Warehouse className="w-4 h-4 mr-2" />
-                Confirmar y Pasar a Ruta de Mañana (A Piso)
-              </button>
+              <Button type="submit" variant="warning" size="lg" icon={ACTION_ICONS.aPiso}>
+                Enviar a Piso (mañana)
+              </Button>
             ) : isRecarga ? (
-              <button
-                type="submit"
-                className="min-h-[48px] px-5 sm:px-6 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
-              >
-                <Repeat className="w-4 h-4 mr-2" />
-                Confirmar Despacho como Recarga (2do Viaje)
-              </button>
+              <Button type="submit" variant="primary" size="lg" icon={ACTION_ICONS.recarga}>
+                Despachar recarga
+              </Button>
             ) : isRevisita || isReassign ? (
-              <button
-                type="submit"
-                className="min-h-[48px] px-5 sm:px-6 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Confirmar Despacho como Revisita
-              </button>
+              <Button type="submit" variant="primary" size="lg" icon={ACTION_ICONS.reasignar}>
+                Despachar revisita
+              </Button>
             ) : (
-              <button
-                type="submit"
-                className="min-h-[48px] px-5 sm:px-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold shadow-sm flex items-center cursor-pointer text-xs sm:text-sm transition"
-              >
-                <Send className="w-4 h-4 mr-2" />
-                Confirmar Despacho (Primer Viaje)
-              </button>
+              <Button type="submit" variant="primary" size="lg" icon={ACTION_ICONS.asignar}>
+                Asignar y despachar
+              </Button>
             )}
-          </div>
+          </ModalFooter>
         </form>
 
         {/* Buscadores táctiles (camión, piloto, auxiliares) */}
