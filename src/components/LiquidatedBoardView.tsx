@@ -4,7 +4,7 @@ import { exportHistoricalToExcel, getRouteAssignmentType } from '../utils/excel'
 import { parseFlexibleDate, formatDateToGuatemala, formatDateTimeToGuatemala } from '../utils/date';
 import { CheckCircle2, FileText, Download, Search, Filter, Calendar, PackageCheck, AlertCircle, RotateCcw, Repeat, Lock, Users } from 'lucide-react';
 import { ClientesRutaList } from './ClientesRutaList';
-import { getRouteKey } from '../utils/routeKey';
+import { getRouteKey, isSameSplitGroup } from '../utils/routeKey';
 
 // Indicadores del módulo de Rutas Liquidadas. Se calculan con los filtros
 // aplicados (búsqueda, agencia, fechas) y se muestran arriba, en la barra de
@@ -20,12 +20,16 @@ export interface LiquidatedKpis {
 
 interface LiquidatedBoardViewProps {
   onKpisChange?: (kpis: LiquidatedKpis) => void;
+  // Si viene definido, solo se cargaron los últimos N días del historial.
+  historyLimitedDays?: number;
+  onLoadFullHistory?: () => void;
+  isLoadingFullHistory?: boolean;
   liquidatedRoutes: Route[];
   allRoutes: Route[];
   staff: Staff[];
   allAgencies: string[];
   onViewSettlementReceipt: (routeId: string, route?: Route) => void;
-  onViewConsolidatedReceipt: (parentRouteId: string) => void;
+  onViewConsolidatedReceipt: (parentRouteId: string, ref?: Route) => void;
   // Abre el modal de "Liquidación Final" para cerrar el pendiente de validar
   // caja/boleta de una ruta que quedó en estado Caja Abierta.
   onOpenFinalizeCajaAbierta?: (route: Route) => void;
@@ -34,6 +38,9 @@ interface LiquidatedBoardViewProps {
 
 export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
   onKpisChange,
+  historyLimitedDays,
+  onLoadFullHistory,
+  isLoadingFullHistory,
   liquidatedRoutes,
   allRoutes,
   staff,
@@ -235,6 +242,23 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
       </>
       )}
 
+      {historyLimitedDays && onLoadFullHistory && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 rounded-xl border border-sky-200 bg-sky-50 text-sky-900 text-xs">
+          <span>
+            Se muestran las liquidaciones de los <strong>últimos {historyLimitedDays} días</strong> para que la app abra
+            más rápido.
+          </span>
+          <button
+            type="button"
+            onClick={onLoadFullHistory}
+            disabled={isLoadingFullHistory}
+            className="min-h-[36px] px-3 rounded-lg bg-sky-700 text-white font-semibold cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+          >
+            {isLoadingFullHistory ? 'Cargando...' : 'Cargar historial completo'}
+          </button>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
         <div>
@@ -351,7 +375,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
               const parentId = r.parentRouteId;
               let allSiblingsSettled = false;
               if (parentId) {
-                const siblings = allRoutes.filter((sr) => sr.parentRouteId === parentId);
+                const siblings = allRoutes.filter((sr) => isSameSplitGroup(sr, parentId, r));
                 if (siblings.length > 1) {
                   allSiblingsSettled = siblings.every((s) => s.estado === 'Liquidada');
                 }
@@ -646,7 +670,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                       )}
                       {allSiblingsSettled && parentId && (
                         <button
-                          onClick={() => onViewConsolidatedReceipt(parentId)}
+                          onClick={() => onViewConsolidatedReceipt(parentId, r)}
                           title="Ver Acta Oficial Consolidada de todos los viajes"
                           className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-300 rounded-lg text-xs sm:text-sm font-semibold transition inline-flex items-center cursor-pointer shadow-xs"
                         >
