@@ -1,5 +1,7 @@
 import React from 'react';
 import { X, PackageCheck, ArrowLeftRight } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 
 interface RouteTypeSelectModalProps {
   isOpen: boolean;
@@ -24,9 +26,7 @@ export const RouteTypeSelectModal: React.FC<RouteTypeSelectModalProps> = ({
             <span className="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
             <h3 className="font-bold text-sm">¿Qué tipo de ruta deseas crear?</h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <IconButton icon={ACTION_ICONS.cerrar} label="Cerrar" onClick={onClose} className="text-slate-400 hover:text-white hover:bg-white/10" />
         </div>
 
         <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -59,14 +59,10 @@ export const RouteTypeSelectModal: React.FC<RouteTypeSelectModalProps> = ({
           </button>
         </div>
 
-        <div className="px-6 pb-6 flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg font-semibold hover:bg-slate-50 cursor-pointer text-xs"
-          >
+        <div className="px-6 pb-6 flex justify-start">
+          <Button variant="secondary" size="lg" onClick={onClose}>
             Cancelar
-          </button>
+          </Button>
         </div>
       </div>
     </div>
