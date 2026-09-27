@@ -7,6 +7,8 @@ import {
   STAFF_REASON_REMUNERA,
 } from '../../data/unavailableReasons';
 import { X, AlertTriangle, Truck as TruckIcon, Users, CheckCircle2 } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 
 const TRUCK_REASONS = TRUCK_REASON_OPTIONS;
 const STAFF_REASONS = STAFF_REASON_OPTIONS;
@@ -99,9 +101,7 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
               salieron a ruta hoy.
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <IconButton icon={ACTION_ICONS.cerrar} label="Cerrar" onClick={onClose} className="text-slate-400 hover:text-slate-700 hover:bg-slate-100" />
         </div>
 
         <div className="overflow-y-auto flex-1 space-y-5 pr-1">
@@ -255,13 +255,9 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
         </div>
 
         <div className="flex justify-end pt-2 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg cursor-pointer"
-          >
-            Cerrar
-          </button>
+          <Button variant="dark" size="lg" onClick={onClose}>
+            Listo
+          </Button>
         </div>
       </div>
     </div>
