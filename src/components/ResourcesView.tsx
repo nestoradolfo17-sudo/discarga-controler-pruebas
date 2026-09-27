@@ -59,6 +59,58 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
   >(null);
   const [selectedTruckIds, setSelectedTruckIds] = useState<Set<string>>(new Set());
   const [selectedStaffIds, setSelectedStaffIds] = useState<Set<string>>(new Set());
+  // Optimización (análisis, punto 14): con miles de colaboradores, dibujar todas
+  // las filas de una vez hacía lenta la pantalla en la tablet. Ahora se muestran
+  // de 100 en 100 (botón "Mostrar más") y hay un buscador propio.
+  const PAGE = 100;
+  const [resSearch, setResSearch] = useState('');
+  const [limit, setLimit] = useState(PAGE);
+  const norm = (v: unknown) =>
+    String(v ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  const words = norm(resSearch).split(/\s+/).filter(Boolean);
+  const matches = (text: string) => words.every((w) => text.includes(w));
+  const filteredTrucks = words.length
+    ? trucks.filter((t) => matches(norm(`${t.placa} ${t.idCamion || ''} ${t.id} ${t.proveedor || ''} ${t.agencia || ''} ${t.capacidad}`)))
+    : trucks;
+  const filteredStaff = words.length
+    ? staff.filter((st) =>
+        matches(norm(`${st.nombre} ${st.dpi || ''} ${String(st.dpi || '').replace(/\s+/g, '')} ${st.codigo || ''} ${st.codigoCorto || ''} ${st.puesto || ''} ${st.agencia || ''}`))
+      )
+    : staff;
+  const shownTrucks = filteredTrucks.slice(0, limit);
+  const shownStaff = filteredStaff.slice(0, limit);
+  const renderListBar = (total: number, shown: number, placeholder: string) => (
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50/60">
+      <input
+        type="search"
+        value={resSearch}
+        onChange={(e) => {
+          setResSearch(e.target.value);
+          setLimit(PAGE);
+        }}
+        placeholder={placeholder}
+        className="flex-1 min-w-[200px] max-w-sm px-3 py-2 text-sm border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      <span className="text-xs text-slate-500">
+        Mostrando {shown} de {total}
+      </span>
+    </div>
+  );
+  const renderMore = (total: number, shown: number) =>
+    shown < total ? (
+      <div className="p-3 text-center border-t border-slate-100">
+        <button
+          type="button"
+          onClick={() => setLimit((l) => l + PAGE)}
+          className="min-h-[44px] px-5 rounded-xl bg-slate-900 text-white text-sm font-semibold cursor-pointer active:scale-95"
+        >
+          Mostrar {Math.min(PAGE, total - shown)} más ({total - shown} restantes)
+        </button>
+      </div>
+    ) : null;
 
   const toggleTruckSelection = (id: string) => {
     setSelectedTruckIds((prev) => {
@@ -163,6 +215,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
             </button>
           </div>
         )}
+        {renderListBar(filteredTrucks.length, shownTrucks.length, 'Buscar camión por placa, ID, proveedor o capacidad...')}
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 font-semibold uppercase">
@@ -188,7 +241,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {trucks.map((t) => (
+              {shownTrucks.map((t) => (
                 <tr key={t.id} className="hover:bg-slate-50">
                   <td className="py-3 px-4">
                     <input
@@ -270,6 +323,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
             </tbody>
           </table>
         </div>
+        {renderMore(filteredTrucks.length, shownTrucks.length)}
       </div>
       )}
 
@@ -346,6 +400,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
             </button>
           </div>
         )}
+        {renderListBar(filteredStaff.length, shownStaff.length, 'Buscar por nombre, DPI, código o puesto...')}
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 font-semibold uppercase">
@@ -375,7 +430,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {staff.map((s) => {
+              {shownStaff.map((s) => {
                 let puestoBadge = 'bg-slate-100 text-slate-700';
                 if (s.puesto === 'VPP') puestoBadge = 'bg-indigo-100 text-indigo-800 border border-indigo-200';
                 else if (s.puesto === 'VPPB') puestoBadge = 'bg-blue-100 text-blue-800 border border-blue-200';
@@ -532,6 +587,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
             </tbody>
           </table>
         </div>
+        {renderMore(filteredStaff.length, shownStaff.length)}
       </div>
       )}
 
