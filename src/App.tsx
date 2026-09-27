@@ -3120,7 +3120,10 @@ export default function App() {
           onExportExcel={handleExportActiveRoutesExcel}
           onResetDemo={handleResetDemo}
           allowResetDemo={!isSupabaseConfigured}
-          onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
+          onOpenUnassignedResourcesModal={
+            // "Fin de Asignación" solo en el Tablero de Rutas (cierre del proceso de asignación).
+            activeTab === 'board' ? () => setIsUnassignedResourcesModalOpen(true) : undefined
+          }
           pendingReasonsCount={pendingReasonsCount}
           activeCount={filteredActiveRoutes.length}
           liquidatedCount={allLiquidatedRoutes.length}
@@ -3185,8 +3188,24 @@ export default function App() {
                 className="flex-1 min-w-[160px] max-w-xs px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
+                onClick={() => setIsUnassignedResourcesModalOpen(true)}
+                title="Asignar motivo a camiones y personal disponibles que no salieron a ruta hoy"
+                className={`ml-auto flex items-center min-h-[40px] px-2.5 rounded-xl border text-xs font-semibold cursor-pointer ${
+                  pendingReasonsCount > 0
+                    ? 'bg-amber-50 border-amber-300 text-amber-800'
+                    : 'bg-white border-slate-300 text-slate-600'
+                }`}
+              >
+                Fin de Asignación
+                {pendingReasonsCount > 0 && (
+                  <span className="ml-1.5 px-1.5 rounded-full text-[10px] font-bold bg-amber-600 text-white">
+                    {pendingReasonsCount}
+                  </span>
+                )}
+              </button>
+              <button
                 onClick={exitBoardFullscreen}
-                className="ml-auto min-h-[40px] px-3.5 rounded-xl bg-slate-900 text-white text-xs font-semibold cursor-pointer active:scale-95"
+                className="min-h-[40px] px-3.5 rounded-xl bg-slate-900 text-white text-xs font-semibold cursor-pointer active:scale-95"
                 title="Salir de pantalla completa"
               >
                 Salir de pantalla completa
