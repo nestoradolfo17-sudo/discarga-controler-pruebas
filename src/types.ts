@@ -139,6 +139,10 @@ export interface RouteAssignment {
   auxiliar2?: string | null;
   auxiliar3?: string | null;
   auxiliar4?: string | null;
+  // Ids internos del piloto y auxiliares (en el mismo orden que auxiliar1..4).
+  // Asignaciones antiguas no los tienen: en ese caso se usa el nombre.
+  conductorId?: string;
+  auxiliarIds?: (string | null)[];
   horaSalida: string;
   fechaDespacho?: string;
   fechaAsignacion?: string;
