@@ -1,6 +1,8 @@
 import React from 'react';
 import { Route } from '../../types';
 import { X, Undo2 } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 
 interface RevertSplitModalProps {
   isOpen: boolean;
@@ -44,9 +46,7 @@ export const RevertSplitModal: React.FC<RevertSplitModalProps> = ({
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <IconButton icon={ACTION_ICONS.cerrar} label="Cerrar" onClick={onClose} className="text-slate-400 hover:text-slate-700 hover:bg-slate-100" />
         </div>
 
         <p className="text-slate-600 leading-relaxed">
@@ -64,30 +64,20 @@ export const RevertSplitModal: React.FC<RevertSplitModalProps> = ({
           </div>
         )}
 
-        <div className="pt-2">
-          <button
-            type="button"
+        {/* Cancelar a la izquierda, acción (destructiva) a la derecha. */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+          <Button variant="secondary" size="lg" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            variant="danger"
+            size="lg"
+            icon={ACTION_ICONS.revertir}
             disabled={isBlocked}
             onClick={() => onConfirmRevert(parentRouteId, route)}
-            className={`w-full py-2.5 px-4 rounded-xl font-bold flex items-center justify-center space-x-2 shadow-sm transition ${
-              isBlocked
-                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer'
-            }`}
           >
-            <Undo2 className="w-4 h-4" />
-            <span>Revertir y Restaurar Ruta Original</span>
-          </button>
-        </div>
-
-        <div className="pt-2 border-t border-slate-100 flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 border border-slate-300 text-slate-600 rounded-lg font-semibold hover:bg-slate-50 transition cursor-pointer"
-          >
-            Cancelar
-          </button>
+            Revertir partición
+          </Button>
         </div>
       </div>
     </div>
