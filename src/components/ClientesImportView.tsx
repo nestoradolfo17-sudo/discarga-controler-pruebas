@@ -215,7 +215,7 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
                 id="clientesAgencia"
                 value={effectiveAgencia}
                 onChange={(e) => setAgencia(e.target.value)}
-                className={`w-full p-2 bg-white border rounded-lg font-medium cursor-pointer outline-none ${
+                className={`w-full min-h-[44px] p-2 bg-white border rounded-lg font-medium cursor-pointer outline-none ${
                   effectiveAgencia ? 'border-slate-300' : 'border-amber-400'
                 }`}
               >
@@ -236,7 +236,7 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
                 id="clientesMes"
                 value={mes}
                 onChange={(e) => setMes(parseInt(e.target.value))}
-                className="w-full p-2 bg-white border border-slate-300 rounded-lg font-medium cursor-pointer outline-none"
+                className="w-full min-h-[44px] p-2 bg-white border border-slate-300 rounded-lg font-medium cursor-pointer outline-none"
               >
                 {MESES.map((m, idx) => (
                   <option key={m} value={idx + 1}>
@@ -254,7 +254,7 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
                 type="number"
                 value={anio}
                 onChange={(e) => setAnio(parseInt(e.target.value) || now.getFullYear())}
-                className="w-full p-2 bg-white border border-slate-300 rounded-lg font-medium outline-none"
+                className="w-full min-h-[44px] p-2 bg-white border border-slate-300 rounded-lg font-medium outline-none"
               />
             </div>
           </div>
@@ -319,17 +319,19 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
             <div className="flex items-center space-x-2">
               <button
                 onClick={handleCancel}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-900 border border-slate-300 rounded-lg flex items-center cursor-pointer"
+                type="button"
+                className="min-h-[44px] px-4 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl flex items-center cursor-pointer"
               >
-                <X className="w-3 h-3 mr-1" />
+                <X className="w-4 h-4 mr-1" />
                 Cancelar
               </button>
               <button
                 onClick={handleCommit}
-                className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm flex items-center cursor-pointer"
+                type="button"
+                className="min-h-[44px] px-5 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm flex items-center cursor-pointer"
               >
-                <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
-                Confirmar e Importar Clientes
+                <CheckCircle className="w-4 h-4 mr-1.5" />
+                Importar clientes
               </button>
             </div>
           </div>
