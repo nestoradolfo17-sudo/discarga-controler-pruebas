@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Route } from '../../types';
 import { formatDateToGuatemala, formatDateTimeToGuatemala } from '../../utils/date';
 import { X, Split, Check, Users, Search, Shuffle } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ModalFooter } from '../ui/ModalFooter';
+import { ACTION_ICONS } from '../ui/actionIcons';
+import { useMaximized } from '../ui/useMaximized';
 
 interface SplitRouteModalProps {
   isOpen: boolean;
@@ -22,6 +26,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
   route,
   onConfirmSplit,
 }) => {
+  const [isMaximized, toggleMaximized] = useMaximized('dc_split_maximized');
   const [numTrips, setNumTrips] = useState<number>(3);
   const [tripInputs, setTripInputs] = useState<TripSplitInput[]>([]);
   // Clientes por viaje (código de cliente -> número de viaje). Solo aplica si la
@@ -197,8 +202,12 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
   const hasMismatch = sumParadasMismatch || sumCajasMismatch || emptyTrips.length > 0;
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className={`bg-white rounded-2xl ${hasClients ? 'max-w-3xl' : 'max-w-lg'} w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all flex flex-col max-h-[92vh]`}>
+    <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center ${isMaximized ? 'p-0' : 'p-3 sm:p-4'}`}>
+      <div
+        className={`bg-white w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all flex flex-col ${
+          isMaximized ? 'h-full max-h-full rounded-none' : `rounded-2xl ${hasClients ? 'max-w-3xl' : 'max-w-lg'} max-h-[92vh]`
+        }`}
+      >
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-2">
             <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center">
@@ -211,9 +220,20 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <IconButton
+              icon={isMaximized ? ACTION_ICONS.restaurar : ACTION_ICONS.pantallaCompleta}
+              label={isMaximized ? 'Restaurar tamaño de la ventana' : 'Ver a pantalla completa'}
+              onClick={toggleMaximized}
+              className="text-slate-300 hover:text-white hover:bg-slate-800"
+            />
+            <IconButton
+              icon={ACTION_ICONS.cerrar}
+              label="Cerrar sin guardar"
+              onClick={onClose}
+              className="text-slate-300 hover:text-white hover:bg-slate-800"
+            />
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
@@ -229,17 +249,24 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
           </div>
 
           <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
-            <label className="font-bold text-slate-700">Cantidad de Viajes a Programar:</label>
-            <div className="flex items-center space-x-2">
-              <input
-                type="number"
-                min="2"
-                max="6"
-                value={numTrips}
-                onChange={(e) => handleNumTripsChange(parseInt(e.target.value) || 2)}
-                className="w-20 p-2 border border-slate-300 rounded-lg text-center font-bold text-sm text-blue-700 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <span className="text-slate-500 font-medium">viajes</span>
+            <span id="numTripsLabel" className="font-bold text-slate-700">Cantidad de viajes:</span>
+            {/* Botones grandes (tablet) en lugar de un campo numérico. */}
+            <div role="radiogroup" aria-labelledby="numTripsLabel" className="flex items-center gap-1.5">
+              {[2, 3, 4, 5, 6].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  role="radio"
+                  aria-checked={numTrips === n}
+                  aria-label={`${n} viajes`}
+                  onClick={() => handleNumTripsChange(n)}
+                  className={`min-w-[44px] min-h-[44px] rounded-xl border-2 text-sm font-bold cursor-pointer active:scale-95 outline-none focus-visible:ring-4 focus-visible:ring-blue-200 ${
+                    numTrips === n ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-blue-300'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -275,7 +302,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                   className="bg-slate-50 p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-center"
                 >
                   <div className="font-bold text-slate-800 text-xs flex items-center">
-                    <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center mr-2 text-[11px]">
+                    <span className="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center mr-2 text-[11px]">
                       V{trip.tripNumber}
                     </span>
                     Viaje {trip.tripNumber} de {numTrips}
@@ -290,7 +317,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                       onChange={(e) =>
                         handleInputChange(idx, 'paradas', parseInt(e.target.value) || 1)
                       }
-                      className={`w-full p-1.5 border border-slate-300 rounded font-semibold text-xs outline-none ${hasClients ? 'bg-slate-100' : ''}`}
+                      className={`w-full min-h-[40px] p-1.5 border border-slate-300 rounded-lg font-semibold text-sm outline-none ${hasClients ? 'bg-slate-100' : ''}`}
                     />
                   </div>
                   <div>
@@ -304,7 +331,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                       onChange={(e) =>
                         handleInputChange(idx, 'cajas', parseFloat(e.target.value) || 0)
                       }
-                      className={`w-full p-1.5 border border-slate-300 rounded font-mono font-bold text-xs text-blue-700 outline-none ${hasClients ? 'bg-slate-100' : ''}`}
+                      className={`w-full min-h-[40px] p-1.5 border border-slate-300 rounded-lg font-mono font-bold text-sm text-blue-700 outline-none ${hasClients ? 'bg-slate-100' : ''}`}
                     />
                   </div>
                 </div>
@@ -332,13 +359,14 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                         value={clientFilter}
                         onChange={(e) => setClientFilter(e.target.value)}
                         placeholder="Buscar cliente..."
-                        className="pl-7 pr-2 py-1.5 w-44 text-xs border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                        aria-label="Buscar cliente"
+                        className="pl-7 pr-2 min-h-[44px] w-44 text-xs border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={() => distributeClients(numTrips, route)}
-                      className="min-h-[34px] px-2.5 rounded-lg border border-slate-300 text-[11px] font-semibold text-slate-700 flex items-center gap-1 cursor-pointer hover:bg-slate-50"
+                      className="min-h-[44px] px-3 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 flex items-center gap-1 cursor-pointer hover:bg-slate-50"
                       title="Repartir los clientes en partes iguales, en el orden del archivo"
                     >
                       <Shuffle className="w-3.5 h-3.5" /> Repartir igual
@@ -352,8 +380,8 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                   {visibles.map((c) => {
                     const t = clientTrip.get(c.codigo) || 1;
                     return (
-                      <div key={c.codigo} className="flex items-center justify-between gap-2 px-2 py-1.5">
-                        <div className="min-w-0 text-[11px]">
+                      <div key={c.codigo} className="flex items-center justify-between gap-2 px-2 py-1">
+                        <div className="min-w-0 text-xs">
                           <span className="font-mono text-slate-500">{c.codigo}</span>{' '}
                           <span className="font-semibold text-slate-800">{c.nombre || '-'}</span>{' '}
                           <span className="text-slate-400">({Number(c.cajas || 0).toFixed(3)} cajas)</span>
@@ -364,9 +392,11 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                               key={n}
                               type="button"
                               onClick={() => setTripForClient(c.codigo, n)}
-                              className={`min-w-[38px] min-h-[34px] rounded-lg text-[11px] font-bold border cursor-pointer active:scale-95 ${
+                              aria-pressed={t === n}
+                              aria-label={`Cliente ${c.codigo} en viaje ${n}`}
+                              className={`min-w-[44px] min-h-[44px] rounded-lg text-xs font-bold border cursor-pointer active:scale-95 ${
                                 t === n
-                                  ? 'bg-indigo-600 border-indigo-700 text-white'
+                                  ? 'bg-blue-600 border-blue-700 text-white'
                                   : 'bg-white border-slate-300 text-slate-500 hover:border-indigo-300'
                               }`}
                             >
@@ -385,28 +415,34 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
             );
           })()}
 
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-2 flex-shrink-0">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg font-semibold hover:bg-slate-50 cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
+          <ModalFooter
+            bleed="p-6"
+            secondary={
+              <Button variant="secondary" size="lg" onClick={onClose}>
+                Cancelar
+              </Button>
+            }
+            info={
+              hasMismatch ? (
+                <span className="text-rose-600 font-semibold">
+                  {emptyTrips.length > 0 ? `Viaje ${emptyTrips.join(', ')} sin clientes` : 'No cuadra con el total original'}
+                </span>
+              ) : (
+                <span className="text-emerald-700 font-semibold">✓ Cuadra: {sumCajas} cajas · {sumParadas} paradas</span>
+              )
+            }
+          >
+            <Button
               type="submit"
+              variant="primary"
+              size="lg"
+              icon={ACTION_ICONS.partir}
               disabled={hasMismatch}
               title={hasMismatch ? 'La suma de los viajes debe coincidir con el total de la ruta original' : undefined}
-              className={`px-5 py-2 rounded-lg font-semibold shadow-sm flex items-center transition ${
-                hasMismatch
-                  ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                  : 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer'
-              }`}
             >
-              <Check className="w-4 h-4 mr-1.5" />
-              Confirmar Partición de Ruta
-            </button>
-          </div>
+              Partir en {numTrips} viajes
+            </Button>
+          </ModalFooter>
         </form>
       </div>
     </div>
