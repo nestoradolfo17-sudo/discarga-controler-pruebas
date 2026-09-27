@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
 import {
   Route,
   Truck,
@@ -25,6 +25,7 @@ import {
   subscribeToSharedCollection,
   deleteSharedRecords,
   setSyncErrorHandler,
+  fetchSharedRowsByKeys,
   SyncKeyFn,
   SyncedRow,
   SyncableTable,
@@ -68,7 +69,11 @@ import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiert
 import { ReceiptModal } from './components/modals/ReceiptModal';
 import { NewTruckModal } from './components/modals/NewTruckModal';
 import { NewStaffModal } from './components/modals/NewStaffModal';
-import { DailySummaryModal } from './components/modals/DailySummaryModal';
+// Optimización (análisis, punto 13): el Resumen Diario (y su generador de PDF)
+// es la pantalla más pesada; se descarga solo la primera vez que se abre.
+const DailySummaryModal = lazy(() =>
+  import('./components/modals/DailySummaryModal').then((m) => ({ default: m.DailySummaryModal }))
+);
 import { ClosingActaModal } from './components/modals/ClosingActaModal';
 import { DeleteRoutesModal } from './components/modals/DeleteRoutesModal';
 import { UnassignedResourcesModal } from './components/modals/UnassignedResourcesModal';
@@ -84,38 +89,57 @@ const STORAGE_KEY_HISTORY = 'rutamaster_history_v6';
 const STORAGE_KEY_USERS = 'rutamaster_users_v1';
 const STORAGE_KEY_SESSION = 'rutamaster_session_v1';
 
+// Corrección de seguridad (análisis, punto 3): con la base de datos compartida
+// (Supabase) la app ya NO guarda copias de rutas, camiones, personal ni
+// historial en el navegador. Antes esa copia (con DPI y teléfonos del personal)
+// quedaba en la tablet aunque se cerrara sesión, y con miles de registros podía
+// llenar el almacenamiento del navegador sin avisar. Solo en modo local (sin
+// Supabase) se sigue usando, igual que antes.
+const LOCAL_DATA_KEYS = [STORAGE_KEY_ROUTES, STORAGE_KEY_TRUCKS, STORAGE_KEY_STAFF, STORAGE_KEY_HISTORY, STORAGE_KEY_USERS];
+if (isSupabaseConfigured) {
+  try {
+    LOCAL_DATA_KEYS.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* almacenamiento no disponible */
+  }
+}
+function readLocal<T>(key: string, fallback: T): T {
+  if (isSupabaseConfigured) return fallback;
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? (JSON.parse(saved) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writeLocal(key: string, value: unknown) {
+  if (isSupabaseConfigured) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 export default function App() {
-  const [routes, setRoutes] = useState<Route[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_ROUTES);
-      return saved ? JSON.parse(saved) : INITIAL_ROUTES;
-    } catch {
-      return INITIAL_ROUTES;
-    }
-  });
+  // Con Supabase se arranca vacío (los datos llegan de la base al iniciar
+  // sesión); los datos de ejemplo solo existen en modo local.
+  const [routes, setRoutes] = useState<Route[]>(() =>
+    readLocal<Route[]>(STORAGE_KEY_ROUTES, isSupabaseConfigured ? [] : INITIAL_ROUTES)
+  );
 
-  const [trucks, setTrucks] = useState<Truck[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_TRUCKS);
-      return saved ? JSON.parse(saved) : INITIAL_TRUCKS;
-    } catch {
-      return INITIAL_TRUCKS;
-    }
-  });
+  const [trucks, setTrucks] = useState<Truck[]>(() =>
+    readLocal<Truck[]>(STORAGE_KEY_TRUCKS, isSupabaseConfigured ? [] : INITIAL_TRUCKS)
+  );
 
-  const [staff, setStaff] = useState<Staff[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_STAFF);
-      return saved ? JSON.parse(saved) : INITIAL_STAFF;
-    } catch {
-      return INITIAL_STAFF;
-    }
-  });
+  const [staff, setStaff] = useState<Staff[]>(() =>
+    readLocal<Staff[]>(STORAGE_KEY_STAFF, isSupabaseConfigured ? [] : INITIAL_STAFF)
+  );
 
   const [historicalRoutes, setHistoricalRoutes] = useState<Route[]>(() => {
+    if (isSupabaseConfigured) return [];
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_HISTORY);
-      const list: Route[] = saved ? JSON.parse(saved) : [];
+      const list: Route[] = readLocal<Route[]>(STORAGE_KEY_HISTORY, []);
       // Ensure initial liquidated routes exist in history
       INITIAL_ROUTES.filter((r) => r.estado === 'Liquidada').forEach((r) => {
         if (!list.some((hr) => String(hr.id) === String(r.id))) {
@@ -315,7 +339,10 @@ export default function App() {
       items: T[],
       getKey: SyncKeyFn<T>,
       ref: { current: SyncRef },
-      queueRef: { current: Promise<void> }
+      queueRef: { current: Promise<void> },
+      // Si la base rechaza el cambio, recibe las claves afectadas (p. ej. para
+      // restaurar la ruta con lo que realmente quedó guardado).
+      onRejected?: (keys: string[]) => void
     ) => {
       if (!isSupabaseConfigured || !isRemoteReady) return;
       // Lectura inicial fallida: no subir nada de esta tabla (ver `blocked`).
@@ -353,11 +380,33 @@ export default function App() {
             // próximo cambio en esta colección los vuelva a intentar subir.
             changed.forEach((item) => ref.current.byKey.delete(getKey(item)));
             ref.current.json = '';
+            onRejected?.(changed.map((item) => getKey(item)));
           }
         });
     },
     [isRemoteReady]
   );
+
+  // Punto 1 del análisis: si la base de datos rechaza un cambio de rutas (p. ej.
+  // otra tablet ya asignó ese camión o esa persona), se restauran esas rutas con
+  // lo que realmente quedó guardado, para no mostrar una asignación que no existe.
+  const restoreRoutesFromServer = useCallback((keys: string[]) => {
+    void fetchSharedRowsByKeys<Route>('app_routes', keys).then((serverRows) => {
+      if (!serverRows) return;
+      setRoutes((prev) => {
+        const next = prev.map((r) => {
+          const k = getRouteKey(r);
+          return keys.includes(k) && serverRows.has(k) ? (serverRows.get(k) as Route) : r;
+        });
+        routesSyncRef.current = {
+          json: JSON.stringify(next),
+          byKey: new Map(next.map((r) => [getRouteKey(r), JSON.stringify(r)])),
+          blocked: routesSyncRef.current.blocked,
+        };
+        return next;
+      });
+    });
+  }, []);
 
   // Claves de sincronización por tabla (ver SyncKeyFn en services/sync.ts). Todas
   // usan el "id" del objeto tal cual, EXCEPTO Rutas e Historial: ahí se usa la
@@ -450,17 +499,19 @@ export default function App() {
             }
           });
           const remoteList = Array.from(dedupedByKey.values()).map((row) => row.data);
-          const finalList = remoteList.length > 0 ? remoteList : localList;
+          // Corrección (análisis, punto 4): antes, si la tabla de Supabase venía
+          // vacía, se llenaba con los datos de ejemplo del código o con la copia
+          // de esa tablet, y se subían a la base compartida. Ahora la base es la
+          // única fuente: si está vacía, la app arranca vacía.
+          void localList;
+          const finalList = remoteList;
           setter(finalList);
           ref.current = {
             json: JSON.stringify(finalList),
             byKey: buildSyncedMap(finalList, getKey),
             blocked: false,
           };
-          if (remoteList.length === 0) {
-            void pushSharedCollection(table, finalList, getKey);
-            return;
-          }
+          if (remoteList.length === 0) return;
           // Corrección: limpieza única de filas guardadas con un esquema de clave
           // anterior (ver el comentario sobre routeSyncKey más arriba). Si una fila
           // remota fue guardada bajo una clave que ya no coincide con la que hoy se
@@ -560,7 +611,7 @@ export default function App() {
       return error ?? true;
     }
     const match = users.find(
-      (u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password
+      (u) => !!u.password && u.username.toLowerCase() === username.toLowerCase() && u.password === password
     );
     if (!match) return false;
     setCurrentUsername(match.username);
@@ -918,38 +969,22 @@ export default function App() {
 
   // Sync to localStorage
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_ROUTES, JSON.stringify(routes));
-    } catch (e) {
-      console.error(e);
-    }
-    pushIfChanged('app_routes', routes, routeSyncKey, routesSyncRef, routesPushQueueRef);
+    writeLocal(STORAGE_KEY_ROUTES, routes);
+    pushIfChanged('app_routes', routes, routeSyncKey, routesSyncRef, routesPushQueueRef, restoreRoutesFromServer);
   }, [routes, pushIfChanged]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_TRUCKS, JSON.stringify(trucks));
-    } catch (e) {
-      console.error(e);
-    }
+    writeLocal(STORAGE_KEY_TRUCKS, trucks);
     pushIfChanged('app_trucks', trucks, defaultSyncKey, trucksSyncRef, trucksPushQueueRef);
   }, [trucks, pushIfChanged]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(staff));
-    } catch (e) {
-      console.error(e);
-    }
+    writeLocal(STORAGE_KEY_STAFF, staff);
     pushIfChanged('app_staff', staff, defaultSyncKey, staffSyncRef, staffPushQueueRef);
   }, [staff, pushIfChanged]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(historicalRoutes));
-    } catch (e) {
-      console.error(e);
-    }
+    writeLocal(STORAGE_KEY_HISTORY, historicalRoutes);
     pushIfChanged('app_historical_routes', historicalRoutes, routeSyncKey, historySyncRef, historyPushQueueRef);
   }, [historicalRoutes, pushIfChanged]);
 
@@ -969,6 +1004,10 @@ export default function App() {
     if (!isSupabaseConfigured) return;
     setSyncErrorHandler((message) => {
       const now = Date.now();
+      if (message.startsWith('No se guardó la asignación')) {
+        showToast(`⚠ ${message}`, 'error');
+        return;
+      }
       if (now - lastSyncToastRef.current < 10000) return;
       lastSyncToastRef.current = now;
       showToast(`⚠ ${message} Revisa tu conexión y recarga la página.`, 'error');
@@ -2877,9 +2916,9 @@ export default function App() {
     showToast('Datos restaurados al reporte de ejemplo', 'info');
   };
 
-  const handleExportActiveRoutesExcel = () => {
+  const handleExportActiveRoutesExcel = async () => {
     if (activeTab === 'liquidated') {
-      const success = exportRoutesToExcel(allLiquidatedRoutes, staff);
+      const success = await exportRoutesToExcel(allLiquidatedRoutes, staff);
       if (success) {
         showToast('Reporte de rutas liquidadas descargado en Excel', 'success');
       } else {
@@ -2887,7 +2926,7 @@ export default function App() {
       }
       return;
     }
-    const success = exportRoutesToExcel(filteredActiveRoutes, staff);
+    const success = await exportRoutesToExcel(filteredActiveRoutes, staff);
     if (success) {
       showToast('Reporte Excel descargado con desglose de tripulación', 'success');
     } else {
@@ -3453,6 +3492,14 @@ export default function App() {
         onSubmit={handleCreateStaff}
       />
 
+      {isDailySummaryModalOpen && (
+      <Suspense
+        fallback={
+          <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center">
+            <div className="bg-white rounded-xl px-5 py-3 text-sm font-semibold text-slate-700 shadow-xl">Cargando resumen...</div>
+          </div>
+        }
+      >
       <DailySummaryModal
         isOpen={isDailySummaryModalOpen}
         onClose={() => setIsDailySummaryModalOpen(false)}
@@ -3469,6 +3516,8 @@ export default function App() {
           setIsClosingActaModalOpen(true);
         }}
       />
+      </Suspense>
+      )}
 
       <ClosingActaModal
         isOpen={isClosingActaModalOpen}
