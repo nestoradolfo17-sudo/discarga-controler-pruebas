@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { StaffPuesto, StaffEstatus } from '../../types';
 import { X, UserPlus } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 import { AGENCIA_LOCATION_OPTIONS } from '../../data/agencies';
 
 interface NewStaffModalProps {
@@ -73,9 +75,7 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
             <UserPlus className="w-4 h-4 mr-1.5 text-indigo-600" />
             Registrar Nuevo Colaborador
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <IconButton icon={ACTION_ICONS.cerrar} label="Cerrar" onClick={onClose} className="text-slate-400 hover:text-slate-700 hover:bg-slate-100" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -89,7 +89,7 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
               onChange={(e) => setDpi(e.target.value)}
               placeholder="Ej: 2541 89320 0101"
               required
-              className="w-full p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             />
           </div>
 
@@ -101,7 +101,7 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
               onChange={(e) => setCodigo(e.target.value)}
               placeholder="Ej: DISAOC-00381"
               required
-              className="w-full p-2 border border-slate-300 rounded-lg font-mono uppercase outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg font-mono uppercase outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             />
           </div>
 
@@ -113,7 +113,7 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
               onChange={(e) => setNombre(e.target.value)}
               placeholder="Ej: Carlos Ramírez"
               required
-              className="w-full p-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             />
           </div>
 
@@ -123,7 +123,7 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
               value={agencia}
               onChange={(e) => setAgencia(e.target.value)}
               required
-              className="w-full p-2 border border-slate-300 rounded-lg bg-white font-semibold outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg bg-white font-semibold outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
             >
               {AGENCIA_LOCATION_OPTIONS.map((ag) => (
                 <option key={ag} value={ag}>
@@ -139,7 +139,7 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
               value={puesto}
               onChange={(e) => setPuesto(e.target.value as StaffPuesto)}
               required
-              className="w-full p-2 border border-slate-300 rounded-lg bg-white font-semibold outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg bg-white font-semibold outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
             >
               <option value="VPP">VPP (Piloto Titular Principal)</option>
               <option value="VPPB">VPPB (Piloto Titular B)</option>
@@ -156,7 +156,7 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
                 onChange={(e) => setCodigoCorto(e.target.value)}
                 placeholder="Ej: 3810"
                 required
-                className="w-full p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500 font-medium"
               />
             </div>
             <div>
@@ -165,7 +165,7 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
                 value={estatus}
                 onChange={(e) => setEstatus(e.target.value as StaffEstatus)}
                 required
-                className="w-full p-2 border border-slate-300 rounded-lg bg-white font-semibold outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg bg-white font-semibold outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
                 <option value="ALTA">ALTA</option>
                 <option value="BAJA">BAJA</option>
@@ -180,24 +180,17 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
               value={telefono}
               onChange={(e) => setTelefono(e.target.value)}
               placeholder="+502 5555-1234"
-              className="w-full p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 border border-slate-300 rounded-lg font-medium text-slate-600 hover:bg-slate-50 cursor-pointer"
-            >
+<div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+            <Button variant="secondary" size="lg" onClick={onClose}>
               Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-3 py-1.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 shadow-sm cursor-pointer"
-            >
-              Guardar Colaborador
-            </button>
+            </Button>
+            <Button type="submit" variant="primary" size="lg" icon={ACTION_ICONS.nuevo}>
+              Guardar colaborador
+            </Button>
           </div>
         </form>
       </div>
