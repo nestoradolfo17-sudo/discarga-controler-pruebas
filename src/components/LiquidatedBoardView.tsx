@@ -151,8 +151,8 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredList.length, totalCajasSalida, totalCajasEntregadas, totalCajasDevueltas, efectividad, cajaAbiertaCount]);
 
-  const handleExport = () => {
-    const success = exportHistoricalToExcel(filteredList, staff);
+  const handleExport = async () => {
+    const success = await exportHistoricalToExcel(filteredList, staff);
     if (success) {
       onShowToast(`Se descargaron ${filteredList.length} registros del Tablero de Rutas Liquidadas en Excel`, 'success');
     } else {
