@@ -2,6 +2,8 @@ import { getRouteKey } from '../../utils/routeKey';
 import React, { useState, useEffect } from 'react';
 import { Route } from '../../types';
 import { X, Lock, CheckCircle } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 
 interface FinalizeCajaAbiertaModalProps {
   isOpen: boolean;
@@ -47,9 +49,7 @@ export const FinalizeCajaAbiertaModal: React.FC<FinalizeCajaAbiertaModalProps> =
               <p className="text-[11px] text-slate-500">Ruta {route.id} | Agencia: {route.agencia}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <IconButton icon={ACTION_ICONS.cerrar} label="Cerrar" onClick={onClose} className="text-slate-400 hover:text-slate-700 hover:bg-slate-100" />
         </div>
 
         {liq?.motivoCajaAbierta && (
@@ -71,29 +71,22 @@ export const FinalizeCajaAbiertaModal: React.FC<FinalizeCajaAbiertaModalProps> =
             onChange={(e) => setComentarioFinal(e.target.value)}
             rows={2}
             placeholder="Ej: Boleta validada en caja el día de hoy, sin diferencias..."
-            className="w-full p-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-amber-500 outline-none resize-none"
+            className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-amber-500 outline-none resize-none"
           />
         </div>
 
-        <div className="pt-2">
-          <button
-            type="button"
-            onClick={() => onConfirmFinalize(route.id, getRouteKey(route), comentarioFinal.trim() || undefined)}
-            className="w-full py-2.5 px-4 rounded-xl font-bold flex items-center justify-center space-x-2 shadow-sm transition bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
-          >
-            <CheckCircle className="w-4 h-4" />
-            <span>Registrar Liquidación Final</span>
-          </button>
-        </div>
-
-        <div className="pt-2 border-t border-slate-100 flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 border border-slate-300 text-slate-600 rounded-lg font-semibold hover:bg-slate-50 transition cursor-pointer"
-          >
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+          <Button variant="secondary" size="lg" onClick={onClose}>
             Cancelar
-          </button>
+          </Button>
+          <Button
+            variant="success"
+            size="lg"
+            icon={ACTION_ICONS.liquidar}
+            onClick={() => onConfirmFinalize(route.id, getRouteKey(route), comentarioFinal.trim() || undefined)}
+          >
+            Registrar liquidación final
+          </Button>
         </div>
       </div>
     </div>
