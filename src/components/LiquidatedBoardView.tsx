@@ -3,6 +3,8 @@ import { Route, Staff } from '../types';
 import { exportHistoricalToExcel, getRouteAssignmentType } from '../utils/excel';
 import { parseFlexibleDate, formatDateToGuatemala, formatDateTimeToGuatemala } from '../utils/date';
 import { CheckCircle2, FileText, Download, Search, Filter, Calendar, PackageCheck, AlertCircle, RotateCcw, Repeat, Lock, Users } from 'lucide-react';
+import { Button } from './ui/Button';
+import { ACTION_ICONS } from './ui/actionIcons';
 import { ClientesRutaList } from './ClientesRutaList';
 import { getRouteKey, isSameSplitGroup } from '../utils/routeKey';
 
@@ -180,13 +182,10 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             Control centralizado de rutas cerradas operativamente, balances de entrega y actas de liquidación.
           </p>
         </div>
-        <button
-          onClick={handleExport}
-          className="inline-flex items-center px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-xs font-semibold transition cursor-pointer"
-        >
-          <Download className="w-4 h-4 mr-1.5 text-emerald-600" />
-          Descargar Reporte en Excel (.xlsx)
-        </button>
+        {/* Exportación única de esta sección: descarga lo que se ve (respeta los filtros). */}
+        <Button variant="secondary" icon={ACTION_ICONS.exportar} onClick={handleExport} className="text-emerald-700">
+          Exportar vista ({filteredList.length})
+        </Button>
       </div>
 
       {/* Los indicadores (Rutas, Entregadas, Devueltas, Efectividad, Caja
@@ -248,14 +247,9 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             Se muestran las liquidaciones de los <strong>últimos {historyLimitedDays} días</strong> para que la app abra
             más rápido.
           </span>
-          <button
-            type="button"
-            onClick={onLoadFullHistory}
-            disabled={isLoadingFullHistory}
-            className="min-h-[36px] px-3 rounded-lg bg-sky-700 text-white font-semibold cursor-pointer disabled:opacity-60 disabled:cursor-wait"
-          >
-            {isLoadingFullHistory ? 'Cargando...' : 'Cargar historial completo'}
-          </button>
+          <Button variant="primary" size="sm" onClick={onLoadFullHistory} loading={isLoadingFullHistory} loadingText="Cargando…">
+            Cargar historial completo
+          </Button>
         </div>
       )}
 
@@ -272,7 +266,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Ej: 102201, C-102, Carlos..."
-            className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full min-h-[44px] p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
 
@@ -285,7 +279,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             id="liqAgencyFilter"
             value={selectedAgency}
             onChange={(e) => setSelectedAgency(e.target.value)}
-            className="w-full p-2 bg-white border border-slate-300 rounded-lg font-medium cursor-pointer outline-none"
+            className="w-full min-h-[44px] p-2 bg-white border border-slate-300 rounded-lg font-medium cursor-pointer outline-none"
           >
             <option value="TODAS">-- Todas las Agencias --</option>
             {allAgencies.map((ag) => (
@@ -306,7 +300,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="w-full p-2 bg-white border border-slate-300 rounded-lg outline-none"
+            className="w-full min-h-[44px] p-2 bg-white border border-slate-300 rounded-lg outline-none"
           />
         </div>
 
@@ -320,7 +314,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="w-full p-2 bg-white border border-slate-300 rounded-lg outline-none"
+            className="w-full min-h-[44px] p-2 bg-white border border-slate-300 rounded-lg outline-none"
           />
         </div>
       </div>
@@ -556,7 +550,8 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                         type="button"
                         onClick={() => setExpandedClientesKey((prev) => (prev === routeKey ? null : routeKey))}
                         title="Ver la lista de clientes de esta ruta (solo consulta)"
-                        className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded-md border transition cursor-pointer ${
+                        aria-expanded={expandedClientesKey === routeKey}
+                        className={`mt-1 inline-flex items-center gap-1 min-h-[36px] px-2.5 text-[11px] font-semibold rounded-lg border transition cursor-pointer ${
                           expandedClientesKey === routeKey
                             ? 'bg-blue-600 border-blue-600 text-white'
                             : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50 hover:border-slate-400'
@@ -657,35 +652,40 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
 
                   {/* Acciones */}
                   <td className="px-5 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                    {/* Acción principal por estado: si la caja quedó abierta, "Liquidación
+                        final" (ámbar) va primero; el acta siempre disponible. */}
+                    <div className="flex items-center justify-end gap-2 flex-wrap">
                       {liq.cajaAbierta && !liq.cajaAbiertaResuelta && onOpenFinalizeCajaAbierta && (
-                        <button
+                        <Button
+                          variant="warning"
+                          size="sm"
+                          icon={Lock}
                           onClick={() => onOpenFinalizeCajaAbierta(r)}
                           title="Registrar Liquidación Final: cierra el pendiente de validar caja/boleta"
-                          className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs sm:text-sm font-semibold transition inline-flex items-center cursor-pointer shadow-xs"
                         >
-                          <Lock className="w-4 h-4 mr-1 text-amber-700" />
-                          Liquidación Final
-                        </button>
+                          Liquidación final
+                        </Button>
                       )}
                       {allSiblingsSettled && parentId && (
-                        <button
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon={ACTION_ICONS.acta}
                           onClick={() => onViewConsolidatedReceipt(parentId, r)}
                           title="Ver Acta Oficial Consolidada de todos los viajes"
-                          className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-300 rounded-lg text-xs sm:text-sm font-semibold transition inline-flex items-center cursor-pointer shadow-xs"
                         >
-                          <FileText className="w-4 h-4 mr-1 text-purple-600" />
                           Consolidada
-                        </button>
+                        </Button>
                       )}
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon={ACTION_ICONS.acta}
                         onClick={() => onViewSettlementReceipt(r.id, r)}
                         title="Ver e imprimir acta oficial de liquidación"
-                        className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-xs sm:text-sm font-semibold transition inline-flex items-center cursor-pointer shadow-xs"
                       >
-                        <FileText className="w-4 h-4 mr-1 text-emerald-600" />
-                        Acta Oficial
-                      </button>
+                        Acta
+                      </Button>
                     </div>
                   </td>
                 </tr>
