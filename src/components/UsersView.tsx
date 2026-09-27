@@ -17,7 +17,9 @@ import {
   Lock,
   Eye,
   EyeOff,
+  Download,
 } from 'lucide-react';
+import { Button } from './ui/Button';
 
 interface UsersViewProps {
   users: AppUser[];
@@ -343,32 +345,6 @@ export const UsersView: React.FC<UsersViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {onDownloadBackup && (
-        <div className="bg-white border border-slate-200 rounded-2xl px-5 py-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="font-bold text-slate-800 text-sm">Respaldo de datos</h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Descarga una copia completa (rutas, liquidadas, camiones y personal) para guardarla fuera de Supabase.
-              Además, Supabase guarda un respaldo automático cada día.
-            </p>
-          </div>
-          <button
-            type="button"
-            disabled={isBackingUp}
-            onClick={async () => {
-              setIsBackingUp(true);
-              try {
-                await onDownloadBackup();
-              } finally {
-                setIsBackingUp(false);
-              }
-            }}
-            className="min-h-[44px] px-4 rounded-xl bg-slate-900 text-white text-sm font-semibold cursor-pointer disabled:opacity-60 disabled:cursor-wait"
-          >
-            {isBackingUp ? 'Preparando respaldo...' : 'Descargar respaldo'}
-          </button>
-        </div>
-      )}
 
       {/* Crear usuario */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-sm space-y-5">
@@ -391,7 +367,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
               type="text"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
-              className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium"
+              className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium"
               placeholder="Ej: Juan Pérez (opcional, se muestra al iniciar sesión)"
             />
           </div>
@@ -403,7 +379,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium"
                 placeholder="Ej: jperez (minúsculas, sin espacios)"
               />
             </div>
@@ -421,8 +397,9 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer"
                   title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -437,7 +414,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono"
                 placeholder="Repite la contraseña"
               />
             </div>
@@ -448,7 +425,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
               type="checkbox"
               checked={isAdmin}
               onChange={(e) => setIsAdmin(e.target.checked)}
-              className="cursor-pointer"
+              className="cursor-pointer w-5 h-5"
             />
             Es Administrador (acceso total y puede crear otros usuarios)
           </label>
@@ -537,14 +514,9 @@ export const UsersView: React.FC<UsersViewProps> = ({
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={isCreating}
-            className="text-xs bg-slate-900 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-slate-800 transition cursor-pointer flex items-center disabled:opacity-60 disabled:cursor-wait"
-          >
-            <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-            {isCreating ? 'Creando...' : 'Crear Usuario'}
-          </button>
+          <Button type="submit" variant="primary" icon={UserPlus} loading={isCreating} loadingText="Creando usuario…">
+            Crear usuario
+          </Button>
         </form>
       </div>
 
@@ -625,7 +597,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                             value={profileNombreDraft}
                             onChange={(e) => setProfileNombreDraft(e.target.value)}
                             placeholder="Nombre de la persona"
-                            className="w-36 p-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-40 min-h-[40px] p-1.5 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
                           />
                           {profileEditError && (
                             <p className="text-[10px] text-rose-600">{profileEditError}</p>
@@ -634,18 +606,20 @@ export const UsersView: React.FC<UsersViewProps> = ({
                             <button
                               type="button"
                               onClick={() => requestSaveProfileEdit(u.id)}
-                              className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                              className="min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
                               title="Guardar"
+                              aria-label="Guardar"
                             >
-                              <Check className="w-3.5 h-3.5" />
+                              <Check className="w-4 h-4" />
                             </button>
                             <button
                               type="button"
                               onClick={cancelProfileEdit}
-                              className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 cursor-pointer"
+                              className="min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 cursor-pointer"
                               title="Cancelar"
+                              aria-label="Cancelar"
                             >
-                              <X className="w-3.5 h-3.5" />
+                              <X className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
@@ -655,8 +629,9 @@ export const UsersView: React.FC<UsersViewProps> = ({
                           <button
                             type="button"
                             onClick={() => startProfileEdit(u)}
-                            className="text-slate-300 hover:text-blue-600 cursor-pointer"
+                            className="min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer"
                             title="Editar usuario y nombre"
+                            aria-label={`Editar usuario y nombre de ${u.username}`}
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -687,12 +662,14 @@ export const UsersView: React.FC<UsersViewProps> = ({
                               type="button"
                               onClick={() => togglePermission(u.id, key, u, grandfathered)}
                               title={label}
-                              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border transition cursor-pointer ${
+                              aria-pressed={isPermEnabled(u, key, grandfathered)}
+                              className={`min-h-[36px] text-[11px] font-semibold px-2 rounded-lg border transition cursor-pointer ${
                                 isPermEnabled(u, key, grandfathered)
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : 'bg-slate-50 text-slate-400 border-slate-200'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  : 'bg-white text-slate-400 border-slate-200 line-through decoration-slate-300'
                               }`}
                             >
+                              {isPermEnabled(u, key, grandfathered) ? '✓ ' : ''}
                               {label}
                             </button>
                           ))}
@@ -709,23 +686,25 @@ export const UsersView: React.FC<UsersViewProps> = ({
                               type="checkbox"
                               checked={agencyDraftAll}
                               onChange={(e) => setAgencyDraftAll(e.target.checked)}
-                              className="cursor-pointer"
+                              className="cursor-pointer w-5 h-5"
                             />
                             Todas
                           </label>
                           {!agencyDraftAll && (
-                            <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto border border-slate-200 rounded-lg p-1.5 bg-slate-50">
+                            <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-1.5 bg-slate-50">
                               {AGENCIA_LOCATION_OPTIONS.map((ag) => (
                                 <button
                                   key={ag}
                                   type="button"
                                   onClick={() => toggleDraftAgency(ag)}
-                                  className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border transition cursor-pointer ${
+                                  aria-pressed={agencyDraftList.includes(ag)}
+                                  className={`min-h-[36px] text-[11px] font-semibold px-2 rounded-lg border transition cursor-pointer ${
                                     agencyDraftList.includes(ag)
                                       ? 'bg-blue-50 text-blue-700 border-blue-200'
                                       : 'bg-white text-slate-400 border-slate-200'
                                   }`}
                                 >
+                                  {agencyDraftList.includes(ag) ? '✓ ' : ''}
                                   {ag}
                                 </button>
                               ))}
@@ -735,18 +714,20 @@ export const UsersView: React.FC<UsersViewProps> = ({
                             <button
                               type="button"
                               onClick={() => saveAgencyEdit(u.id)}
-                              className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                              className="min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
                               title="Guardar"
+                              aria-label="Guardar"
                             >
-                              <Check className="w-3.5 h-3.5" />
+                              <Check className="w-4 h-4" />
                             </button>
                             <button
                               type="button"
                               onClick={() => setAgencyEditingId(null)}
-                              className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 cursor-pointer"
+                              className="min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 cursor-pointer"
                               title="Cancelar"
+                              aria-label="Cancelar"
                             >
-                              <X className="w-3.5 h-3.5" />
+                              <X className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
@@ -754,7 +735,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                         <button
                           type="button"
                           onClick={() => startAgencyEdit(u)}
-                          className="text-[11px] text-slate-500 hover:text-blue-700 font-semibold flex items-center gap-1 cursor-pointer"
+                          className="min-h-[40px] px-2.5 rounded-lg border border-slate-200 text-xs text-slate-600 hover:text-blue-700 hover:border-blue-300 hover:bg-blue-50 font-semibold flex items-center gap-1.5 cursor-pointer"
                         >
                           <MapPin className="w-3.5 h-3.5" />
                           {u.agencyAccess === 'all' || !u.agencyAccess
@@ -772,13 +753,15 @@ export const UsersView: React.FC<UsersViewProps> = ({
                         <button
                           type="button"
                           onClick={() => toggleCanDelete(u.id, u)}
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition cursor-pointer ${
+                          aria-pressed={!!u.canDelete}
+                          aria-label={`Puede eliminar datos: ${u.canDelete ? 'Sí' : 'No'}`}
+                          className={`min-h-[36px] min-w-[52px] text-xs font-bold px-3 rounded-full border transition cursor-pointer ${
                             u.canDelete
                               ? 'bg-rose-50 text-rose-700 border-rose-200'
                               : 'bg-slate-50 text-slate-400 border-slate-200'
                           }`}
                         >
-                          {u.canDelete ? 'Sí' : 'No'}
+                          {u.canDelete ? '✓ Sí' : 'No'}
                         </button>
                       )}
                     </td>
@@ -794,15 +777,16 @@ export const UsersView: React.FC<UsersViewProps> = ({
                               setPasswordEditError('');
                             }}
                             placeholder="Nueva contraseña"
-                            className="w-32 p-1.5 text-xs border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-36 min-h-[40px] p-1.5 text-sm border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500"
                           />
                           <button
                             type="button"
                             onClick={() => requestSavePasswordEdit(u.id)}
-                            className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                            className="min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
                             title="Guardar"
+                              aria-label="Guardar"
                           >
-                            <Check className="w-3.5 h-3.5" />
+                            <Check className="w-4 h-4" />
                           </button>
                           <button
                             type="button"
@@ -810,10 +794,11 @@ export const UsersView: React.FC<UsersViewProps> = ({
                               setPasswordEditingId(null);
                               setPasswordEditError('');
                             }}
-                            className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 cursor-pointer"
+                            className="min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 cursor-pointer"
                             title="Cancelar"
+                              aria-label="Cancelar"
                           >
-                            <X className="w-3.5 h-3.5" />
+                            <X className="w-4 h-4" />
                           </button>
                           {passwordEditError && (
                             <span className="text-[10px] font-semibold text-rose-600">{passwordEditError}</span>
@@ -823,7 +808,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                         <button
                           type="button"
                           onClick={() => startPasswordEdit(u.id)}
-                          className="text-[11px] text-slate-500 hover:text-blue-700 font-semibold flex items-center gap-1 cursor-pointer"
+                          className="min-h-[40px] px-2.5 rounded-lg border border-slate-200 text-xs text-slate-600 hover:text-blue-700 hover:border-blue-300 hover:bg-blue-50 font-semibold flex items-center gap-1.5 cursor-pointer"
                         >
                           <KeyRound className="w-3.5 h-3.5" />
                           Cambiar
@@ -845,7 +830,8 @@ export const UsersView: React.FC<UsersViewProps> = ({
                           if (isSelf || isLastAdmin) return;
                           requestDeleteUser(u.id);
                         }}
-                        className={`p-1.5 rounded-lg transition ${
+                        aria-label={`Eliminar usuario ${u.username}`}
+                        className={`min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-lg transition ${
                           isSelf || isLastAdmin
                             ? 'text-slate-300 cursor-not-allowed'
                             : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'
@@ -861,6 +847,36 @@ export const UsersView: React.FC<UsersViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Herramientas de administrador (al final: acciones poco frecuentes).
+          El respaldo también está en el menú del usuario de la barra superior. */}
+      {onDownloadBackup && (
+        <div className="bg-white border border-slate-200 rounded-2xl px-5 py-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-slate-800 text-sm">Respaldo de datos</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Descarga una copia completa (rutas, liquidadas, camiones y personal) para guardarla fuera de Supabase.
+              Además, Supabase guarda un respaldo automático cada día.
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            icon={Download}
+            loading={isBackingUp}
+            loadingText="Preparando respaldo…"
+            onClick={async () => {
+              setIsBackingUp(true);
+              try {
+                await onDownloadBackup();
+              } finally {
+                setIsBackingUp(false);
+              }
+            }}
+          >
+            Descargar respaldo
+          </Button>
+        </div>
+      )}
 
       {/* Confirmación con contraseña de administrador para guardar cambios o eliminar */}
       {confirmAction && (
@@ -896,29 +912,27 @@ export const UsersView: React.FC<UsersViewProps> = ({
                   if (e.key === 'Enter') submitConfirm();
                 }}
                 placeholder="Contraseña de administrador"
-                className="w-full p-2.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
               />
               {confirmError && <p className="text-[11px] text-rose-600 mt-1">{confirmError}</p>}
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={cancelConfirm}
-                className="px-3.5 py-2 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
-              >
+            <div className="flex items-center justify-between gap-2 pt-2">
+              <Button variant="secondary" onClick={cancelConfirm}>
                 Cancelar
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant={confirmAction.type === 'delete' ? 'danger' : 'primary'}
+                icon={confirmAction.type === 'delete' ? Trash2 : Check}
                 onClick={submitConfirm}
-                className={`px-3.5 py-2 text-xs font-semibold rounded-lg text-white cursor-pointer ${
-                  confirmAction.type === 'delete'
-                    ? 'bg-rose-600 hover:bg-rose-700'
-                    : 'bg-slate-900 hover:bg-slate-800'
-                }`}
+                loading={isConfirming}
+                loadingText="Verificando…"
               >
-                {isConfirming ? 'Verificando...' : confirmAction.type === 'delete' ? 'Eliminar' : 'Confirmar'}
-              </button>
+                {confirmAction.type === 'delete'
+                  ? 'Eliminar usuario'
+                  : confirmAction.type === 'password'
+                  ? 'Cambiar contraseña'
+                  : 'Guardar cambios'}
+              </Button>
             </div>
           </div>
         </div>
