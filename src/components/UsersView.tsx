@@ -43,6 +43,8 @@ interface UsersViewProps {
   // delicadas. Con Supabase Auth la app ya no conoce ninguna contraseña, así
   // que la verificación la hace el servidor.
   onVerifyPassword: (password: string) => Promise<boolean>;
+  // Punto 19: descarga manual de un respaldo completo (solo administrador).
+  onDownloadBackup?: () => Promise<void>;
 }
 
 const DEFAULT_PERMISSIONS: TablePermissions = {
@@ -96,7 +98,9 @@ export const UsersView: React.FC<UsersViewProps> = ({
   onResetPassword,
   onDeleteUser,
   onVerifyPassword,
+  onDownloadBackup,
 }) => {
+  const [isBackingUp, setIsBackingUp] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   // Corrección: se agrega confirmación de contraseña y opción de mostrar/ocultar al
@@ -339,6 +343,33 @@ export const UsersView: React.FC<UsersViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {onDownloadBackup && (
+        <div className="bg-white border border-slate-200 rounded-2xl px-5 py-4 shadow-sm flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-slate-800 text-sm">Respaldo de datos</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Descarga una copia completa (rutas, liquidadas, camiones y personal) para guardarla fuera de Supabase.
+              Además, Supabase guarda un respaldo automático cada día.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={isBackingUp}
+            onClick={async () => {
+              setIsBackingUp(true);
+              try {
+                await onDownloadBackup();
+              } finally {
+                setIsBackingUp(false);
+              }
+            }}
+            className="min-h-[44px] px-4 rounded-xl bg-slate-900 text-white text-sm font-semibold cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+          >
+            {isBackingUp ? 'Preparando respaldo...' : 'Descargar respaldo'}
+          </button>
+        </div>
+      )}
+
       {/* Crear usuario */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-sm space-y-5">
         <div className="pb-4 border-b border-slate-100">
