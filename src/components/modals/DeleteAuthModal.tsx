@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Lock, Trash2, ShieldAlert } from 'lucide-react';
+import { Button } from '../ui/Button';
 
-// Código de autorización requerido para eliminar registros de Camiones o Personal.
-// No se muestra en ninguna parte de la interfaz.
-const DELETE_AUTH_CODE = '1605';
+// Eliminar camiones o personal se confirma con la CONTRASEÑA del usuario en
+// sesión (antes era un código fijo escrito dentro de la app, visible para
+// cualquiera que revisara el código descargado en el navegador).
 const CONFIRM_WORD = 'ELIMINAR';
 
 interface DeleteAuthModalProps {
@@ -17,6 +18,7 @@ interface DeleteAuthModalProps {
   // proporcional al riesgo en vez de ser siempre la misma. Al omitirse (o valer 1)
   // el comportamiento es idéntico al que ya existía.
   itemCount?: number;
+  onVerifyPassword: (password: string) => Promise<boolean>;
 }
 
 export const DeleteAuthModal: React.FC<DeleteAuthModalProps> = ({
@@ -25,7 +27,9 @@ export const DeleteAuthModal: React.FC<DeleteAuthModalProps> = ({
   onConfirm,
   itemLabel,
   itemCount = 1,
+  onVerifyPassword,
 }) => {
+  const [checking, setChecking] = useState(false);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [confirmPhrase, setConfirmPhrase] = useState('');
@@ -49,19 +53,27 @@ export const DeleteAuthModal: React.FC<DeleteAuthModalProps> = ({
     onClose();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (checking) return;
     if (!confirmPhraseOk) {
       setError(`Escribe "${CONFIRM_WORD}" para confirmar antes de continuar.`);
       return;
     }
-    if (code.trim() === DELETE_AUTH_CODE) {
+    setChecking(true);
+    let ok = false;
+    try {
+      ok = await onVerifyPassword(code);
+    } finally {
+      setChecking(false);
+    }
+    if (ok) {
       setCode('');
       setError('');
       setConfirmPhrase('');
       onConfirm();
     } else {
-      setError('Código incorrecto. Verifica e intenta de nuevo.');
+      setError('Contraseña incorrecta. Verifica e intenta de nuevo.');
       setCode('');
     }
   };
@@ -74,7 +86,13 @@ export const DeleteAuthModal: React.FC<DeleteAuthModalProps> = ({
             <Trash2 className="w-4 h-4 mr-1.5 text-rose-600" />
             Confirmar Eliminación
           </h3>
-          <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="Cerrar"
+            title="Cerrar"
+            className="text-slate-400 hover:text-slate-600 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-slate-100 cursor-pointer"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -104,7 +122,7 @@ export const DeleteAuthModal: React.FC<DeleteAuthModalProps> = ({
                 if (error) setError('');
               }}
               placeholder={`Escribe ${CONFIRM_WORD} para continuar`}
-              className="w-full p-2 border border-rose-300 rounded-lg outline-none focus:ring-2 focus:ring-rose-500 font-bold text-center uppercase tracking-widest text-rose-900 bg-white"
+              className="w-full min-h-[44px] p-2 border border-rose-300 rounded-lg outline-none focus:ring-2 focus:ring-rose-500 font-bold text-center uppercase tracking-widest text-rose-900 bg-white"
             />
           </div>
         )}
@@ -113,44 +131,39 @@ export const DeleteAuthModal: React.FC<DeleteAuthModalProps> = ({
           <div>
             <label className="font-semibold text-slate-700 mb-1 flex items-center">
               <Lock className="w-3 h-3 mr-1" />
-              Código de autorización
+              Tu contraseña
             </label>
             <input
               type="password"
-              inputMode="numeric"
-              autoComplete="off"
+              autoComplete="current-password"
               value={code}
               onChange={(e) => {
                 setCode(e.target.value);
                 if (error) setError('');
               }}
               autoFocus={!isHighRisk}
-              placeholder="••••"
-              className="w-full p-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-rose-500 font-mono tracking-widest"
+              placeholder="Escribe tu contraseña"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-rose-500 font-mono tracking-widest"
             />
             {error && <p className="text-rose-600 font-semibold mt-1">{error}</p>}
           </div>
 
-          <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="px-3 py-1.5 border border-slate-300 rounded-lg hover:bg-slate-50 cursor-pointer text-slate-600"
-            >
+          <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
+            <Button variant="secondary" size="md" onClick={handleClose}>
               Cancelar
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              disabled={!confirmPhraseOk}
+              variant="danger"
+              size="md"
+              icon={Trash2}
+              disabled={!confirmPhraseOk || !code}
+              loading={checking}
+              loadingText="Verificando…"
               title={!confirmPhraseOk ? `Escribe "${CONFIRM_WORD}" arriba para habilitar` : undefined}
-              className={`px-3 py-1.5 font-semibold rounded-lg ${
-                !confirmPhraseOk
-                  ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                  : 'bg-rose-600 hover:bg-rose-700 text-white cursor-pointer'
-              }`}
             >
               Eliminar
-            </button>
+            </Button>
           </div>
         </form>
       </div>
