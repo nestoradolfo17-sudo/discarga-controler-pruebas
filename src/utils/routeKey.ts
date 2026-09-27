@@ -41,3 +41,20 @@ export function routeMatchesKey(
   if (String(ref).includes(KEY_SEP)) return getRouteKey(route) === ref;
   return String(route.fecha ?? '') === String(ref);
 }
+
+// Punto 8 del análisis: los viajes de una ruta partida (.1, .2, .3) se
+// reconocían como "hermanos" solo por el número de la ruta original. Si la
+// misma ruta se partía dos días seguidos, o dos agencias partían el mismo
+// número, se mezclaban (al revertir, en el recibo consolidado, etc.). Ahora
+// además deben coincidir la fecha y la agencia del viaje de referencia.
+export function isSameSplitGroup(
+  r: { id: string; parentRouteId?: string; isSplitRoute?: boolean; fecha?: string; agencia?: string },
+  parentRouteId: string,
+  ref?: { fecha?: string; agencia?: string } | null
+): boolean {
+  const inGroup =
+    r.parentRouteId === parentRouteId || (!!r.isSplitRoute && String(r.id).startsWith(parentRouteId + '.'));
+  if (!inGroup) return false;
+  if (!ref) return true;
+  return String(r.fecha ?? '') === String(ref.fecha ?? '') && String(r.agencia ?? '') === String(ref.agencia ?? '');
+}
