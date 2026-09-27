@@ -3,6 +3,8 @@ import { Route, Staff } from '../../types';
 import { formatDateToGuatemala, formatDateTimeToGuatemala } from '../../utils/date';
 import { getRouteAssignmentType } from '../../utils/excel';
 import { X, Printer } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 
 interface ReceiptModalProps {
   isOpen: boolean;
@@ -122,17 +124,15 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               : 'Acta Oficial de Liquidación de Ruta'}
           </h3>
           <div className="flex items-center space-x-2">
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm flex items-center space-x-1 transition cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5 mr-1" />
-              <span>Imprimir / Guardar PDF</span>
-            </button>
-            <button onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer">
-              <X className="w-5 h-5" />
-            </button>
+            <Button variant="primary" size="md" icon={Printer} onClick={handlePrint}>
+              Imprimir / PDF
+            </Button>
+            <IconButton
+              icon={ACTION_ICONS.cerrar}
+              label="Cerrar"
+              onClick={onClose}
+              className="text-slate-300 hover:text-white hover:bg-slate-800"
+            />
           </div>
         </div>
 
