@@ -8,6 +8,8 @@ import {
   AlertCircle,
   ClipboardCheck,
 } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 
 interface ClosingActaModalProps {
   isOpen: boolean;
@@ -189,7 +191,8 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
               <select
                 value={filterAgency}
                 onChange={(e) => setFilterAgency(e.target.value)}
-                className="px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs font-semibold text-slate-200 outline-none cursor-pointer"
+                aria-label="Agencia del acta"
+                className="min-h-[44px] px-2.5 bg-slate-800 border border-slate-700 rounded-lg text-sm font-semibold text-slate-200 outline-none cursor-pointer"
               >
                 <option value="TODAS">Todas las Agencias</option>
                 {agencies.map((ag) => (
@@ -199,20 +202,21 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
                 ))}
               </select>
             )}
-            <button
+            <Button
+              variant="primary"
+              size="md"
+              icon={Printer}
               onClick={handlePrint}
               title="Imprimir Acta de Cierre (o guardar como PDF desde el diálogo de impresión)"
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-lg text-xs font-bold flex items-center transition border border-indigo-500 cursor-pointer shadow-xs"
             >
-              <Printer className="w-3.5 h-3.5 mr-1.5" />
-              Imprimir / Guardar PDF
-            </button>
-            <button
+              Imprimir / PDF
+            </Button>
+            <IconButton
+              icon={ACTION_ICONS.cerrar}
+              label="Cerrar"
               onClick={onClose}
-              className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+              className="text-slate-300 hover:text-white hover:bg-slate-800"
+            />
           </div>
         </div>
 
