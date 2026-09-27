@@ -169,8 +169,9 @@ export const ResourcePicker: React.FC<ResourcePickerProps> = ({
                   setQuery('');
                   inputRef.current?.focus();
                 }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 cursor-pointer"
+                className="absolute right-1 top-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 cursor-pointer"
                 title="Borrar búsqueda"
+                aria-label="Borrar búsqueda"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -187,7 +188,7 @@ export const ResourcePicker: React.FC<ResourcePickerProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowAll((v) => !v)}
-                  className="min-h-[36px] px-3 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 flex items-center gap-1 cursor-pointer"
+                  className="min-h-[44px] px-3 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 flex items-center gap-1 cursor-pointer"
                 >
                   {showAll ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   {showAll ? 'Ocultar no disponibles' : 'Mostrar todos'}
