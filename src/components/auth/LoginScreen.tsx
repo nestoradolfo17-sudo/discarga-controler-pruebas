@@ -66,7 +66,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, notice }) => 
                 autoComplete="username"
                 autoFocus
                 required
-                className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+                className="w-full min-h-[48px] pl-9 pr-3 text-base border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium"
                 placeholder="Nombre de usuario"
               />
             </div>
@@ -82,7 +82,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, notice }) => 
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
                 required
-                className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-medium"
+                className="w-full min-h-[48px] pl-9 pr-3 text-base border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium"
                 placeholder="••••••••"
               />
             </div>
@@ -98,7 +98,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, notice }) => 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm py-2.5 rounded-lg transition cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+            className="w-full flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-base min-h-[48px] rounded-xl transition cursor-pointer disabled:opacity-60 disabled:cursor-wait"
           >
             <LogIn className="w-4 h-4" />
             {isSubmitting ? 'Ingresando...' : 'Ingresar'}
