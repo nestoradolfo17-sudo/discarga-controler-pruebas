@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { Route, Staff, Truck } from '../../types';
 import { parseFlexibleDate, formatDateToGuatemala, formatDateTimeToGuatemala } from '../../utils/date';
 import {
@@ -30,6 +31,8 @@ import {
   Users,
   ClipboardCheck
 } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 import { generateDailySummaryPdf } from '../../utils/dailySummaryPdf';
 
 export type DailySummaryMode = 'inicio' | 'fin';
@@ -361,6 +364,15 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   onOpenClosingActa,
 }) => {
   const [mode, setMode] = useState<DailySummaryMode>(initialMode);
+  // Secciones (análisis de botones, punto 16): en tablet se ve una sección a
+  // la vez para no desplazarse por todo el reporte. Solo se dibuja la sección
+  // abierta; al imprimir se muestran todas (ver handlePrint).
+  type SummarySection = 'todo' | 'totales' | 'recursos' | 'detalle';
+  const [section, setSection] = useState<SummarySection>('detalle');
+  const showSection = (k: SummarySection) => section === 'todo' || section === k;
+  useEffect(() => {
+    if (mode === 'fin' && section === 'recursos') setSection('detalle');
+  }, [mode, section]);
   const [inicioFilter, setInicioFilter] = useState<InicioFilter>('todas');
   const [finFilter, setFinFilter] = useState<FinFilter>('todas');
   const [filterAgency, setFilterAgency] = useState<string>(selectedAgency || 'TODAS');
@@ -725,6 +737,10 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
     document.title = `${titlePrefix}_${agencyLabel}_${cleanFecha}`;
     document.body.classList.add('printing-daily-summary');
+    // Al imprimir se dibujan TODAS las secciones (en pantalla se ve una a la vez).
+    const prevSection = section;
+    flushSync(() => setSection('todo'));
+    window.setTimeout(() => setSection(prevSection), 0);
 
     let printSucceeded = false;
     try {
@@ -804,14 +820,15 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center space-x-3 print:hidden">
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
             {/* BOTÓN SELECTOR DE MODO: INICIO DE DÍA vs FIN DE DÍA */}
             <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 shadow-inner">
               <button
                 id="btnSummaryInicioDeDia"
                 onClick={() => setMode('inicio')}
                 title="Ver lo planificado antes de liquidar"
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center transition cursor-pointer ${
+                aria-pressed={mode === 'inicio'}
+                className={`min-h-[40px] px-3 rounded-lg text-xs sm:text-sm font-bold flex items-center transition cursor-pointer ${
                   mode === 'inicio'
                     ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs'
                     : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
@@ -824,7 +841,8 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 id="btnSummaryFinDeDia"
                 onClick={() => setMode('fin')}
                 title="Ver cómo se terminó de ejecutar lo planificado"
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center transition cursor-pointer ${
+                aria-pressed={mode === 'fin'}
+                className={`min-h-[40px] px-3 rounded-lg text-xs sm:text-sm font-bold flex items-center transition cursor-pointer ${
                   mode === 'fin'
                     ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-xs'
                     : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
@@ -842,42 +860,42 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
             )}
 
             {mode === 'fin' && onOpenClosingActa && (
-              <button
+              <Button
                 id="btnOpenClosingActa"
+                variant="success"
+                icon={ClipboardCheck}
                 onClick={onOpenClosingActa}
                 title="Generar Acta de Cierre y Liquidación Total del Día, con espacio de firma para el cliente"
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-lg text-xs font-bold flex items-center transition border border-emerald-500 cursor-pointer shadow-xs"
               >
-                <ClipboardCheck className="w-3.5 h-3.5 mr-1.5 text-white" />
-                Acta de Cierre para Firma
-              </button>
+                Acta de cierre
+              </Button>
             )}
 
-            <button
+            <Button
               id="btnDailySummaryPrint"
+              variant="secondary"
+              icon={Printer}
               onClick={handlePrint}
-              title="Imprimir resumen oficial (o generar copia impresa)"
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 hover:text-white rounded-lg text-xs font-semibold flex items-center transition border border-slate-700 cursor-pointer shadow-xs"
+              title="Imprimir resumen oficial"
             >
-              <Printer className="w-3.5 h-3.5 mr-1.5 text-slate-300" />
-              Imprimir
-            </button>
+              <span className="hidden md:inline">Imprimir</span>
+            </Button>
 
-            <button
+            <Button
               id="btnDailySummaryPdf"
+              variant="primary"
+              icon={FileDown}
               onClick={handleSavePdf}
-              title="Descargar y guardar reporte como archivo PDF oficial"
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-lg text-xs font-bold flex items-center transition border border-indigo-500 cursor-pointer shadow-xs"
+              title="Descargar el reporte como PDF"
             >
-              <FileDown className="w-3.5 h-3.5 mr-1.5 text-white" />
-              Guardar en PDF
-            </button>
-            <button
+              PDF
+            </Button>
+            <IconButton
+              icon={ACTION_ICONS.cerrar}
+              label="Cerrar resumen"
               onClick={onClose}
-              className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+              className="text-slate-300 hover:text-white hover:bg-slate-800"
+            />
           </div>
         </div>
 
@@ -890,6 +908,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {/* KPI 1: Rutas Planificadas */}
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setInicioFilter('todas');
+                  }
+                }}
                 onClick={() => setInicioFilter('todas')}
                 className={`p-3 rounded-xl border transition-all cursor-pointer ${
                   inicioFilter === 'todas'
@@ -924,6 +950,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
               {/* KPI 2: Total Cajas Físicas del Día */}
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setInicioFilter('todas');
+                  }
+                }}
                 onClick={() => setInicioFilter('todas')}
                 className={`p-3 rounded-xl border transition-all cursor-pointer ${
                   inicioFilter === 'todas'
@@ -956,6 +990,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
               {/* KPI 3: Rutas En Tiempo */}
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setInicioFilter('en_tiempo');
+                  }
+                }}
                 onClick={() => setInicioFilter('en_tiempo')}
                 className={`p-3 rounded-xl border transition-all cursor-pointer ${
                   inicioFilter === 'en_tiempo'
@@ -983,6 +1025,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
               {/* KPI 4: Rutas Atrasadas */}
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setInicioFilter('atrasadas');
+                  }
+                }}
                 onClick={() => setInicioFilter('atrasadas')}
                 className={`p-3 rounded-xl border transition-all cursor-pointer ${
                   inicioFilter === 'atrasadas'
@@ -1014,6 +1064,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
               {/* KPI 5: A Piso / Resguardo */}
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setInicioFilter('piso');
+                  }
+                }}
                 onClick={() => setInicioFilter('piso')}
                 className={`p-3 rounded-xl border transition-all cursor-pointer ${
                   inicioFilter === 'piso'
@@ -1044,6 +1102,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {/* KPI 1: Rutas Liquidadas vs Planificadas */}
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setFinFilter('liquidadas');
+                  }
+                }}
                 onClick={() => setFinFilter('liquidadas')}
                 className={`p-3 rounded-xl border transition-all cursor-pointer ${
                   finFilter === 'liquidadas'
@@ -1071,6 +1137,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
               {/* KPI 2: Total Cajas Físicas del Día */}
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setFinFilter('todas');
+                  }
+                }}
                 onClick={() => setFinFilter('todas')}
                 className={`p-3 rounded-xl border transition-all cursor-pointer ${
                   finFilter === 'todas'
@@ -1104,6 +1178,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
               {/* KPI 3: Cajas Físicas Entregadas vs Devueltas */}
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setFinFilter('todas');
+                  }
+                }}
                 onClick={() => setFinFilter('todas')}
                 className={`p-3 rounded-xl border transition-all cursor-pointer ${
                   finFilter === 'todas'
@@ -1132,6 +1214,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
               {/* KPI 4: Rutas En Tiempo vs Atrasadas al Cierre */}
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setFinFilter('atrasadas');
+                  }
+                }}
                 onClick={() => setFinFilter('atrasadas')}
                 className={`p-3 rounded-xl border transition-all cursor-pointer ${
                   finFilter === 'atrasadas'
@@ -1162,6 +1252,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
               {/* KPI 5: Quedan en Bodega */}
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setFinFilter('piso');
+                  }
+                }}
                 onClick={() => setFinFilter('piso')}
                 className={`p-3 rounded-xl border transition-all cursor-pointer ${
                   finFilter === 'piso'
@@ -1196,7 +1294,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               <div className="flex flex-wrap gap-1 bg-slate-200/80 p-1 rounded-xl text-xs font-semibold w-full sm:w-auto">
                 <button
                   onClick={() => setInicioFilter('todas')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     inicioFilter === 'todas'
                       ? 'bg-white text-slate-900 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -1207,7 +1305,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
                 <button
                   onClick={() => setInicioFilter('pendientes')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     inicioFilter === 'pendientes'
                       ? 'bg-amber-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-amber-800'
@@ -1218,7 +1316,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
                 <button
                   onClick={() => setInicioFilter('transito')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     inicioFilter === 'transito'
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-blue-800'
@@ -1229,7 +1327,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
                 <button
                   onClick={() => setInicioFilter('en_tiempo')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     inicioFilter === 'en_tiempo'
                       ? 'bg-emerald-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-emerald-700'
@@ -1240,7 +1338,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
                 <button
                   onClick={() => setInicioFilter('atrasadas')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     inicioFilter === 'atrasadas'
                       ? 'bg-rose-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-rose-700'
@@ -1251,7 +1349,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
                 <button
                   onClick={() => setInicioFilter('piso')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     inicioFilter === 'piso'
                       ? 'bg-amber-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-amber-700'
@@ -1262,7 +1360,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
                 <button
                   onClick={() => setInicioFilter('recargas')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     inicioFilter === 'recargas'
                       ? 'bg-purple-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-purple-700'
@@ -1276,7 +1374,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               <div className="flex flex-wrap gap-1 bg-slate-200/80 p-1 rounded-xl text-xs font-semibold w-full sm:w-auto">
                 <button
                   onClick={() => setFinFilter('todas')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     finFilter === 'todas'
                       ? 'bg-white text-slate-900 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -1287,7 +1385,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
                 <button
                   onClick={() => setFinFilter('liquidadas')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     finFilter === 'liquidadas'
                       ? 'bg-emerald-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-emerald-700'
@@ -1298,7 +1396,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
                 <button
                   onClick={() => setFinFilter('en_tiempo')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     finFilter === 'en_tiempo'
                       ? 'bg-emerald-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-emerald-700'
@@ -1309,7 +1407,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
                 <button
                   onClick={() => setFinFilter('atrasadas')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     finFilter === 'atrasadas'
                       ? 'bg-rose-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-rose-700'
@@ -1320,7 +1418,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
                 <button
                   onClick={() => setFinFilter('pendientes')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     finFilter === 'pendientes'
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-blue-700'
@@ -1331,7 +1429,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
                 <button
                   onClick={() => setFinFilter('piso')}
-                  className={`px-3 py-1 rounded-lg transition flex items-center cursor-pointer ${
+                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
                     finFilter === 'piso'
                       ? 'bg-amber-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-amber-700'
@@ -1392,6 +1490,32 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         {/* CONTENEDOR PRINCIPAL: RESUMEN DE TOTALES Y TABLA DETALLADA    */}
         {/* ============================================================== */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 print:p-0 print:overflow-visible print:h-auto print:max-h-none print:block space-y-6 print:space-y-4">
+          {/* Navegación por secciones (no se imprime). */}
+          <div
+            role="tablist"
+            aria-label="Secciones del reporte"
+            className="sticky top-0 z-20 -mx-4 sm:-mx-5 -mt-4 sm:-mt-5 px-4 sm:px-5 py-2 bg-white/95 backdrop-blur border-b border-slate-200 flex flex-wrap gap-2 print:hidden"
+          >
+            {([
+              { k: 'detalle', label: 'Detalle por ruta' },
+              { k: 'totales', label: 'Totales' },
+              ...(mode === 'inicio' ? [{ k: 'recursos', label: 'Recursos no asignados' }] : []),
+              { k: 'todo', label: 'Todo' },
+            ] as { k: SummarySection; label: string }[]).map(({ k, label }) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={section === k}
+                onClick={() => setSection(k)}
+                className={`min-h-[44px] px-4 rounded-xl border-2 text-sm font-semibold cursor-pointer active:scale-95 ${
+                  section === k ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-400'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
           {/* ============================================================== */}
           {/* TABLA RESUMEN DE TOTALES (SOLO TOTALES, NO A DETALLE)          */}
@@ -1403,6 +1527,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           {/* 5. Rutas mayores a 72 horas                                   */}
           {/* Disponible tanto al inicio de día como actualizado en fin     */}
           {/* ============================================================== */}
+          {showSection('totales') && (
           <div className="bg-white rounded-xl border border-slate-300 shadow-sm overflow-hidden print:border print:border-slate-400 print:shadow-none print:rounded-lg print:break-inside-avoid">
             {/* Header de la Tabla Resumen de Totales */}
             <div className="px-4 py-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 print:bg-slate-100 print:text-slate-900 print:border-b print:border-slate-300">
@@ -2137,11 +2262,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               </table>
             </div>
           </div>
+          )}
 
           {/* ============================================================== */}
           {/* RECURSOS NO ASIGNADOS (Fin de Asignación) — Solo en Inicio de Día */}
           {/* ============================================================== */}
-          {mode === 'inicio' && (
+          {mode === 'inicio' && showSection('recursos') && (
             <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden print:border print:border-slate-400 print:shadow-none print:rounded-lg">
               <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 print:bg-slate-100 print:text-slate-900">
                 <div className="flex items-center space-x-2">
@@ -2247,6 +2373,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           {/* ============================================================== */}
           {/* TABLA DETALLADA DE RUTAS (El resto se mantiene exactamente igual) */}
           {/* ============================================================== */}
+          {showSection('detalle') && (
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden print:border print:border-slate-400 print:shadow-none print:rounded-lg">
             <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 print:bg-slate-100 print:text-slate-900">
               <div className="flex items-center space-x-2">
@@ -2521,6 +2648,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               </div>
             )}
           </div>
+          )}
 
           {/* Pie de página oficial visible solo en impresión */}
           <div className="hidden print:flex items-center justify-between pt-3 mt-4 border-t border-slate-300 text-[9px] text-slate-500">
@@ -2550,39 +2678,18 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
             <span>Agencia: <strong className="text-slate-800">{filterAgency}</strong></span>
           </div>
 
-          <div className="flex items-center space-x-2.5">
-            <button
-              onClick={handlePrint}
-              title="Imprimir resumen oficial"
-              className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center transition cursor-pointer shadow-2xs"
-            >
-              <Printer className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
-              Imprimir
-            </button>
-            <button
-              onClick={handleSavePdf}
-              title="Guardar o descargar como PDF"
-              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center transition cursor-pointer shadow-2xs"
-            >
-              <FileDown className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
-              Guardar en PDF
-            </button>
-            <button
+          {/* Pie: sin repetir Imprimir/PDF (ya están arriba). */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              icon={mode === 'inicio' ? Moon : Sun}
               onClick={() => setMode(mode === 'inicio' ? 'fin' : 'inicio')}
-              className="text-xs font-bold text-indigo-700 hover:text-indigo-900 flex items-center transition cursor-pointer ml-1"
             >
-              {mode === 'inicio' ? (
-                <>Ver cómo se terminó de ejecutar en Fin de Día &rarr;</>
-              ) : (
-                <>&larr; Volver a lo planificado en Inicio de Día</>
-              )}
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition cursor-pointer"
-            >
-              Cerrar Resumen
-            </button>
+              {mode === 'inicio' ? 'Ver Fin de Día' : 'Ver Inicio de Día'}
+            </Button>
+            <Button variant="dark" onClick={onClose}>
+              Cerrar
+            </Button>
           </div>
         </div>
       </div>
