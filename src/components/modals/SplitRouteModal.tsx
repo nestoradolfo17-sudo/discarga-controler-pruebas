@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Route } from '../../types';
 import { formatDateToGuatemala, formatDateTimeToGuatemala } from '../../utils/date';
-import { X, Split, Check } from 'lucide-react';
+import { X, Split, Check, Users, Search, Shuffle } from 'lucide-react';
 
 interface SplitRouteModalProps {
   isOpen: boolean;
@@ -24,12 +24,29 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
 }) => {
   const [numTrips, setNumTrips] = useState<number>(3);
   const [tripInputs, setTripInputs] = useState<TripSplitInput[]>([]);
+  // Clientes por viaje (código de cliente -> número de viaje). Solo aplica si la
+  // ruta trae su lista de clientes (Excel "Clientes N"): en ese caso las paradas
+  // y cajas de cada viaje se calculan solas a partir de los clientes asignados,
+  // y cada viaje hijo se lleva su propia lista de clientes.
+  const [clientTrip, setClientTrip] = useState<Map<string, number>>(new Map());
+  const [clientFilter, setClientFilter] = useState('');
+
+  // Reparte los clientes en orden (secuencia del archivo) en partes iguales.
+  const distributeClients = (tripsCount: number, currentRoute: Route) => {
+    const list = currentRoute.clientesRuta || [];
+    const per = Math.ceil(list.length / tripsCount) || 1;
+    const map = new Map<string, number>();
+    list.forEach((c, i) => map.set(c.codigo, Math.min(tripsCount, Math.floor(i / per) + 1)));
+    setClientTrip(map);
+  };
 
   useEffect(() => {
     if (isOpen && route) {
       const tripsCount = 3;
       setNumTrips(tripsCount);
       recalculateTripInputs(tripsCount, route);
+      distributeClients(tripsCount, route);
+      setClientFilter('');
     }
   }, [isOpen, route]);
 
@@ -66,11 +83,45 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
 
   if (!isOpen || !route) return null;
 
+  const clientes = route.clientesRuta || [];
+  const hasClients = clientes.length > 0;
+
   const handleNumTripsChange = (newCount: number) => {
     const clamped = Math.min(Math.max(newCount, 2), 6);
     setNumTrips(clamped);
     recalculateTripInputs(clamped, route);
+    if (hasClients) {
+      // Se conserva lo ya asignado; los clientes de viajes que dejan de existir
+      // pasan al último viaje.
+      setClientTrip((prev) => {
+        const next = new Map<string, number>();
+        prev.forEach((t, k) => next.set(k, Math.min(t, clamped)));
+        return next;
+      });
+    }
   };
+
+  const setTripForClient = (codigo: string, trip: number) => {
+    setClientTrip((prev) => {
+      const next = new Map(prev);
+      next.set(codigo, trip);
+      return next;
+    });
+  };
+
+  // Con lista de clientes, paradas y cajas de cada viaje salen de sus clientes.
+  const effectiveTrips: TripSplitInput[] = hasClients
+    ? Array.from({ length: numTrips }, (_, i) => {
+        const n = i + 1;
+        const own = clientes.filter((c) => (clientTrip.get(c.codigo) || 1) === n);
+        return {
+          tripNumber: n,
+          paradas: own.length,
+          cajas: parseFloat(own.reduce((acc, c) => acc + (Number(c.cajas) || 0), 0).toFixed(3)),
+        };
+      })
+    : tripInputs;
+  const emptyTrips = hasClients ? effectiveTrips.filter((t) => t.paradas === 0).map((t) => t.tripNumber) : [];
 
   const handleInputChange = (index: number, field: 'paradas' | 'cajas', val: number) => {
     setTripInputs((prev) => {
@@ -86,11 +137,11 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
     // Corrección: antes se podía confirmar la partición aunque la suma de cajas o
     // paradas de los viajes no cuadrara con el total de la ruta original, y ese
     // descuadre quedaba permanente (la ruta original desaparece al confirmar).
-    if (sumParadasMismatch || sumCajasMismatch) {
+    if (sumParadasMismatch || sumCajasMismatch || emptyTrips.length > 0) {
       return;
     }
 
-    const childRoutes: Route[] = tripInputs.map((ti) => {
+    const childRoutes: Route[] = effectiveTrips.map((ti) => {
       return {
         id: `${route.id}.${ti.tripNumber}`,
         parentRouteId: String(route.id),
@@ -112,6 +163,10 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
         cajas12Oz: ((parseFloat(String(route.cajas12Oz)) || 0) / numTrips).toFixed(3),
         pesoKg: ((parseFloat(String(route.pesoKg)) || 0) / numTrips).toFixed(3),
         cajasFisicas: ti.cajas,
+        // Cada viaje se lleva solo los clientes que le tocan.
+        ...(hasClients
+          ? { clientesRuta: clientes.filter((c) => (clientTrip.get(c.codigo) || 1) === ti.tripNumber) }
+          : {}),
         estado: 'Pendiente',
         asignacion: null,
         liquidacion: null,
@@ -129,15 +184,21 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
   // Cuadre en vivo: antes no existía ninguna validación de que la suma de los
   // viajes coincidiera con el total original, y un descuadre aquí quedaba
   // permanente (silencioso) al confirmar, afectando cualquier KPI de cajas/paradas.
-  const sumParadas = tripInputs.reduce((acc, t) => acc + (t.paradas || 0), 0);
-  const sumCajas = parseFloat(tripInputs.reduce((acc, t) => acc + (t.cajas || 0), 0).toFixed(3));
-  const sumParadasMismatch = sumParadas !== totalParadas;
-  const sumCajasMismatch = Math.abs(sumCajas - totalCajas) > 0.01;
-  const hasMismatch = sumParadasMismatch || sumCajasMismatch;
+  const sumParadas = effectiveTrips.reduce((acc, t) => acc + (t.paradas || 0), 0);
+  const sumCajas = parseFloat(effectiveTrips.reduce((acc, t) => acc + (t.cajas || 0), 0).toFixed(3));
+  // Con clientes, el total de referencia es la propia lista de clientes (paradas =
+  // cantidad de clientes); así siempre cuadra aunque el resumen difiera un poco.
+  const refParadas = hasClients ? clientes.length : totalParadas;
+  const refCajas = hasClients
+    ? parseFloat(clientes.reduce((acc, c) => acc + (Number(c.cajas) || 0), 0).toFixed(3))
+    : totalCajas;
+  const sumParadasMismatch = sumParadas !== refParadas;
+  const sumCajasMismatch = Math.abs(sumCajas - refCajas) > 0.01;
+  const hasMismatch = sumParadasMismatch || sumCajasMismatch || emptyTrips.length > 0;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all flex flex-col max-h-[90vh]">
+      <div className={`bg-white rounded-2xl ${hasClients ? 'max-w-3xl' : 'max-w-lg'} w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all flex flex-col max-h-[92vh]`}>
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-2">
             <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center">
@@ -199,10 +260,16 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
               <span>
                 Total ingresado: {sumCajas} Cajas | {sumParadas} Paradas
               </span>
-              <span>{hasMismatch ? '⚠ No cuadra con el total original' : '✓ Cuadra con el total original'}</span>
+              <span>
+                {emptyTrips.length > 0
+                  ? `⚠ Viaje ${emptyTrips.join(', ')} sin clientes`
+                  : hasMismatch
+                  ? '⚠ No cuadra con el total original'
+                  : '✓ Cuadra con el total original'}
+              </span>
             </div>
             <div className="space-y-2.5">
-              {tripInputs.map((trip, idx) => (
+              {effectiveTrips.map((trip, idx) => (
                 <div
                   key={trip.tripNumber}
                   className="bg-slate-50 p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-center"
@@ -219,10 +286,11 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                       type="number"
                       min="1"
                       value={trip.paradas}
+                      readOnly={hasClients}
                       onChange={(e) =>
                         handleInputChange(idx, 'paradas', parseInt(e.target.value) || 1)
                       }
-                      className="w-full p-1.5 border border-slate-300 rounded font-semibold text-xs outline-none"
+                      className={`w-full p-1.5 border border-slate-300 rounded font-semibold text-xs outline-none ${hasClients ? 'bg-slate-100' : ''}`}
                     />
                   </div>
                   <div>
@@ -232,16 +300,90 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                       step="0.001"
                       min="0"
                       value={trip.cajas}
+                      readOnly={hasClients}
                       onChange={(e) =>
                         handleInputChange(idx, 'cajas', parseFloat(e.target.value) || 0)
                       }
-                      className="w-full p-1.5 border border-slate-300 rounded font-mono font-bold text-xs text-blue-700 outline-none"
+                      className={`w-full p-1.5 border border-slate-300 rounded font-mono font-bold text-xs text-blue-700 outline-none ${hasClients ? 'bg-slate-100' : ''}`}
                     />
                   </div>
                 </div>
               ))}
             </div>
           </div>
+
+          {hasClients && (() => {
+            const f = clientFilter.toLowerCase().trim();
+            const visibles = clientes.filter(
+              (c) => !f || c.codigo.toLowerCase().includes(f) || (c.nombre || '').toLowerCase().includes(f)
+            );
+            return (
+              <div className="border border-slate-200 rounded-xl p-3 space-y-2 bg-white">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="font-bold text-slate-800 text-xs flex items-center">
+                    <Users className="w-4 h-4 mr-1.5 text-indigo-600" />
+                    Clientes por viaje ({clientes.length})
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="search"
+                        value={clientFilter}
+                        onChange={(e) => setClientFilter(e.target.value)}
+                        placeholder="Buscar cliente..."
+                        className="pl-7 pr-2 py-1.5 w-44 text-xs border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => distributeClients(numTrips, route)}
+                      className="min-h-[34px] px-2.5 rounded-lg border border-slate-300 text-[11px] font-semibold text-slate-700 flex items-center gap-1 cursor-pointer hover:bg-slate-50"
+                      title="Repartir los clientes en partes iguales, en el orden del archivo"
+                    >
+                      <Shuffle className="w-3.5 h-3.5" /> Repartir igual
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Toca el viaje (V1, V2...) en el que se va cada cliente. Las paradas y cajas de cada viaje se calculan solas.
+                </p>
+                <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                  {visibles.map((c) => {
+                    const t = clientTrip.get(c.codigo) || 1;
+                    return (
+                      <div key={c.codigo} className="flex items-center justify-between gap-2 px-2 py-1.5">
+                        <div className="min-w-0 text-[11px]">
+                          <span className="font-mono text-slate-500">{c.codigo}</span>{' '}
+                          <span className="font-semibold text-slate-800">{c.nombre || '-'}</span>{' '}
+                          <span className="text-slate-400">({Number(c.cajas || 0).toFixed(3)} cajas)</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {Array.from({ length: numTrips }, (_, i) => i + 1).map((n) => (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => setTripForClient(c.codigo, n)}
+                              className={`min-w-[38px] min-h-[34px] rounded-lg text-[11px] font-bold border cursor-pointer active:scale-95 ${
+                                t === n
+                                  ? 'bg-indigo-600 border-indigo-700 text-white'
+                                  : 'bg-white border-slate-300 text-slate-500 hover:border-indigo-300'
+                              }`}
+                            >
+                              V{n}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {visibles.length === 0 && (
+                    <div className="py-3 text-center text-[11px] text-slate-400">Sin resultados</div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-2 flex-shrink-0">
             <button
