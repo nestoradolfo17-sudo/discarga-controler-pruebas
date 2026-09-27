@@ -16,6 +16,7 @@ import { formatDateToGuatemala } from '../utils/date';
 import { SEGMENTO_OPTIONS } from '../data/segmentos';
 import { getRouteKey } from '../utils/routeKey';
 import { FileSpreadsheet, Download, UploadCloud, CheckCircle, X, Layers, AlertCircle, Users, MapPin, Tag } from 'lucide-react';
+import { SegmentedSelect } from './ui/SegmentedSelect';
 
 export interface BatchImportTarget {
   agencia: string;
@@ -283,7 +284,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
     // Corrección: antes, si algo fallaba aquí adentro (o dentro de onCommitRoutes,
     // que se llama de forma síncrona), el error quedaba solo en la consola del
     // navegador — en pantalla no aparecía ningún aviso ni de éxito ni de error, y
-    // parecía que el botón "Confirmar e Importar Rutas" simplemente no hacía nada.
+    // parecía que el botón "Importar rutas" simplemente no hacía nada.
     // Ahora cualquier error se atrapa y se muestra como aviso en pantalla, para
     // poder diagnosticar exactamente qué falla en vez de adivinar.
     try {
@@ -315,7 +316,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
         </div>
         <button
           onClick={downloadExcelTemplate}
-          className="inline-flex items-center px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-xs font-semibold transition cursor-pointer"
+          className="inline-flex items-center min-h-[44px] px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-sm font-semibold transition cursor-pointer"
         >
           <Download className="w-4 h-4 mr-1.5 text-emerald-600" />
           Descargar Plantilla Excel (.xlsx)
@@ -325,26 +326,20 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
       {/* Destino de la carga: Agencia y Segmento */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
         <div>
-          <label htmlFor="importAgencia" className="flex items-center text-xs font-semibold text-slate-700 mb-1">
+          <label id="importAgenciaLabel" className="flex items-center text-xs font-semibold text-slate-700 mb-1">
             <MapPin className="w-3.5 h-3.5 mr-1 text-blue-600" />
             Agencia destino *
           </label>
-          <select
+          <SegmentedSelect
             id="importAgencia"
+            label="Agencia destino"
+            options={agencyOptions}
             value={effectiveAgencia}
-            onChange={(e) => setTargetAgencia(e.target.value)}
+            onChange={setTargetAgencia}
             disabled={agencyOptions.length === 0}
-            className={`w-full p-2.5 border rounded-lg text-sm font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${
-              effectiveAgencia ? 'border-slate-300' : 'border-amber-400'
-            }`}
-          >
-            <option value="">— Selecciona una agencia —</option>
-            {agencyOptions.map((ag) => (
-              <option key={ag} value={ag}>
-                {ag}
-              </option>
-            ))}
-          </select>
+            placeholder="— Selecciona una agencia —"
+            required
+          />
           {agencyOptions.length === 0 && (
             <p className="text-[11px] text-rose-600 mt-1">
               Tu usuario no tiene agencias asignadas. Solicita acceso al administrador.
@@ -352,25 +347,19 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
           )}
         </div>
         <div>
-          <label htmlFor="importSegmento" className="flex items-center text-xs font-semibold text-slate-700 mb-1">
+          <label id="importSegmentoLabel" className="flex items-center text-xs font-semibold text-slate-700 mb-1">
             <Tag className="w-3.5 h-3.5 mr-1 text-emerald-600" />
             Segmento *
           </label>
-          <select
+          <SegmentedSelect
             id="importSegmento"
+            label="Segmento"
+            options={SEGMENTO_OPTIONS}
             value={targetSegmento}
-            onChange={(e) => setTargetSegmento(e.target.value)}
-            className={`w-full p-2.5 border rounded-lg text-sm font-medium bg-white outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${
-              targetSegmento ? 'border-slate-300' : 'border-amber-400'
-            }`}
-          >
-            <option value="">— Selecciona un segmento —</option>
-            {SEGMENTO_OPTIONS.map((sg) => (
-              <option key={sg} value={sg}>
-                {sg}
-              </option>
-            ))}
-          </select>
+            onChange={setTargetSegmento}
+            placeholder="— Selecciona un segmento —"
+            required
+          />
         </div>
         <p className="sm:col-span-2 text-[11px] text-slate-500">
           Todas las rutas del archivo se cargarán a la agencia y segmento seleccionados (reemplazan lo que traiga el Excel en esas columnas).
@@ -446,7 +435,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                     id="sheetSelect"
                     value={selectedSheet}
                     onChange={(e) => handleSheetChange(e.target.value)}
-                    className="bg-white border border-slate-300 rounded text-xs py-0.5 px-1 font-medium cursor-pointer"
+                    className="min-h-[36px] bg-white border border-slate-300 rounded-lg text-xs px-1.5 font-medium cursor-pointer"
                   >
                     {sheetNames
                       .filter((n) => !clientesSheetNames.includes(n))
@@ -461,9 +450,10 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
 
               <button
                 onClick={handleCancelPreview}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-900 border border-slate-300 rounded-lg flex items-center cursor-pointer"
+                type="button"
+                className="min-h-[44px] px-4 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl flex items-center cursor-pointer"
               >
-                <X className="w-3 h-3 mr-1" />
+                <X className="w-4 h-4 mr-1" />
                 Cancelar
               </button>
 
@@ -471,10 +461,11 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                 onClick={handleCommit}
                 disabled={!targetReady}
                 title={targetReady ? undefined : 'Selecciona Agencia y Segmento arriba'}
-                className="px-4 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm flex items-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                type="button"
+                className="min-h-[44px] px-5 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm flex items-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
-                Confirmar e Importar Rutas
+                <CheckCircle className="w-4 h-4 mr-1.5" />
+                Importar rutas
               </button>
             </div>
           </div>
@@ -490,7 +481,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                   id="clientesSheetSelect"
                   value={selectedClientesSheet}
                   onChange={(e) => handleClientesSheetChange(e.target.value)}
-                  className="bg-white border border-blue-300 rounded text-xs py-1 px-1.5 font-medium cursor-pointer"
+                  className="min-h-[40px] bg-white border border-blue-300 rounded-lg text-xs px-2 font-medium cursor-pointer"
                 >
                   <option value="">— No importar clientes —</option>
                   {clientesSheetNames.map((name) => (
