@@ -57,6 +57,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
               key={p.label}
               type="button"
               title={p.title}
+              aria-label={`${p.label}: ${p.value}. ${p.title}`}
               onClick={() => onSelectTab && onSelectTab(p.tab)}
               className={`flex items-center gap-1.5 min-h-[40px] px-2.5 rounded-xl border whitespace-nowrap cursor-pointer active:scale-95 transition ${p.cls}`}
             >
