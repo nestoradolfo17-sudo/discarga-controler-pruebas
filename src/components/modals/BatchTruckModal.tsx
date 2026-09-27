@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import type * as XLSX from 'xlsx';
 import { Truck } from '../../types';
 import { downloadTruckExcelTemplate, parseTrucksFromSheet, ImportReport } from '../../utils/excel';
 import { X, UploadCloud, FileSpreadsheet, Download, CheckCircle, AlertCircle } from 'lucide-react';
@@ -38,10 +38,10 @@ export const BatchTruckModal: React.FC<BatchTruckModalProps> = ({
     if (!file) return;
     setFileName(file.name);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const wb = XLSX.read(data, {
+        const wb = (await import('xlsx')).read(data, {
           type: 'array',
           cellDates: true,
           cellNF: true,
