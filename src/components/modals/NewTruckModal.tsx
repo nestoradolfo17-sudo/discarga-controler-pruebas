@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Truck } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 import { AGENCIA_LOCATION_OPTIONS } from '../../data/agencies';
 
 interface NewTruckModalProps {
@@ -64,9 +66,7 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
             <Truck className="w-4 h-4 mr-1.5 text-blue-600" />
             Registrar Nuevo Camión
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <IconButton icon={ACTION_ICONS.cerrar} label="Cerrar" onClick={onClose} className="text-slate-400 hover:text-slate-700 hover:bg-slate-100" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -80,7 +80,7 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
               onChange={(e) => setPlaca(e.target.value)}
               placeholder="Ej: C234BGD"
               required
-              className="w-full p-2 border border-slate-300 rounded-lg uppercase outline-none focus:ring-2 focus:ring-blue-500 font-mono font-medium"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg uppercase outline-none focus:ring-2 focus:ring-blue-500 font-mono font-medium"
             />
           </div>
 
@@ -90,7 +90,7 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
               value={agencia}
               onChange={(e) => setAgencia(e.target.value)}
               required
-              className="w-full p-2 border border-slate-300 rounded-lg bg-white font-semibold outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg bg-white font-semibold outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
             >
               {AGENCIA_LOCATION_OPTIONS.map((ag) => (
                 <option key={ag} value={ag}>
@@ -107,7 +107,7 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
               value={proveedor}
               onChange={(e) => setProveedor(e.target.value)}
               placeholder="Ej: Unidad Propia / Transportes XYZ"
-              className="w-full p-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             />
           </div>
 
@@ -120,7 +120,7 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
                 onChange={(e) => setTon(e.target.value)}
                 placeholder="12"
                 required
-                className="w-full p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500 font-medium"
               />
             </div>
             <div>
@@ -131,7 +131,7 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
                 onChange={(e) => setBahias(e.target.value)}
                 placeholder="10"
                 required
-                className="w-full p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500 font-medium"
               />
             </div>
             <div>
@@ -142,25 +142,18 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
                 onChange={(e) => setCapacidad(e.target.value)}
                 placeholder="375"
                 required
-                className="w-full p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg font-mono outline-none focus:ring-2 focus:ring-blue-500 font-medium"
               />
             </div>
           </div>
 
-          <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 border border-slate-300 rounded-lg hover:bg-slate-50 cursor-pointer text-slate-600"
-            >
+<div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+            <Button variant="secondary" size="lg" onClick={onClose}>
               Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg cursor-pointer"
-            >
-              Guardar Camión
-            </button>
+            </Button>
+            <Button type="submit" variant="primary" size="lg" icon={ACTION_ICONS.nuevo}>
+              Guardar camión
+            </Button>
           </div>
         </form>
       </div>
