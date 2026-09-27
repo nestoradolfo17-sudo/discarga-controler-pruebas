@@ -7,7 +7,11 @@ export const INITIAL_USERS: AppUser[] = [
   {
     id: 'U-ADMIN',
     username: 'admin',
-    password: '1605',
+    // Corrección de seguridad (análisis, punto 5): la contraseña ya no está
+    // escrita en el código (el repositorio es visible en GitHub). Solo se usa en
+    // modo local (sin Supabase) y se toma de la variable VITE_LOCAL_ADMIN_PASSWORD;
+    // si no está definida, el acceso local queda deshabilitado.
+    password: (import.meta.env.VITE_LOCAL_ADMIN_PASSWORD as string | undefined) || '',
     isAdmin: true,
     permissions: { dashboard: true, board: true, liquidated: true, trucks: true, staff: true, batch: true, canBulkUploadTrucks: true, canManualAddTrucks: true, canBulkUploadStaff: true, canManualAddStaff: true },
     canDelete: true,
