@@ -7,7 +7,7 @@ interface RevertSplitModalProps {
   onClose: () => void;
   route: Route | null;
   siblings: Route[];
-  onConfirmRevert: (parentRouteId: string) => void;
+  onConfirmRevert: (parentRouteId: string, ref?: Route | null) => void;
 }
 
 export const RevertSplitModal: React.FC<RevertSplitModalProps> = ({
@@ -68,7 +68,7 @@ export const RevertSplitModal: React.FC<RevertSplitModalProps> = ({
           <button
             type="button"
             disabled={isBlocked}
-            onClick={() => onConfirmRevert(parentRouteId)}
+            onClick={() => onConfirmRevert(parentRouteId, route)}
             className={`w-full py-2.5 px-4 rounded-xl font-bold flex items-center justify-center space-x-2 shadow-sm transition ${
               isBlocked
                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
