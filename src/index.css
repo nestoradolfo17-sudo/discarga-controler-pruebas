@@ -4,6 +4,35 @@
   body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
+
+  /* Tablet: sin retraso de doble toque ni zoom accidental en botones. */
+  button,
+  [role='button'],
+  [role='radio'],
+  a,
+  label,
+  select,
+  input[type='checkbox'],
+  input[type='radio'] {
+    touch-action: manipulation;
+  }
+
+  /* Foco visible en TODA la app (teclado Bluetooth / accesibilidad). Solo
+     aparece al navegar con teclado (focus-visible), no al tocar. */
+  :where(button, [role='button'], [role='radio'], [role='menuitem'], a, select, input, textarea, [tabindex]):focus-visible {
+    outline: 3px solid #3b82f6;
+    outline-offset: 2px;
+  }
+}
+
+/* Accesibilidad: respeta "reducir movimiento" del sistema. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 ::-webkit-scrollbar {
