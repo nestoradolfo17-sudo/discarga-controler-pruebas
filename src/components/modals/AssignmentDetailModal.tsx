@@ -17,7 +17,10 @@ import {
   Repeat,
   RotateCcw,
   ArrowRight,
+  Send,
 } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 import { formatDateToGuatemala } from '../../utils/date';
 
 interface AssignmentDetailModalProps {
@@ -111,14 +114,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 transition cursor-pointer"
-            title="Cerrar"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <IconButton icon={ACTION_ICONS.cerrar} label="Cerrar" onClick={onClose} className="text-slate-400 hover:text-slate-700 hover:bg-slate-200/60" />
         </div>
 
         {/* Content Body */}
@@ -324,10 +320,10 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
                     onClose();
                     onOpenAssignModal(route.id, getRouteKey(route));
                   }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                  className="inline-flex items-center gap-1.5 min-h-[44px] px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition shadow-xs cursor-pointer"
                 >
-                  <TruckIcon className="w-3.5 h-3.5" />
-                  <span>Asignar Camión y Tripulación</span>
+                  <Send className="w-4 h-4" />
+                  <span>Asignar camión y tripulación</span>
                 </button>
               )}
             </div>
@@ -381,25 +377,21 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
             <b className="text-slate-800">{route.paradas}</b>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={onClose}>
+              Cerrar
+            </Button>
             {onOpenAssignModal && (route.estado === 'Pendiente' || route.estado === 'Abierta') && (
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                icon={asig ? ACTION_ICONS.reasignar : ACTION_ICONS.asignar}
                 onClick={() => {
                   onClose();
                   onOpenAssignModal(route.id, getRouteKey(route));
                 }}
-                className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold transition cursor-pointer text-xs border border-blue-200"
               >
-                {asig ? 'Modificar Asignación' : 'Asignar Ahora'}
-              </button>
+                {asig ? 'Modificar asignación' : 'Asignar ahora'}
+              </Button>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold transition cursor-pointer text-xs"
-            >
-              Cerrar
-            </button>
           </div>
         </div>
       </div>
