@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Route } from '../../types';
 import { X, Trash2, Lock, AlertTriangle, KeyRound, Eye, EyeOff, ShieldAlert } from 'lucide-react';
 import { getRouteKey } from '../../utils/routeKey';
+import { Button } from '../ui/Button';
 
 interface DeleteRoutesModalProps {
   isOpen: boolean;
@@ -13,6 +14,9 @@ interface DeleteRoutesModalProps {
   routeIds: string[];
   routes: Route[];
   onConfirmDelete: (routeIds: string[]) => void;
+  // Verifica la contraseña del usuario en sesión (Supabase Auth). Reemplaza el
+  // antiguo código fijo, que viajaba dentro del código de la app.
+  onVerifyPassword: (password: string) => Promise<boolean>;
 }
 
 export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
@@ -21,7 +25,9 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
   routeIds,
   routes,
   onConfirmDelete,
+  onVerifyPassword,
 }) => {
+  const [checking, setChecking] = useState(false);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,17 +55,23 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
   const CONFIRM_WORD = 'ELIMINAR';
   const confirmPhraseOk = !isHighRisk || confirmPhrase.trim().toUpperCase() === CONFIRM_WORD;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (checking) return;
     if (!confirmPhraseOk) {
       setError(`Escribe "${CONFIRM_WORD}" para confirmar antes de continuar.`);
       return;
     }
-    // Corrección de seguridad: el código de autorización NO debe mostrarse nunca
-    // en la interfaz (ni en el mensaje de error ni en el placeholder del campo,
-    // ver más abajo). Antes se mostraba en texto plano en ambos lugares.
-    if (password.trim() !== '1605') {
-      setError('Código incorrecto. Verifica e intenta de nuevo.');
+    setChecking(true);
+    let ok = false;
+    try {
+      ok = await onVerifyPassword(password);
+    } finally {
+      setChecking(false);
+    }
+    if (!ok) {
+      setError('Contraseña incorrecta. Verifica e intenta de nuevo.');
+      setPassword('');
       return;
     }
 
@@ -83,15 +95,16 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
               </h3>
               <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1 mt-0.5">
                 <Lock className="w-3 h-3" />
-                Requiere clave de seguridad administrativa
+                Confirma con tu contraseña
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            className="text-slate-400 hover:text-slate-600 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-slate-100 transition cursor-pointer"
             title="Cerrar"
+            aria-label="Cerrar"
           >
             <X className="w-5 h-5" />
           </button>
@@ -180,7 +193,7 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
                 if (error) setError(null);
               }}
               placeholder={`Escribe ${CONFIRM_WORD} para continuar`}
-              className="w-full p-2 border border-rose-300 rounded-lg outline-none focus:ring-2 focus:ring-rose-500 font-bold text-center uppercase tracking-widest text-rose-900 bg-white"
+              className="w-full min-h-[44px] p-2 border border-rose-300 rounded-lg outline-none focus:ring-2 focus:ring-rose-500 font-bold text-center uppercase tracking-widest text-rose-900 bg-white"
             />
           </div>
         )}
@@ -190,7 +203,7 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
           <div>
             <label htmlFor="deletePasswordInput" className="block font-bold text-slate-800 text-xs mb-1.5 flex items-center gap-1.5">
               <KeyRound className="w-3.5 h-3.5 text-rose-600" />
-              Contraseña de Autorización *:
+              Tu contraseña *:
             </label>
             <div className="relative">
               <input
@@ -202,15 +215,17 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
                   if (error) setError(null);
                 }}
                 autoFocus
-                placeholder="Ingrese el código de autorización..."
+                placeholder="Escribe tu contraseña..."
+                autoComplete="current-password"
                 required
-                className="w-full p-2.5 sm:p-3 pr-10 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-mono text-xs sm:text-sm bg-white text-slate-900 outline-none shadow-2xs placeholder:text-slate-400 placeholder:font-sans"
+                className="w-full min-h-[48px] p-2.5 sm:p-3 pr-12 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-mono text-xs sm:text-sm bg-white text-slate-900 outline-none shadow-2xs placeholder:text-slate-400 placeholder:font-sans"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer"
                 title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -223,28 +238,22 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
             )}
           </div>
 
-          {/* Botones de acción */}
-          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-slate-300 font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
-            >
+          {/* Botones: Cancelar a la izquierda, acción destructiva a la derecha. */}
+          <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-slate-100">
+            <Button variant="secondary" onClick={onClose}>
               Cancelar
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              disabled={!confirmPhraseOk}
+              variant="danger"
+              icon={Trash2}
+              disabled={!confirmPhraseOk || !password}
+              loading={checking}
+              loadingText="Verificando…"
               title={!confirmPhraseOk ? `Escribe "${CONFIRM_WORD}" arriba para habilitar` : undefined}
-              className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-1.5 shadow-sm transition text-xs ${
-                !confirmPhraseOk
-                  ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                  : 'bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white cursor-pointer'
-              }`}
             >
-              <Trash2 className="w-4 h-4" />
-              <span>{isMultiple ? `Confirmar y Eliminar (${routeIds.length})` : 'Confirmar y Eliminar'}</span>
-            </button>
+              {isMultiple ? `Eliminar ${routeIds.length} rutas` : `Eliminar ruta ${routesToDelete[0]?.id ?? ''}`}
+            </Button>
           </div>
         </form>
       </div>
