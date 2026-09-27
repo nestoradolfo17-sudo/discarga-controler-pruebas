@@ -76,6 +76,9 @@ const DailySummaryModal = lazy(() =>
 );
 import { ClosingActaModal } from './components/modals/ClosingActaModal';
 import { DeleteRoutesModal } from './components/modals/DeleteRoutesModal';
+import { SaveIndicator } from './components/ui/SaveIndicator';
+import { Button } from './components/ui/Button';
+import { ACTION_ICONS } from './components/ui/actionIcons';
 import { UnassignedResourcesModal } from './components/modals/UnassignedResourcesModal';
 import { ToastContainer } from './components/ToastContainer';
 import { LoginScreen } from './components/auth/LoginScreen';
@@ -266,6 +269,10 @@ export default function App() {
     typeof navigator === 'undefined' ? true : navigator.onLine
   );
   const [resyncTick, setResyncTick] = useState(0);
+  // Indicador de guardado (barra superior): cuántas subidas a la base están en
+  // curso y si la última falló. Así el usuario ve "Guardando… / Guardado".
+  const [pendingSaves, setPendingSaves] = useState(0);
+  const [lastSaveFailed, setLastSaveFailed] = useState(false);
   // Corrección: este ref ya NO guarda un set de "ids anteriores" — ver la nota
   // de seguridad en pushSharedCollection (services/sync.ts): el borrado en
   // Supabase ya nunca se infiere comparando snapshots, así que ya no hace
@@ -395,7 +402,14 @@ export default function App() {
       queueRef.current = queueRef.current
         .catch(() => {})
         .then(async () => {
-          const ok = await pushSharedCollection(table, changed, getKey);
+          setPendingSaves((n) => n + 1);
+          let ok = false;
+          try {
+            ok = await pushSharedCollection(table, changed, getKey);
+          } finally {
+            setPendingSaves((n) => Math.max(0, n - 1));
+          }
+          setLastSaveFailed(!ok);
           if (!ok) {
             // No se guardó: se "olvida" que estaban sincronizados para que el
             // próximo cambio en esta colección los vuelva a intentar subir.
@@ -1098,13 +1112,21 @@ export default function App() {
     pushIfChanged('app_historical_routes', historicalRoutes, routeSyncKey, historySyncRef, historyPushQueueRef);
   }, [historicalRoutes, pushIfChanged, resyncTick]);
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = `${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  }, []);
+  const showToast = useCallback(
+    (
+      message: string,
+      type: 'success' | 'error' | 'info' = 'info',
+      action?: { label: string; onClick: () => void }
+    ) => {
+      const id = `${Date.now()}-${Math.random()}`;
+      setToasts((prev) => [...prev, { id, message, type, action }]);
+      // Los avisos con "Deshacer" duran más para dar tiempo de reaccionar.
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, action ? 8000 : 4000);
+    },
+    []
+  );
 
   // Punto 11 del análisis: aviso de conexión. Sin señal, los cambios no se
   // pueden guardar en la base compartida; se muestra un aviso fijo y, al volver
@@ -2056,6 +2078,29 @@ export default function App() {
     }
   };
 
+  // "Deshacer" (análisis de botones, punto 8): guarda cómo estaban las rutas,
+  // camiones y personas que toca una acción reversible (p. ej. A Piso) y
+  // devuelve la función que los restaura. Se ofrece en el aviso por 8 segundos.
+  const makeUndo = (affectedRoutes: Route[]) => {
+    const routeSnap = new Map(affectedRoutes.map((r) => [getRouteKey(r), r]));
+    const truckIds = new Set<string>();
+    const crew = new Set<string>();
+    affectedRoutes.forEach((r) => {
+      const a = r.asignacion || r.ultimoDespacho;
+      if (!a) return;
+      if (a.camionId) truckIds.add(a.camionId);
+      [a.conductor, a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].forEach((n) => n && crew.add(n));
+    });
+    const truckSnap = new Map(trucks.filter((t) => truckIds.has(t.id)).map((t) => [t.id, t]));
+    const staffSnap = new Map(staff.filter((st) => crew.has(st.nombre)).map((st) => [st.id, st]));
+    return () => {
+      setRoutes((prev) => prev.map((r) => routeSnap.get(getRouteKey(r)) ?? r));
+      if (truckSnap.size) setTrucks((prev) => prev.map((t) => truckSnap.get(t.id) ?? t));
+      if (staffSnap.size) setStaff((prev) => prev.map((st) => staffSnap.get(st.id) ?? st));
+      showToast('Acción deshecha.', 'info');
+    };
+  };
+
   // Corrección: mismo motivo que handleConfirmAssignment — se identifica la fila
   // exacta con ID + Fecha para no afectar otra fila con el mismo ID en otra fecha.
   const handleMoveToFloor = (
@@ -2066,6 +2111,7 @@ export default function App() {
   ) => {
     const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
     if (!targetRoute) return;
+    const undo = makeUndo([targetRoute]);
 
     // Liberar camión o personal si estaban asignados previamente, verificando si otras rutas activas los siguen usando
     const asig = targetRoute.asignacion || targetRoute.ultimoDespacho;
@@ -2135,7 +2181,8 @@ export default function App() {
     const origDate = targetRoute?.fechaOriginalRuta || targetRoute?.fecha || '';
     showToast(
       `Ruta ${routeId} guardada a Piso. Permanece con su fecha de ruta original (${origDate}) y reprogramada para mañana (${tomorrowDate}).`,
-      'info'
+      'info',
+      { label: 'Deshacer', onClick: undo }
     );
   };
 
@@ -2167,6 +2214,7 @@ export default function App() {
     }
 
     const eligibleKeysSet = new Set(eligibleRoutes.map((r) => getRouteKey(r)));
+    const undo = makeUndo(eligibleRoutes);
 
     // Rutas activas que permanecen sin cambios, para liberar camión/personal
     // correctamente (mismo criterio que handleConfirmDeleteRoutes).
@@ -2246,7 +2294,8 @@ export default function App() {
     showToast(
       `${eligibleRoutes.length} ruta(s) enviada(s) a Piso para despacho de mañana` +
         (skippedCount > 0 ? ` (${skippedCount} omitida(s): ya estaban a Piso o Liquidadas).` : '.'),
-      'success'
+      'success',
+      { label: 'Deshacer', onClick: undo }
     );
   };
 
@@ -3083,11 +3132,20 @@ export default function App() {
       );
       return;
     }
+    const snapshot = { routes, trucks, staff, historicalRoutes };
     setRoutes(JSON.parse(JSON.stringify(INITIAL_ROUTES)));
     setTrucks(JSON.parse(JSON.stringify(INITIAL_TRUCKS)));
     setStaff(JSON.parse(JSON.stringify(INITIAL_STAFF)));
     setHistoricalRoutes([]);
-    showToast('Datos restaurados al reporte de ejemplo', 'info');
+    showToast('Datos restaurados al reporte de ejemplo', 'info', {
+      label: 'Deshacer',
+      onClick: () => {
+        setRoutes(snapshot.routes);
+        setTrucks(snapshot.trucks);
+        setStaff(snapshot.staff);
+        setHistoricalRoutes(snapshot.historicalRoutes);
+      },
+    });
   };
 
   const handleExportActiveRoutesExcel = async () => {
@@ -3231,6 +3289,13 @@ export default function App() {
         currentUsername={currentUser.nombre || currentUser.username}
         isAdmin={currentUser.isAdmin}
         onLogout={handleLogout}
+        saveIndicator={
+          isSupabaseConfigured ? (
+            <SaveIndicator isOnline={isOnline} pending={pendingSaves} failed={lastSaveFailed} compact />
+          ) : undefined
+        }
+        onDownloadBackup={isSupabaseConfigured && currentUser.isAdmin ? handleDownloadBackup : undefined}
+        onResetDemo={!isSupabaseConfigured && currentUser.isAdmin ? handleResetDemo : undefined}
       />
 
       {/* Rediseño para tablet: navegación en una barra lateral fija (en vez de
@@ -3245,9 +3310,6 @@ export default function App() {
           onTabChange={setActiveTab}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onExportExcel={handleExportActiveRoutesExcel}
-          onResetDemo={handleResetDemo}
-          allowResetDemo={!isSupabaseConfigured}
           onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
           pendingReasonsCount={pendingReasonsCount}
           activeCount={filteredActiveRoutes.length}
@@ -3274,9 +3336,6 @@ export default function App() {
           onTabChange={setActiveTab}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onExportExcel={handleExportActiveRoutesExcel}
-          onResetDemo={handleResetDemo}
-          allowResetDemo={!isSupabaseConfigured}
           onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
           pendingReasonsCount={pendingReasonsCount}
           activeCount={filteredActiveRoutes.length}
@@ -3330,9 +3389,11 @@ export default function App() {
           onTabChange={setActiveTab}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onExportExcel={handleExportActiveRoutesExcel}
-          onResetDemo={handleResetDemo}
-          allowResetDemo={!isSupabaseConfigured}
+          onExportExcel={
+            // Exportación única: en Liquidadas se exporta desde la propia vista
+            // (con sus filtros); en Camiones/Personal no aplica.
+            activeTab === 'board' || activeTab === 'dashboard' ? handleExportActiveRoutesExcel : undefined
+          }
           onOpenUnassignedResourcesModal={
             // "Fin de Asignación" solo en el Tablero de Rutas (cierre del proceso de asignación).
             activeTab === 'board' ? () => setIsUnassignedResourcesModalOpen(true) : undefined
@@ -3398,31 +3459,23 @@ export default function App() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Buscar ruta, camión, piloto..."
-                className="flex-1 min-w-[160px] max-w-xs px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Buscar ruta, camión o piloto"
+                className="flex-1 min-w-[160px] max-w-xs min-h-[44px] px-3 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <button
-                onClick={() => setIsUnassignedResourcesModalOpen(true)}
-                title="Asignar motivo a camiones y personal disponibles que no salieron a ruta hoy"
-                className={`ml-auto flex items-center min-h-[40px] px-2.5 rounded-xl border text-xs font-semibold cursor-pointer ${
-                  pendingReasonsCount > 0
-                    ? 'bg-amber-50 border-amber-300 text-amber-800'
-                    : 'bg-white border-slate-300 text-slate-600'
-                }`}
-              >
-                Fin de Asignación
-                {pendingReasonsCount > 0 && (
-                  <span className="ml-1.5 px-1.5 rounded-full text-[10px] font-bold bg-amber-600 text-white">
-                    {pendingReasonsCount}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={exitBoardFullscreen}
-                className="min-h-[40px] px-3.5 rounded-xl bg-slate-900 text-white text-xs font-semibold cursor-pointer active:scale-95"
-                title="Salir de pantalla completa"
-              >
-                Salir de pantalla completa
-              </button>
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant={pendingReasonsCount > 0 ? 'success' : 'secondary'}
+                  icon={ACTION_ICONS.finAsignacion}
+                  onClick={() => setIsUnassignedResourcesModalOpen(true)}
+                  title="Cerrar la asignación del día: motivo para camiones y personal que no salieron"
+                  badge={pendingReasonsCount > 0 ? pendingReasonsCount : undefined}
+                >
+                  Fin de Asignación
+                </Button>
+                <Button variant="dark" icon={ACTION_ICONS.restaurar} onClick={exitBoardFullscreen}>
+                  Salir de pantalla completa
+                </Button>
+              </div>
             </div>
           )}
           <div className={boardFullscreen ? 'flex-1 min-h-0' : 'h-full'}>
@@ -3496,6 +3549,7 @@ export default function App() {
             onDeleteStaffMembers={handleDeleteStaffMembers}
             onShowToast={showToast}
             canDelete={canDeleteData}
+            onVerifyPassword={handleVerifyPassword}
             canBulkUploadTrucks={canBulkUploadTrucks}
             canManualAddTrucks={canManualAddTrucks}
             canBulkUploadStaff={canBulkUploadStaff}
@@ -3519,6 +3573,7 @@ export default function App() {
             onDeleteStaffMembers={handleDeleteStaffMembers}
             onShowToast={showToast}
             canDelete={canDeleteData}
+            onVerifyPassword={handleVerifyPassword}
             canBulkUploadTrucks={canBulkUploadTrucks}
             canManualAddTrucks={canManualAddTrucks}
             canBulkUploadStaff={canBulkUploadStaff}
@@ -3711,6 +3766,7 @@ export default function App() {
         routeIds={deleteRoutesTargetIds || []}
         routes={routes}
         onConfirmDelete={handleConfirmDeleteRoutes}
+        onVerifyPassword={handleVerifyPassword}
       />
 
       <UnassignedResourcesModal
