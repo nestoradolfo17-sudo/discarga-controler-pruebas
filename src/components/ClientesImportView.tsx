@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import type * as XLSX from 'xlsx';
 import { Route, RouteClientEntry } from '../types';
 import {
   parseClientesFromSheet,
@@ -73,10 +73,10 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
       return;
     }
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: 'array', cellDates: true, cellNF: true, cellText: true });
+        const wb = (await import('xlsx')).read(data, { type: 'array', cellDates: true, cellNF: true, cellText: true });
 
         if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
           onShowToast('El archivo no contiene hojas válidas', 'error');
