@@ -164,8 +164,40 @@ export async function pushSharedCollection<T>(
     }
     return true;
   } catch (e) {
-    reportSyncError(`No se pudieron guardar cambios en "${table}" (base de datos compartida).`, e);
+    // Rechazo de la base de datos por recurso ocupado (otra tablet asignó ese
+    // camión o esa persona primero): se muestra el motivo exacto.
+    const msg = String((e as { message?: string })?.message || '');
+    if (msg.includes('RECURSO_OCUPADO')) {
+      reportSyncError(
+        `No se guardó la asignación: ${msg.replace(/^.*RECURSO_OCUPADO:\s*/, '')} Se restauró la ruta; elige otro recurso.`,
+        e
+      );
+    } else {
+      reportSyncError(`No se pudieron guardar cambios en "${table}" (base de datos compartida).`, e);
+    }
     return false;
+  }
+}
+
+/**
+ * Vuelve a leer de la base compartida filas puntuales (por clave). Se usa
+ * cuando la base rechaza un cambio, para restaurar en pantalla lo que
+ * realmente quedó guardado. Devuelve null si no se pudo leer.
+ */
+export async function fetchSharedRowsByKeys<T>(
+  table: SyncableTable,
+  keys: string[]
+): Promise<Map<string, T> | null> {
+  if (!supabase || keys.length === 0) return new Map();
+  try {
+    const { data, error } = await supabase.from(table).select('id, data').in('id', keys);
+    if (error) throw error;
+    const map = new Map<string, T>();
+    (data || []).forEach((row: { id: string; data: T }) => map.set(row.id, row.data));
+    return map;
+  } catch (e) {
+    console.error(`Error releyendo "${table}":`, e);
+    return null;
   }
 }
 
