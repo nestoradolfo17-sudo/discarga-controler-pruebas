@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
-import * as XLSX from 'xlsx';
+import type * as XLSX from 'xlsx';
 import { Route, RouteClientEntry } from '../types';
 import {
   downloadExcelTemplate,
@@ -96,10 +96,10 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
 
   const handleFile = (file: File) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const wb = XLSX.read(data, {
+        const wb = (await import('xlsx')).read(data, {
           type: 'array',
           cellDates: true,
           cellNF: true,
