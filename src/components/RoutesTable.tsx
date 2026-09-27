@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { AssignmentDetailModal } from './modals/AssignmentDetailModal';
 import { ClientesRutaList } from './ClientesRutaList';
-import { getRouteKey } from '../utils/routeKey';
+import { getRouteKey, isSameSplitGroup } from '../utils/routeKey';
 
 interface RoutesTableProps {
   // Rediseño tablet: el tablero ocupa toda la altura disponible de la pantalla
@@ -49,7 +49,7 @@ interface RoutesTableProps {
   onOpenSplitRouteModal: (routeId: string, fecha: string) => void;
   onOpenRevertSplitModal: (routeId: string, fecha: string) => void;
   onViewSettlementReceipt: (routeId: string, fecha: string) => void;
-  onViewConsolidatedReceipt: (parentRouteId: string) => void;
+  onViewConsolidatedReceipt: (parentRouteId: string, ref?: Route) => void;
   onOpenNewRouteModal: () => void;
   onMoveToFloor?: (routeId: string, fecha: string, tomorrowDate: string, motivo?: string) => void;
   // routeIds aquí son claves compuestas ID+Fecha (ver getRouteKey), no solo el ID.
@@ -481,7 +481,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
               // Consolidated receipt condition: if route is split, check if all sibling lines of parent are settled
               const isPartOfSplit = !!(route.isSplitRoute && route.parentRouteId);
               const siblings = isPartOfSplit
-                ? allRoutes.filter((r) => r.parentRouteId === route.parentRouteId)
+                ? allRoutes.filter((r) => isSameSplitGroup(r, route.parentRouteId!, route))
                 : [];
               const allSettled =
                 isPartOfSplit &&
@@ -995,7 +995,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                   type="button"
                                   onClick={() => {
                                     setActiveDropdownId(null);
-                                    onViewConsolidatedReceipt(route.parentRouteId!);
+                                    onViewConsolidatedReceipt(route.parentRouteId!, route);
                                   }}
                                   className="w-full text-left px-3 py-2 hover:bg-purple-50/70 flex items-center gap-2.5 transition cursor-pointer group"
                                 >
