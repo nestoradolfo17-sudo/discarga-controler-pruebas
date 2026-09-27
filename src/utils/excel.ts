@@ -1,4 +1,40 @@
-import * as XLSX from 'xlsx';
+import type * as XLSXTypes from 'xlsx';
+
+// Optimización (análisis, punto 13): la librería de Excel (SheetJS) es pesada.
+// Antes se descargaba siempre al abrir la app, aunque solo se fuera a asignar
+// rutas. Ahora solo se carga cuando realmente se exporta o se descarga una
+// plantilla (loadXLSX). Para LEER las hojas ya abiertas solo hacen falta dos
+// utilidades de direcciones de celda, que se implementan aquí (mismo formato
+// que SheetJS: "A1", {r, c} con base 0).
+export const loadXLSX = () => import('xlsx');
+
+const colLettersToIndex = (letters: string) => {
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+};
+const colIndexToLetters = (index: number) => {
+  let s = '';
+  let n = index + 1;
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+};
+const decodeCell = (addr: string) => {
+  const m = String(addr).toUpperCase().replace(/\$/g, '').match(/^([A-Z]+)(\d+)$/);
+  if (!m) return { c: 0, r: 0 };
+  return { c: colLettersToIndex(m[1]), r: parseInt(m[2], 10) - 1 };
+};
+const sheetUtils = {
+  decode_range: (ref: string) => {
+    const [a, b] = String(ref).split(':');
+    return { s: decodeCell(a), e: decodeCell(b || a) };
+  },
+  encode_cell: ({ r, c }: { r: number; c: number }) => `${colIndexToLetters(c)}${r + 1}`,
+};
 import { Route, Staff, StaffPuesto, ResourceStatus, StaffEstatus, Truck, RouteClientEntry } from '../types';
 import { formatDateToSpanish, formatDateToGuatemala, formatDateTimeToGuatemala, getGuatemalaDateForInput, parseFlexibleDate } from './date';
 import { AGENCIA_LOCATION_OPTIONS } from '../data/agencies';
@@ -43,7 +79,8 @@ export function normalizeAgencia(raw: string, defaultAgencia?: string): string {
   return match || raw.trim();
 }
 
-export function downloadExcelTemplate() {
+export async function downloadExcelTemplate() {
+  const XLSX = await loadXLSX();
   const templateData = [
     ["Agencia", "Segmento", "Fecha", "ID de ruta", "Viaje", "Servicio", "Descanso", "Total", "Distancia", "Paradas", "Equipo Frio", "% de capacidad", "Cajas 12 Oz", "Peso", "Cajas Fisicas"],
     ["Mercado Abierto", "Mayoreo", "31/07/2026", "102201", "01:29", "08:12", "00:45", "10:27", 16.8, 63, 53, "102.49 %", 348.3, 4478.203, 384.336],
@@ -130,9 +167,9 @@ export function getFormattedCellValue(cell: any, colType: string): string {
   return '';
 }
 
-export function scoreSheetForRoutes(ws: XLSX.WorkSheet): number {
+export function scoreSheetForRoutes(ws: XLSXTypes.WorkSheet): number {
   if (!ws['!ref']) return 0;
-  const range = XLSX.utils.decode_range(ws['!ref']);
+  const range = sheetUtils.decode_range(ws['!ref']);
   let maxRowScore = 0;
 
   for (let r = range.s.r; r <= Math.min(range.s.r + 35, range.e.r); r++) {
@@ -140,7 +177,7 @@ export function scoreSheetForRoutes(ws: XLSX.WorkSheet): number {
     let isPivotTable = false;
 
     for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r: r, c: c })];
+      const cell = ws[sheetUtils.encode_cell({ r: r, c: c })];
       if (!cell) continue; // Si la celda está en blanco, ignorar
       const rawText = cell.w || cell.v || '';
       if (!rawText || String(rawText).trim() === '') continue; // Columna en blanco, ignorar
@@ -180,12 +217,12 @@ export function scoreSheetForRoutes(ws: XLSX.WorkSheet): number {
 // por el usuario), así que de aquí solo se toma el MES y AÑO (esos sí son
 // consistentes); el día real se toma del número de la pestaña en
 // BatchImportView, no de este texto.
-export function extractFechaEntregaMonthYear(ws: XLSX.WorkSheet): { month: number; year: number } | null {
+export function extractFechaEntregaMonthYear(ws: XLSXTypes.WorkSheet): { month: number; year: number } | null {
   if (!ws['!ref']) return null;
-  const range = XLSX.utils.decode_range(ws['!ref']);
+  const range = sheetUtils.decode_range(ws['!ref']);
   for (let r = range.s.r; r <= Math.min(range.s.r + 20, range.e.r); r++) {
     for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      const cell = ws[sheetUtils.encode_cell({ r, c })];
       if (!cell) continue;
       const raw = cell.w || cell.v;
       if (raw === undefined || raw === null) continue;
@@ -200,10 +237,10 @@ export function extractFechaEntregaMonthYear(ws: XLSX.WorkSheet): { month: numbe
   return null;
 }
 
-export function parseRoutesFromSheet(ws: XLSX.WorkSheet, dateOverride?: string): WithImportReport<Route> {
+export function parseRoutesFromSheet(ws: XLSXTypes.WorkSheet, dateOverride?: string): WithImportReport<Route> {
   if (!ws['!ref']) return [];
 
-  const range = XLSX.utils.decode_range(ws['!ref']);
+  const range = sheetUtils.decode_range(ws['!ref']);
   let headerRowIndex = -1;
   const colMap: Record<string, number> = {};
 
@@ -213,7 +250,7 @@ export function parseRoutesFromSheet(ws: XLSX.WorkSheet, dateOverride?: string):
     let isPivotRow = false;
 
     for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r: r, c: c })];
+      const cell = ws[sheetUtils.encode_cell({ r: r, c: c })];
       if (!cell) continue; // Columna en blanco / vacía: no se toma en cuenta
       const rawText = cell.w || cell.v;
       if (rawText === undefined || rawText === null || String(rawText).trim() === '') {
@@ -345,7 +382,7 @@ export function parseRoutesFromSheet(ws: XLSX.WorkSheet, dateOverride?: string):
     // Si la fila entera está completamente vacía, omitir
     let hasAnyCell = false;
     for (let c = range.s.c; c <= range.e.c; c++) {
-      const cCell = ws[XLSX.utils.encode_cell({ r: r, c: c })];
+      const cCell = ws[sheetUtils.encode_cell({ r: r, c: c })];
       if (cCell && cCell.v !== undefined && cCell.v !== null && String(cCell.v).trim() !== '') {
         hasAnyCell = true;
         break;
@@ -357,7 +394,7 @@ export function parseRoutesFromSheet(ws: XLSX.WorkSheet, dateOverride?: string):
 
     const getVal = (colIdx: number | undefined, type: string) => {
       if (colIdx === undefined || colIdx === null || colIdx < 0) return '';
-      const cell = ws[XLSX.utils.encode_cell({ r: r, c: colIdx })];
+      const cell = ws[sheetUtils.encode_cell({ r: r, c: colIdx })];
       return getFormattedCellValue(cell, type);
     };
 
@@ -485,9 +522,9 @@ export interface ClienteRutaGrouped {
   cajas: number;
 }
 
-export function parseClientesFromSheet(ws: XLSX.WorkSheet): WithImportReport<ClienteRutaGrouped> {
+export function parseClientesFromSheet(ws: XLSXTypes.WorkSheet): WithImportReport<ClienteRutaGrouped> {
   if (!ws['!ref']) return [];
-  const range = XLSX.utils.decode_range(ws['!ref']);
+  const range = sheetUtils.decode_range(ws['!ref']);
 
   let headerRowIndex = -1;
   const colMap: Record<string, number> = {};
@@ -497,7 +534,7 @@ export function parseClientesFromSheet(ws: XLSX.WorkSheet): WithImportReport<Cli
   for (let r = range.s.r; r <= Math.min(range.s.r + 15, range.e.r); r++) {
     const rowHeaders: Array<{ c: number; text: string }> = [];
     for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      const cell = ws[sheetUtils.encode_cell({ r, c })];
       if (!cell) continue;
       const rawText = cell.w || cell.v;
       if (rawText === undefined || rawText === null || String(rawText).trim() === '') continue;
@@ -528,7 +565,7 @@ export function parseClientesFromSheet(ws: XLSX.WorkSheet): WithImportReport<Cli
 
   const getRawVal = (r: number, colIdx: number | undefined) => {
     if (colIdx === undefined) return undefined;
-    const cell = ws[XLSX.utils.encode_cell({ r, c: colIdx })];
+    const cell = ws[sheetUtils.encode_cell({ r, c: colIdx })];
     return cell ? cell.v : undefined;
   };
 
@@ -627,13 +664,13 @@ export function isClientesSheetName(name: string): boolean {
 // ¿La hoja tiene la tabla de detalle de clientes? (fila de encabezados con
 // CODIGO, RUTA y VENTA en las primeras 15 filas — el mismo criterio que usa
 // parseClientesFromSheet para empezar a leer).
-export function looksLikeClientesSheet(ws: XLSX.WorkSheet | undefined): boolean {
+export function looksLikeClientesSheet(ws: XLSXTypes.WorkSheet | undefined): boolean {
   if (!ws || !ws['!ref']) return false;
-  const range = XLSX.utils.decode_range(ws['!ref']);
+  const range = sheetUtils.decode_range(ws['!ref']);
   for (let r = range.s.r; r <= Math.min(range.s.r + 15, range.e.r); r++) {
     const texts = new Set<string>();
     for (let c = range.s.c; c <= Math.min(range.e.c, range.s.c + 40); c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      const cell = ws[sheetUtils.encode_cell({ r, c })];
       if (!cell) continue;
       const t = cleanHeaderStr(cell.w || cell.v);
       if (t) texts.add(t);
@@ -645,7 +682,7 @@ export function looksLikeClientesSheet(ws: XLSX.WorkSheet | undefined): boolean 
 
 // Pestaña de detalle de clientes: por nombre (tolerante a errores de tipeo)
 // o por contenido.
-export function isClientesSheet(wb: XLSX.WorkBook, name: string): boolean {
+export function isClientesSheet(wb: XLSXTypes.WorkBook, name: string): boolean {
   return isClientesSheetName(name) || looksLikeClientesSheet(wb.Sheets[name]);
 }
 
@@ -666,7 +703,8 @@ export function getRouteAssignmentType(r: Route): string {
   return 'Primer Viaje';
 }
 
-export function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
+export async function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
+  const XLSX = await loadXLSX();
   if (!routes || routes.length === 0) return false;
 
   const headers = [
@@ -778,7 +816,8 @@ export function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
   return true;
 }
 
-export function exportHistoricalToExcel(historicalRoutes: Route[], staffList: Staff[]) {
+export async function exportHistoricalToExcel(historicalRoutes: Route[], staffList: Staff[]) {
+  const XLSX = await loadXLSX();
   if (!historicalRoutes || historicalRoutes.length === 0) return false;
 
   const headers = [
@@ -880,7 +919,8 @@ export function exportHistoricalToExcel(historicalRoutes: Route[], staffList: St
   return true;
 }
 
-export function downloadStaffExcelTemplate() {
+export async function downloadStaffExcelTemplate() {
+  const XLSX = await loadXLSX();
   const headers = ["DPI", "Código", "Nombre Completo", "Agencia", "Puesto", "Código Corto", "Estatus"];
   const rows = [
     ["2541 89320 0101", "DISAOC-00381", "Carlos Gómez Pérez", "Mercado Abierto", "VPP", "3810", "ALTA"],
@@ -906,9 +946,9 @@ export function downloadStaffExcelTemplate() {
   XLSX.writeFile(wb, "Plantilla_Carga_Personal.xlsx");
 }
 
-export function parseStaffFromSheet(ws: XLSX.WorkSheet, defaultAgencia?: string): WithImportReport<Staff> {
+export function parseStaffFromSheet(ws: XLSXTypes.WorkSheet, defaultAgencia?: string): WithImportReport<Staff> {
   if (!ws || !ws['!ref']) return [];
-  const range = XLSX.utils.decode_range(ws['!ref']);
+  const range = sheetUtils.decode_range(ws['!ref']);
 
   let headerRow = -1;
   let colDpi = -1;
@@ -925,7 +965,7 @@ export function parseStaffFromSheet(ws: XLSX.WorkSheet, defaultAgencia?: string)
   for (let r = range.s.r; r <= Math.min(range.s.r + 15, range.e.r); r++) {
     const rowTexts: { c: number; text: string }[] = [];
     for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      const cell = ws[sheetUtils.encode_cell({ r, c })];
       if (!cell) continue;
       const clean = cleanHeaderStr(cell.w || cell.v || '');
       if (clean) {
@@ -1033,7 +1073,7 @@ export function parseStaffFromSheet(ws: XLSX.WorkSheet, defaultAgencia?: string)
   for (let r = headerRow + 1; r <= range.e.r; r++) {
     const getVal = (colIdx: number) => {
       if (colIdx < 0) return '';
-      const cell = ws[XLSX.utils.encode_cell({ r, c: colIdx })];
+      const cell = ws[sheetUtils.encode_cell({ r, c: colIdx })];
       if (!cell) return '';
       let text = cell.w !== undefined && cell.w !== null ? String(cell.w).trim() : String(cell.v || '').trim();
       if (/^\d+\.0+$/.test(text)) text = text.replace(/\.0+$/, '');
@@ -1127,7 +1167,8 @@ export function parseStaffFromSheet(ws: XLSX.WorkSheet, defaultAgencia?: string)
   return result;
 }
 
-export function downloadTruckExcelTemplate() {
+export async function downloadTruckExcelTemplate() {
+  const XLSX = await loadXLSX();
   const headers = ["ID Camión", "Placa", "Agencia", "Estatus", "TON", "Bahías", "Capacidad"];
   const rows = [
     ["385", "C234BGD", "Mercado Abierto", "Disponible", 12, 10, 375],
@@ -1153,9 +1194,9 @@ export function downloadTruckExcelTemplate() {
   XLSX.writeFile(wb, "Plantilla_Carga_Camiones.xlsx");
 }
 
-export function parseTrucksFromSheet(ws: XLSX.WorkSheet, defaultAgencia?: string): WithImportReport<Truck> {
+export function parseTrucksFromSheet(ws: XLSXTypes.WorkSheet, defaultAgencia?: string): WithImportReport<Truck> {
   if (!ws || !ws['!ref']) return [];
-  const range = XLSX.utils.decode_range(ws['!ref']);
+  const range = sheetUtils.decode_range(ws['!ref']);
 
   let headerRow = -1;
   let colIdCamion = -1;
@@ -1171,7 +1212,7 @@ export function parseTrucksFromSheet(ws: XLSX.WorkSheet, defaultAgencia?: string
   for (let r = range.s.r; r <= Math.min(range.s.r + 15, range.e.r); r++) {
     const rowTexts: { c: number; text: string }[] = [];
     for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      const cell = ws[sheetUtils.encode_cell({ r, c })];
       if (!cell) continue;
       const clean = cleanHeaderStr(cell.w || cell.v || '');
       if (clean) {
@@ -1266,7 +1307,7 @@ export function parseTrucksFromSheet(ws: XLSX.WorkSheet, defaultAgencia?: string
   for (let r = headerRow + 1; r <= range.e.r; r++) {
     const getVal = (colIdx: number) => {
       if (colIdx < 0) return '';
-      const cell = ws[XLSX.utils.encode_cell({ r, c: colIdx })];
+      const cell = ws[sheetUtils.encode_cell({ r, c: colIdx })];
       if (!cell) return '';
       let text = cell.w !== undefined && cell.w !== null ? String(cell.w).trim() : String(cell.v || '').trim();
       if (/^\d+\.0+$/.test(text)) text = text.replace(/\.0+$/, '');
