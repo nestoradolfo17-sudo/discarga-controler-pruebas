@@ -23,7 +23,9 @@ interface CrewSample {
   camionId?: string;
   camionPlaca?: string;
   conductor?: string;
+  conductorId?: string;
   auxiliares: string[];
+  auxiliarIds?: (string | null)[];
 }
 
 const norm = (s: string | null | undefined) => String(s ?? '').trim().toLowerCase();
@@ -35,7 +37,13 @@ function sampleFromRoute(r: Route): CrewSample | null {
       camionId: a.camionId,
       camionPlaca: a.camionPlaca,
       conductor: a.conductor,
+      conductorId: a.conductorId,
       auxiliares: [a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].filter(Boolean) as string[],
+      auxiliarIds: a.auxiliarIds
+        ? [a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4]
+            .map((n, i) => (n ? a.auxiliarIds?.[i] ?? null : undefined))
+            .filter((v) => v !== undefined) as (string | null)[]
+        : undefined,
     };
   }
   const hist = r.historialDespachos;
@@ -90,6 +98,11 @@ export function suggestCrewForRoute(
   const truckById = new Map(agencyTrucks.map((t) => [t.id, t]));
   const truckByPlaca = new Map(agencyTrucks.map((t) => [norm(t.placa), t]));
   const staffByName = new Map(agencyStaff.map((s) => [norm(s.nombre), s]));
+  const staffById = new Map(agencyStaff.map((s) => [s.id, s]));
+  // Punto 7: se busca primero por id (sigue funcionando aunque se haya
+  // corregido el nombre); si la salida es antigua y no tiene id, por nombre.
+  const resolve = (id: string | null | undefined, name: string | undefined) =>
+    (id ? staffById.get(id) : undefined) || (name ? staffByName.get(norm(name)) : undefined);
 
   const truckCounts = new Map<string, number>();
   const driverCounts = new Map<string, number>();
@@ -100,12 +113,12 @@ export function suggestCrewForRoute(
     const t = (s.camionId && truckById.get(s.camionId)) || (s.camionPlaca && truckByPlaca.get(norm(s.camionPlaca)));
     if (t) truckCounts.set(t.id, (truckCounts.get(t.id) || 0) + 1);
 
-    const d = s.conductor ? staffByName.get(norm(s.conductor)) : undefined;
+    const d = resolve(s.conductorId, s.conductor);
     if (d) driverCounts.set(d.nombre, (driverCounts.get(d.nombre) || 0) + 1);
 
     helperSizes.push(s.auxiliares.length);
-    s.auxiliares.forEach((h) => {
-      const st = staffByName.get(norm(h));
+    s.auxiliares.forEach((h, i) => {
+      const st = resolve(s.auxiliarIds?.[i], h);
       if (st) helperCounts.set(st.nombre, (helperCounts.get(st.nombre) || 0) + 1);
     });
   });
