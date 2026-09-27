@@ -341,6 +341,13 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
     );
   };
 
+  // Sumador de la selección: subtotal de cajas físicas y paradas de las rutas
+  // marcadas con la casilla (útil para armar la carga de un camión con varias rutas).
+  const selectedKeySet = new Set(selectedRouteIds);
+  const selectedRoutesForTotals = allRoutes.filter((r) => selectedKeySet.has(getRouteKey(r)));
+  const subtotalCajas = selectedRoutesForTotals.reduce((acc, r) => acc + (parseFloat(String(r.cajasFisicas || 0)) || 0), 0);
+  const subtotalParadas = selectedRoutesForTotals.reduce((acc, r) => acc + (parseInt(String(r.paradas || 0)) || 0), 0);
+
   return (
     <div className={`bg-white border border-slate-200/80 rounded-2xl shadow-sm w-full ${fillHeight ? 'h-full flex flex-col' : ''}`}>
       {/* Barra de acción masiva cuando hay rutas seleccionadas */}
@@ -354,6 +361,16 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
               {selectedRouteIds.length === 1
                 ? '1 ruta seleccionada'
                 : `${selectedRouteIds.length} rutas seleccionadas`}
+            </span>
+            <span className="inline-flex items-center gap-1.5 ml-1 px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-800 shadow-2xs">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-blue-500">Subtotal</span>
+              <span className="text-sm font-extrabold font-mono">
+                {subtotalCajas.toLocaleString('es-GT', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+              </span>
+              <span className="text-[11px] font-semibold">cajas</span>
+              <span className="text-slate-300">·</span>
+              <span className="text-sm font-bold">{subtotalParadas}</span>
+              <span className="text-[11px] font-semibold">paradas</span>
             </span>
           </div>
           <div className="flex items-center gap-2">
