@@ -3,6 +3,8 @@ import { Route } from '../../types';
 import { getGuatemalaDateForInput, formatDateToGuatemala } from '../../utils/date';
 import { AGENCIA_LOCATION_OPTIONS } from '../../data/agencies';
 import { X, PlusCircle, Lock, ArrowLeftRight } from 'lucide-react';
+import { Button, IconButton } from '../ui/Button';
+import { ACTION_ICONS } from '../ui/actionIcons';
 
 interface NewTrasladoRouteModalProps {
   isOpen: boolean;
@@ -103,9 +105,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
             <ArrowLeftRight className="w-4 h-4 text-indigo-400" />
             <h3 className="font-bold text-sm">Registrar Nueva Ruta de Traslado</h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <IconButton icon={ACTION_ICONS.cerrar} label="Cerrar" onClick={onClose} className="text-slate-400 hover:text-white hover:bg-white/10" />
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs overflow-y-auto">
@@ -115,7 +115,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 Agencia / Sucursal
                 <Lock className="w-3 h-3 text-slate-400" />
               </label>
-              <div className="w-full p-2.5 border border-slate-200 bg-slate-50 rounded-lg font-medium text-slate-600">
+              <div className="w-full min-h-[44px] p-2.5 border border-slate-200 bg-slate-50 rounded-lg font-medium text-slate-600">
                 {agencia}
               </div>
             </div>
@@ -124,7 +124,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 ID de Ruta
                 <Lock className="w-3 h-3 text-slate-400" />
               </label>
-              <div className="w-full p-2.5 border border-slate-200 bg-slate-50 rounded-lg uppercase font-mono font-semibold text-slate-600">
+              <div className="w-full min-h-[44px] p-2.5 border border-slate-200 bg-slate-50 rounded-lg uppercase font-mono font-semibold text-slate-600">
                 {nextSuggestedId}
               </div>
             </div>
@@ -137,7 +137,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 value={origen}
                 onChange={(e) => setOrigen(e.target.value)}
                 required
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium outline-none bg-white"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium outline-none bg-white"
               >
                 <option value="" disabled>
                   Selecciona un origen
@@ -155,7 +155,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 value={destino}
                 onChange={(e) => setDestino(e.target.value)}
                 required
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium outline-none bg-white"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium outline-none bg-white"
               >
                 <option value="" disabled>
                   Selecciona un destino
@@ -181,7 +181,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
               type="date"
               value={fecha}
               onChange={(e) => setFecha(e.target.value)}
-              className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
             />
           </div>
 
@@ -193,7 +193,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                   key={opt.key}
                   type="button"
                   onClick={() => setRazon(opt.key)}
-                  className={`px-2 py-2.5 rounded-lg border-2 font-semibold text-[11px] transition-all cursor-pointer ${
+                  className={`min-h-[48px] px-2 rounded-lg border-2 font-semibold text-xs transition-all cursor-pointer ${
                     razon === opt.key
                       ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
                       : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
@@ -211,7 +211,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                   value={razonDetalle}
                   onChange={(e) => setRazonDetalle(e.target.value)}
                   placeholder="Detalle adicional (opcional)"
-                  className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium outline-none"
+                  className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium outline-none"
                 />
               </div>
             )}
@@ -225,7 +225,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 min="1"
                 value={paradas}
                 onChange={(e) => setParadas(parseInt(e.target.value) || 1)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-semibold outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-semibold outline-none"
               />
             </div>
             <div>
@@ -236,7 +236,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 min="0"
                 value={cajasFisicas}
                 onChange={(e) => setCajasFisicas(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
               />
             </div>
             <div>
@@ -247,7 +247,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 min="0"
                 value={peso}
                 onChange={(e) => setPeso(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
               />
             </div>
           </div>
@@ -260,7 +260,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 min="0"
                 value={equipoFrio}
                 onChange={(e) => setEquipoFrio(parseInt(e.target.value) || 0)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
               />
             </div>
             <div>
@@ -269,7 +269,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 type="text"
                 value={capacidad}
                 onChange={(e) => setCapacidad(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
               />
             </div>
             <div>
@@ -280,26 +280,18 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 min="0"
                 value={distancia}
                 onChange={(e) => setDistancia(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
               />
             </div>
           </div>
 
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg font-semibold hover:bg-slate-50 cursor-pointer"
-            >
+<div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+            <Button variant="secondary" size="lg" onClick={onClose}>
               Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold shadow-sm flex items-center cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4 mr-1.5" />
-              Crear Ruta de Traslado
-            </button>
+            </Button>
+            <Button type="submit" variant="primary" size="lg" icon={ACTION_ICONS.nuevo}>
+              Crear ruta de traslado
+            </Button>
           </div>
         </form>
       </div>
