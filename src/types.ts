@@ -300,6 +300,8 @@ export interface ToastMessage {
   id: string;
   message: string;
   type: 'success' | 'error' | 'info';
+  // Botón dentro del aviso, p. ej. "Deshacer" después de enviar a Piso.
+  action?: { label: string; onClick: () => void };
 }
 
 // --- Control de acceso (usuarios y permisos) ---
