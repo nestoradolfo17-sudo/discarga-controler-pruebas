@@ -367,7 +367,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   // Secciones (análisis de botones, punto 16): en tablet se ve una sección a
   // la vez para no desplazarse por todo el reporte. Solo se dibuja la sección
   // abierta; al imprimir se muestran todas (ver handlePrint).
-  type SummarySection = 'todo' | 'totales' | 'recursos' | 'detalle';
+  type SummarySection = 'todo' | 'totales' | 'recursos' | 'detalle' | 'segmento';
   const [section, setSection] = useState<SummarySection>('detalle');
   const showSection = (k: SummarySection) => section === 'todo' || section === k;
   useEffect(() => {
@@ -643,6 +643,46 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     };
   }, [filteredMetrics]);
 
+  // ==============================================================
+  // ANÁLISIS POR SEGMENTO: rutas y cajas (CJ) por segmento, para Inicio y Fin de Día
+  // ==============================================================
+  const segmentStats = useMemo(() => {
+    const map = new Map<string, RouteSummaryMetric[]>();
+    filteredMetrics.forEach((m) => {
+      const k = (m.segmento || '').trim() && m.segmento !== '-' ? m.segmento.trim().toUpperCase() : 'SIN SEGMENTO';
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(m);
+    });
+    const sum = (L: RouteSummaryMetric[], f: (m: RouteSummaryMetric) => number) => L.reduce((a, m) => a + f(m), 0);
+    const build = (segmento: string, L: RouteSummaryMetric[]) => {
+      const liq = L.filter((m) => m.isLiquidada);
+      const cjEnt = sum(liq, (m) => m.cajasFisicasEntregadas);
+      const cjDev = sum(liq, (m) => m.cajasFisicasDevueltas);
+      return {
+        segmento,
+        rutas: L.length,
+        cjPlan: sum(L, (m) => m.cajasFisicasPlan),
+        paradas: sum(L, (m) => m.paradasPlan),
+        pendientes: L.filter((m) => !m.isFloor && m.estado === 'Pendiente').length,
+        transito: L.filter((m) => !m.isFloor && m.estado === 'En Tránsito').length,
+        piso: L.filter((m) => m.isFloor && !m.isLiquidada).length,
+        atrasadas: L.filter((m) => m.estaAtrasado).length,
+        liquidadas: liq.length,
+        noLiquidadas: L.length - liq.length,
+        cjLiquidadasPlan: sum(liq, (m) => m.cajasFisicasPlan),
+        cjPendientes: sum(L.filter((m) => !m.isLiquidada), (m) => m.cajasFisicasPlan),
+        cjEnt,
+        cjDev,
+        efectividad: cjEnt + cjDev > 0 ? (cjEnt / (cjEnt + cjDev)) * 100 : 100,
+        cumplimiento: L.length ? (liq.length / L.length) * 100 : 0,
+      };
+    };
+    const rows = Array.from(map.entries())
+      .map(([k, L]) => build(k, L))
+      .sort((a, b) => (a.segmento === 'SIN SEGMENTO' ? 1 : b.segmento === 'SIN SEGMENTO' ? -1 : b.cjPlan - a.cjPlan || b.rutas - a.rutas));
+    return { rows, total: build('TOTAL', filteredMetrics) };
+  }, [filteredMetrics]);
+
   // Camiones y personal disponibles que NO salieron a ruta hoy, con su motivo (Fin de Asignación)
   const unassignedTrucks = useMemo(
     () => (trucks || []).filter((t) => Boolean(t.motivoNoAsignado)),
@@ -692,6 +732,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
       pendientesCount: finTotalPlanificadas - finLiquidadasCount,
     },
     summaryTotals,
+    segmentos: segmentStats,
     routesList: mode === 'inicio' ? inicioFilteredList : finFilteredList,
     unassignedTrucks,
     unassignedStaff,
@@ -773,15 +814,27 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   return (
     <div
       id="dailySummaryModal"
-      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 print:p-0 print:static print:bg-white print:overflow-visible print:block print:w-full"
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 bg-white flex print:p-0 print:static print:bg-white print:overflow-visible print:block print:w-full"
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl max-h-[92vh] flex flex-col border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200 print:max-h-none print:h-auto print:shadow-none print:border-0 print:rounded-none print:overflow-visible print:block print:w-full">
+      {/* Pantalla completa: el reporte ocupa toda la pantalla; se regresa con “Volver al tablero”. */}
+      <div className="bg-white w-full h-full flex flex-col overflow-hidden animate-in fade-in duration-150 print:max-h-none print:h-auto print:shadow-none print:border-0 print:rounded-none print:overflow-visible print:block print:w-full">
         
         {/* ============================================================== */}
         {/* HEADER DEL MODAL CON SELECTOR DE INICIO vs FIN DE DÍA         */}
         {/* ============================================================== */}
         <div className="px-6 py-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 print:bg-white print:text-slate-900 print:border-b-2 print:border-slate-900 print:px-2 print:py-3">
           <div className="flex items-center space-x-3">
+            <button
+              id="btnDailySummaryBack"
+              type="button"
+              onClick={onClose}
+              title="Cerrar el reporte y volver al tablero de rutas"
+              className="print:hidden min-h-[44px] px-3 sm:px-4 rounded-xl bg-white text-slate-900 font-bold text-sm flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 shadow-sm hover:bg-slate-100 active:scale-95 cursor-pointer"
+            >
+              <span aria-hidden>←</span> Volver al tablero
+            </button>
             <div
               className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md transition-colors print:hidden ${
                 mode === 'inicio'
@@ -1498,6 +1551,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           >
             {([
               { k: 'detalle', label: 'Detalle por ruta' },
+              { k: 'segmento', label: 'Por segmento' },
               { k: 'totales', label: 'Totales' },
               ...(mode === 'inicio' ? [{ k: 'recursos', label: 'Recursos no asignados' }] : []),
               { k: 'todo', label: 'Todo' },
@@ -1516,6 +1570,145 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               </button>
             ))}
           </div>
+
+          {/* ============================================================== */}
+          {/* ANÁLISIS POR SEGMENTO: rutas y cajas (CJ)                      */}
+          {/* ============================================================== */}
+          {showSection('segmento') && (() => {
+            const T = segmentStats.total;
+            const n1 = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 1 });
+            const pc = (v: number, t: number) => (t > 0 ? ((v / t) * 100).toFixed(1) : '0.0') + '%';
+            const Bar = ({ v, t, color }: { v: number; t: number; color: string }) => (
+              <div className="h-1.5 w-full rounded-full bg-slate-100 mt-1 print:hidden">
+                <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${t > 0 ? Math.min(100, (v / t) * 100) : 0}%` }} />
+              </div>
+            );
+            const th = 'px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600 text-right whitespace-nowrap';
+            const td = 'px-3 py-2 text-right tabular-nums whitespace-nowrap';
+            return (
+              <div className="bg-white rounded-xl border border-slate-300 shadow-sm overflow-hidden print:border print:border-slate-400 print:shadow-none print:rounded-lg print:break-inside-avoid">
+                <div className="px-4 py-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 print:bg-slate-100 print:text-slate-900 print:border-slate-300">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="p-1.5 rounded-lg bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 print:bg-slate-200 print:border-slate-300 print:text-slate-700">
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-100 print:text-slate-900">
+                        Análisis por segmento · Rutas y Cajas (CJ)
+                      </h3>
+                      <p className="text-[11px] text-slate-300 print:text-slate-600 font-medium">
+                        {mode === 'inicio'
+                          ? 'Cuántas rutas y cuántas cajas físicas se planificaron en cada segmento, y en qué estado arrancan el día'
+                          : 'Cómo cerró cada segmento: rutas liquidadas vs pendientes y cajas entregadas, devueltas y por liquidar'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="px-2.5 py-1 rounded-lg bg-slate-800 print:bg-slate-200 text-indigo-200 print:text-slate-800 border border-slate-700 print:border-slate-300 font-bold">
+                      {segmentStats.rows.length} segmento{segmentStats.rows.length !== 1 ? 's' : ''} · {T.rutas} rutas · {n1(T.cjPlan)} CJ
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tarjetas rápidas por segmento */}
+                <div className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 border-b border-slate-200 print:hidden">
+                  {segmentStats.rows.map((r) => (
+                    <div key={r.segmento} className="rounded-xl border border-slate-200 p-3 bg-slate-50">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-black text-slate-800 text-sm truncate">{r.segmento}</span>
+                        <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md px-1.5">{pc(r.cjPlan, T.cjPlan)} CJ</span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <div className="text-slate-500 font-semibold">Rutas</div>
+                          <div className="text-lg font-black text-slate-900 leading-tight">{r.rutas}</div>
+                          <Bar v={r.rutas} t={T.rutas} color="bg-slate-700" />
+                          <div className="text-[10px] text-slate-500 mt-0.5">{pc(r.rutas, T.rutas)} del total</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500 font-semibold">Cajas (CJ)</div>
+                          <div className="text-lg font-black text-slate-900 leading-tight">{n1(r.cjPlan)}</div>
+                          <Bar v={r.cjPlan} t={T.cjPlan} color="bg-indigo-600" />
+                          <div className="text-[10px] text-slate-500 mt-0.5">{pc(r.cjPlan, T.cjPlan)} del total</div>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-600">
+                        {mode === 'inicio' ? (
+                          <>{r.pendientes} pend. · {r.transito} tránsito · {r.piso} piso{r.atrasadas ? <span className="text-rose-600 font-bold"> · {r.atrasadas} atras.</span> : null}</>
+                        ) : (
+                          <>
+                            <span className="text-emerald-700 font-bold">{r.liquidadas} liq.</span> · {r.noLiquidadas} sin liquidar · cumpl. {r.cumplimiento.toFixed(1)}%
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {segmentStats.rows.length === 0 && <div className="text-sm text-slate-500">Sin rutas para analizar con los filtros actuales.</div>}
+                </div>
+
+                {/* Tabla por segmento */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-100 border-b border-slate-300">
+                      {mode === 'inicio' ? (
+                        <tr>
+                          <th className={th.replace('text-right', 'text-left')}>Segmento</th>
+                          <th className={th}>Rutas</th><th className={th}>% Rutas</th>
+                          <th className={th}>Cajas (CJ)</th><th className={th}>% CJ</th>
+                          <th className={th}>Paradas</th><th className={th}>Pendientes</th><th className={th}>En tránsito</th>
+                          <th className={th}>A piso</th><th className={th}>Atrasadas</th><th className={th}>CJ / ruta</th>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <th className={th.replace('text-right', 'text-left')}>Segmento</th>
+                          <th className={th}>Rutas plan</th><th className={th}>Liquidadas</th><th className={th}>Sin liquidar</th><th className={th}>% Cumpl.</th>
+                          <th className={th}>CJ plan</th><th className={th}>% CJ</th><th className={th}>CJ entregadas</th><th className={th}>CJ devueltas</th>
+                          <th className={th}>CJ por liquidar</th><th className={th}>% Efectividad</th>
+                        </tr>
+                      )}
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {[...segmentStats.rows, { ...T, _total: true } as typeof T & { _total?: boolean }].map((r) => {
+                        const tot = (r as { _total?: boolean })._total;
+                        return (
+                          <tr key={r.segmento + (tot ? '_t' : '')} className={tot ? 'bg-indigo-50 font-black text-slate-900 border-t-2 border-indigo-300' : 'hover:bg-slate-50'}>
+                            <td className="px-3 py-2 font-bold text-slate-800 whitespace-nowrap">{r.segmento}</td>
+                            {mode === 'inicio' ? (
+                              <>
+                                <td className={td}>{r.rutas}</td>
+                                <td className={td}>{pc(r.rutas, T.rutas)}</td>
+                                <td className={td + ' font-bold'}>{n1(r.cjPlan)}</td>
+                                <td className={td}>{pc(r.cjPlan, T.cjPlan)}</td>
+                                <td className={td}>{n1(r.paradas)}</td>
+                                <td className={td}>{r.pendientes}</td>
+                                <td className={td}>{r.transito}</td>
+                                <td className={td}>{r.piso}</td>
+                                <td className={td + (r.atrasadas ? ' text-rose-600 font-bold' : '')}>{r.atrasadas}</td>
+                                <td className={td}>{r.rutas ? n1(r.cjPlan / r.rutas) : '0'}</td>
+                              </>
+                            ) : (
+                              <>
+                                <td className={td}>{r.rutas}</td>
+                                <td className={td + ' text-emerald-700 font-bold'}>{r.liquidadas}</td>
+                                <td className={td + (r.noLiquidadas ? ' text-amber-700 font-bold' : '')}>{r.noLiquidadas}</td>
+                                <td className={td}>{r.cumplimiento.toFixed(1)}%</td>
+                                <td className={td + ' font-bold'}>{n1(r.cjPlan)}</td>
+                                <td className={td}>{pc(r.cjPlan, T.cjPlan)}</td>
+                                <td className={td + ' text-emerald-700'}>{n1(r.cjEnt)}</td>
+                                <td className={td + ' text-rose-600'}>{n1(r.cjDev)}</td>
+                                <td className={td + (r.cjPendientes ? ' text-amber-700' : '')}>{n1(r.cjPendientes)}</td>
+                                <td className={td}>{r.efectividad.toFixed(1)}%</td>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ============================================================== */}
           {/* TABLA RESUMEN DE TOTALES (SOLO TOTALES, NO A DETALLE)          */}
@@ -2688,7 +2881,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               {mode === 'inicio' ? 'Ver Fin de Día' : 'Ver Inicio de Día'}
             </Button>
             <Button variant="dark" onClick={onClose}>
-              Cerrar
+              ← Volver al tablero
             </Button>
           </div>
         </div>
