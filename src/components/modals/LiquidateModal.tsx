@@ -48,6 +48,10 @@ interface LiquidateModalProps {
   ) => void;
 }
 
+// Ruta Bolsón: se envía a rechazo y no sale a ruta (ver AssignModal).
+const MOTIVO_BOLSON = 'Ruta Bolsón (Rechazo)';
+const isBolsonRoute = (r: { esBolson?: boolean; tipoAsignacion?: string }) => !!(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
+
 export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   isOpen,
   onClose,
@@ -82,10 +86,12 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   useEffect(() => {
     if (isOpen && route) {
       const paradasCount = parseInt(String(route.paradas)) || 1;
-      setGuiasExitosas(paradasCount);
-      setGuiasRechazadas(0);
-      setCajasDevueltas('0.000');
-      setMotivoGeneral('');
+      const bolson = isBolsonRoute(route);
+      // Ruta Bolsón: no salió, se liquida como rechazo total (se puede ajustar).
+      setGuiasExitosas(bolson ? 0 : paradasCount);
+      setGuiasRechazadas(bolson ? paradasCount : 0);
+      setCajasDevueltas(bolson ? (parseFloat(String(route.cajasFisicas)) || 0).toFixed(3) : '0.000');
+      setMotivoGeneral(bolson ? MOTIVO_BOLSON : '');
       setMotivoGeneralError('');
       setAuditor(defaultAuditor?.trim() || 'Operador de Agencia');
       // If already marked as Abierta, default to abierta
@@ -105,8 +111,9 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   useEffect(() => {
     setClientesMarcados(new Map());
     setClientesPendientesError('');
-    setMotivoGeneral('');
+    setMotivoGeneral(route && isBolsonRoute(route) && tipoResolucion === 'liquidada' ? MOTIVO_BOLSON : '');
     setMotivoGeneralError('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipoResolucion]);
 
   // Corrección: si se marcan clientes como pendientes en modalidad "Ruta
@@ -154,9 +161,12 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   const hayDiferencia = devueltasNum > 0 || guiasRechazadas > 0;
   const tieneClientes = !!route.clientesRuta && route.clientesRuta.length > 0;
   // Opciones de motivo según la modalidad.
+  const esBolson = isBolsonRoute(route);
   const motivosDevolucionOpts: { reason: string; icon: string }[] =
     tipoResolucion === 'abierta'
       ? [{ reason: MOTIVO_REVISITA, icon: '🔁' }, ...MOTIVO_DEVOLUCION_OPTIONS]
+      : esBolson
+      ? [{ reason: MOTIVO_BOLSON, icon: '🗃️' }, ...MOTIVO_DEVOLUCION_OPTIONS]
       : MOTIVO_DEVOLUCION_OPTIONS;
   // Razón general de respaldo: Ruta Abierta sin lista de clientes, o cierre
   // (definitivo / caja abierta) con diferencia sin clientes marcados.
@@ -256,7 +266,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
           <div>
             <div className="flex items-center space-x-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-              <h3 className="font-bold text-sm">Cierre y Liquidación de Ruta</h3>
+              <h3 className="font-bold text-sm">{esBolson ? 'Liquidación de Ruta Bolsón (Rechazo)' : 'Cierre y Liquidación de Ruta'}</h3>
             </div>
             <p className="text-[11px] text-slate-400">
               Liquidando Ruta: {route.id}
@@ -295,6 +305,17 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
               <b className="text-blue-700 font-mono text-xs">{route.cajasFisicas || 0} Cajas</b>
             </div>
           </div>
+
+          {esBolson && (
+            <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-rose-950 space-y-1">
+              <div className="font-bold text-xs text-rose-900">🗃️ Ruta Bolsón: no salió a ruta (sin camión ni tripulación)</div>
+              <p className="text-[11px] leading-relaxed">
+                Se liquida como <strong>rechazo total</strong>: 0 paradas entregadas y todas las cajas devueltas. Si una parte sí se
+                entregó, ajusta los números antes de confirmar.
+                {route.motivoBolson ? <span className="block mt-0.5"><strong>Motivo:</strong> {route.motivoBolson}</span> : null}
+              </p>
+            </div>
+          )}
 
           {/* 1. Balance de Paradas y Cajas Físicas */}
           <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-white">
