@@ -36,6 +36,9 @@ interface LiquidatedBoardViewProps {
   // caja/boleta de una ruta que quedó en estado Caja Abierta.
   onOpenFinalizeCajaAbierta?: (route: Route) => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  // Solo para administradores: eliminar varias rutas liquidadas a la vez
+  // (abre la misma ventana de confirmación con contraseña del Tablero de Rutas).
+  onDeleteRoutes?: (routeKeys: string[]) => void;
 }
 
 export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
@@ -51,7 +54,10 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
   onViewConsolidatedReceipt,
   onOpenFinalizeCajaAbierta,
   onShowToast,
+  onDeleteRoutes,
 }) => {
+  const canDelete = !!onDeleteRoutes;
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAgency, setSelectedAgency] = useState('TODAS');
   const [dateFrom, setDateFrom] = useState('');
@@ -111,6 +117,33 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
       return true;
     });
   }, [liquidatedRoutes, searchTerm, selectedAgency, dateFrom, dateTo]);
+
+  // Selección para eliminar (solo administradores): se conserva solo lo que sigue visible.
+  const visibleKeys = useMemo(() => Array.from(new Set(filteredList.map((r) => getRouteKey(r)))), [filteredList]);
+  const selectedVisible = useMemo(() => visibleKeys.filter((k) => selectedKeys.has(k)), [visibleKeys, selectedKeys]);
+  const allVisibleSelected = visibleKeys.length > 0 && selectedVisible.length === visibleKeys.length;
+  const toggleKey = (k: string) =>
+    setSelectedKeys((prev) => {
+      const n = new Set(prev);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  const toggleAllVisible = () =>
+    setSelectedKeys((prev) => {
+      const n = new Set(prev);
+      if (allVisibleSelected) visibleKeys.forEach((k) => n.delete(k));
+      else visibleKeys.forEach((k) => n.add(k));
+      return n;
+    });
+  // Al eliminarse, las rutas desaparecen de la lista: se limpian de la selección.
+  useEffect(() => {
+    setSelectedKeys((prev) => {
+      const all = new Set(liquidatedRoutes.map((r) => getRouteKey(r)));
+      const n = new Set([...prev].filter((k) => all.has(k)));
+      return n.size === prev.size ? prev : n;
+    });
+  }, [liquidatedRoutes]);
 
   const totalCajasSalida = useMemo(() => {
     return filteredList.reduce(
@@ -337,10 +370,56 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
           + "max-h-[70vh]"), de modo que el encabezado se fije con "top-0" respecto
           a SU PROPIO borde superior (ya no se necesita compensar los 68px de la
           Navbar, porque ya no depende del scroll de la ventana). */}
+      {canDelete && (
+        <div
+          className={`flex flex-wrap items-center gap-2 sm:gap-3 px-3 py-2 rounded-xl border text-xs sm:text-sm ${
+            selectedVisible.length ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'
+          }`}
+        >
+          <Lock className="w-4 h-4 text-slate-400" aria-hidden />
+          <span className="font-semibold text-slate-700">
+            {selectedVisible.length
+              ? `${selectedVisible.length} ruta${selectedVisible.length !== 1 ? 's' : ''} liquidada${selectedVisible.length !== 1 ? 's' : ''} seleccionada${selectedVisible.length !== 1 ? 's' : ''}`
+              : 'Administrador: marca las rutas liquidadas que quieras eliminar'}
+          </span>
+          <span className="flex-1" />
+          {selectedVisible.length > 0 && (
+            <Button variant="secondary" size="sm" onClick={() => setSelectedKeys(new Set())}>
+              Quitar selección
+            </Button>
+          )}
+          <Button
+            variant="danger"
+            size="sm"
+            icon={ACTION_ICONS.eliminar}
+            disabled={!selectedVisible.length}
+            onClick={() => onDeleteRoutes && onDeleteRoutes(selectedVisible)}
+            title="Pide tu contraseña antes de eliminar"
+          >
+            Eliminar seleccionadas{selectedVisible.length ? ` (${selectedVisible.length})` : ''}
+          </Button>
+        </div>
+      )}
+
       <div className="overflow-auto border border-slate-200 rounded-xl w-full max-h-[70vh]">
         <table className="min-w-full divide-y divide-slate-200 text-left text-xs sm:text-sm whitespace-nowrap">
           <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-xs sm:text-[13px] tracking-wider">
             <tr>
+              {canDelete && (
+                <th scope="col" className="pl-4 pr-1 py-4 sticky top-0 z-20 bg-slate-50 w-10">
+                  <input
+                    type="checkbox"
+                    aria-label="Seleccionar todas las rutas visibles"
+                    title="Seleccionar todas las rutas visibles (según filtros)"
+                    checked={allVisibleSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = selectedVisible.length > 0 && !allVisibleSelected;
+                    }}
+                    onChange={toggleAllVisible}
+                    className="w-5 h-5 accent-rose-600 cursor-pointer align-middle"
+                  />
+                </th>
+              )}
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">ID Ruta</th>
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Estado</th>
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Agencia y Segmento</th>
@@ -391,8 +470,19 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
               return (
                 <React.Fragment key={rowKey}>
                 <tr
-                  className="hover:bg-slate-50/90 transition-colors"
+                  className={`transition-colors ${canDelete && selectedKeys.has(routeKey) ? 'bg-rose-50/70 hover:bg-rose-50' : 'hover:bg-slate-50/90'}`}
                 >
+                  {canDelete && (
+                    <td className="pl-4 pr-1 py-4 w-10">
+                      <input
+                        type="checkbox"
+                        aria-label={`Seleccionar ruta ${r.id}`}
+                        checked={selectedKeys.has(routeKey)}
+                        onChange={() => toggleKey(routeKey)}
+                        className="w-5 h-5 accent-rose-600 cursor-pointer align-middle"
+                      />
+                    </td>
+                  )}
                   {/* ID */}
                   <td className="px-5 py-4 font-mono">
                     <div className="font-bold text-slate-900 text-sm sm:text-base">{r.id}</div>
@@ -691,7 +781,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                 </tr>
                 {expandedClientesKey === routeKey && r.clientesRuta && r.clientesRuta.length > 0 && (
                   <tr className="bg-slate-50/70">
-                    <td colSpan={11} className="px-5 py-3">
+                    <td colSpan={canDelete ? 12 : 11} className="px-5 py-3">
                       <ClientesRutaList clientes={r.clientesRuta} />
                     </td>
                   </tr>
