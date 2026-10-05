@@ -37,6 +37,8 @@ interface LiquidateModalProps {
       // definitivo, pero queda marcada como pendiente de validar la caja/boleta.
       isCajaAbierta?: boolean;
       motivoCajaAbierta?: CajaAbiertaReason;
+      // Valor (Q) de la diferencia de la ruta en Caja Abierta (opcional).
+      montoDiferenciaCaja?: number;
       // Comentario libre y opcional, disponible para las 3 modalidades de cierre.
       comentario?: string;
       // Clientes marcados puntualmente como pendientes (Ruta Abierta / Caja
@@ -74,6 +76,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   const [tipoResolucion, setTipoResolucion] = useState<'liquidada' | 'abierta' | 'cajaAbierta'>('liquidada');
   const [motivoCajaAbierta, setMotivoCajaAbierta] = useState<CajaAbiertaReason | null>(null);
   const [cajaAbiertaError, setCajaAbiertaError] = useState('');
+  const [montoDiferencia, setMontoDiferencia] = useState('');
   const [comentario, setComentario] = useState('');
   // Clientes marcados puntualmente como pendientes en Ruta Abierta / Caja
   // Abierta (código -> motivo elegido, vacío mientras no se elija). Solo tiene
@@ -98,6 +101,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       setTipoResolucion(route.estado === 'Abierta' ? 'abierta' : 'liquidada');
       setMotivoCajaAbierta(null);
       setCajaAbiertaError('');
+      setMontoDiferencia('');
       setComentario('');
       setClientesMarcados(new Map());
       setClientesFiltro('');
@@ -181,6 +185,11 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       setCajaAbiertaError('Selecciona el motivo por el que la caja queda pendiente de validar.');
       return;
     }
+    const montoNum = montoDiferencia.trim() === '' ? undefined : Number(montoDiferencia.replace(',', '.'));
+    if (isCajaAbierta && montoNum !== undefined && (!isFinite(montoNum) || montoNum < 0)) {
+      setCajaAbiertaError('El valor de la diferencia debe ser un número mayor o igual a 0.');
+      return;
+    }
     setCajaAbiertaError('');
 
     // Validar que todo cliente marcado como pendiente tenga su motivo elegido.
@@ -244,6 +253,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       isRutaAbierta,
       isCajaAbierta,
       motivoCajaAbierta: isCajaAbierta ? motivoCajaAbierta ?? undefined : undefined,
+      montoDiferenciaCaja: isCajaAbierta && montoNum !== undefined ? Math.round(montoNum * 100) / 100 : undefined,
       comentario: comentario.trim() || undefined,
       clientesPendientes,
     });
@@ -549,6 +559,26 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                     );
                   })}
                 </div>
+                <div className="pt-1">
+                  <label htmlFor="montoDiferenciaCaja" className="block font-bold text-amber-900 text-[11px] mb-1">
+                    Valor de la diferencia de la ruta (Q)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-amber-800">Q</span>
+                    <input
+                      id="montoDiferenciaCaja"
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      value={montoDiferencia}
+                      onChange={(e) => setMontoDiferencia(e.target.value)}
+                      placeholder="0.00"
+                      className="w-40 min-h-[44px] px-3 border border-amber-300 rounded-lg text-sm font-mono font-bold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                    <span className="text-[10px] text-amber-800">Monto por el que existe diferencia (opcional).</span>
+                  </div>
+                </div>
                 {cajaAbiertaError && (
                   <p className="text-[11px] text-rose-700 font-semibold">{cajaAbiertaError}</p>
                 )}
@@ -638,7 +668,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                       ? hayDiferencia
                         ? 'Cierre con diferencia: marca los clientes no entregados y el motivo de cada uno (o elige abajo la razón del cierre con diferencia).'
                         : 'Si el cierre tiene diferencia, marca aquí los clientes no entregados y su motivo; las paradas y cajas devueltas se recalculan solas.'
-                      : 'Opcional: marca los clientes cuya caja/boleta queda pendiente y el motivo (PIN de Abasto, Boleta, Fuera POS, Nota de Crédito).'}
+                      : 'Opcional: marca los clientes cuya caja/boleta queda pendiente y su motivo.'}
                   </p>
 
                   <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
