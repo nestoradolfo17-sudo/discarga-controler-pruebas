@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Route, Truck, Staff } from '../types';
 import { formatDateToGuatemala } from '../utils/date';
+import { DashboardExecutive } from './DashboardExecutive';
 import {
   AlertTriangle,
   Truck as TruckIcon,
@@ -257,7 +258,7 @@ const resourceSegments = (counts: { Disponible: number; 'En Ruta': number; Baja:
   { key: 'baja', label: 'Baja', value: counts.Baja, color: COLOR_CRITICAL },
 ];
 
-export const DashboardView: React.FC<DashboardViewProps> = ({
+const DashboardClassic: React.FC<DashboardViewProps> = ({
   routes,
   activeRoutesByAgency,
   liquidatedRoutes,
@@ -674,6 +675,64 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         )}
       </div>
+    </div>
+  );
+};
+
+// Selector de vista: "Ejecutivo" (propuesta nueva) o "Clásico" (el dashboard de
+// siempre, sin cambios). La preferencia se recuerda en este navegador.
+type DashView = 'ejecutivo' | 'clasico';
+export const DashboardView: React.FC<DashboardViewProps> = (props) => {
+  const [view, setView] = useState<DashView>(() => {
+    try {
+      return localStorage.getItem('dc_dashboard_view') === 'clasico' ? 'clasico' : 'ejecutivo';
+    } catch {
+      return 'ejecutivo';
+    }
+  });
+  const choose = (v: DashView) => {
+    setView(v);
+    try {
+      localStorage.setItem('dc_dashboard_view', v);
+    } catch {
+      /* sin almacenamiento: solo dura esta sesión */
+    }
+  };
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <div role="tablist" aria-label="Vista del dashboard" className="inline-flex bg-slate-100 border border-slate-200 rounded-xl p-1">
+          {([
+            ['ejecutivo', 'Ejecutivo'],
+            ['clasico', 'Clásico'],
+          ] as [DashView, string][]).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={view === k}
+              onClick={() => choose(k)}
+              className={`min-h-[40px] px-4 rounded-lg text-sm font-semibold cursor-pointer transition ${
+                view === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {view === 'ejecutivo' ? (
+        <DashboardExecutive
+          routes={props.routes}
+          liquidatedRoutes={props.liquidatedRoutes}
+          trucks={props.trucks}
+          staff={props.staff}
+          stats={props.stats}
+          selectedAgency={props.selectedAgency}
+        />
+      ) : (
+        <DashboardClassic {...props} />
+      )}
     </div>
   );
 };
