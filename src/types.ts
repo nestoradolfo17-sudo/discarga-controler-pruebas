@@ -3,7 +3,7 @@ export type RouteStatus = 'Pendiente' | 'En Tránsito' | 'Abierta' | 'Liquidada'
 export type StaffPuesto = 'VPP' | 'VPPB' | 'APP';
 export type StaffRol = 'Conductor' | 'Auxiliar';
 export type ResourceStatus = 'Disponible' | 'En Ruta' | 'Baja';
-export type AssignmentType = 'Primer Viaje' | 'Recarga' | 'Revisita' | 'Ruta a Piso';
+export type AssignmentType = 'Primer Viaje' | 'Recarga' | 'Revisita' | 'Ruta a Piso' | 'Ruta Bolsón';
 
 export type TruckUnavailableReason = 'Taller' | 'Stand By' | 'Deshabilitado' | 'Consignado MP';
 
@@ -283,6 +283,11 @@ export interface Route {
   aPiso?: boolean;
   fechaPiso?: string;
   motivoPiso?: string;
+  // Ruta Bolsón: la ruta se envía a rechazo y NO sale (no lleva camión ni
+  // tripulación). Queda en el tablero para liquidarse como rechazo.
+  esBolson?: boolean;
+  fechaBolson?: string;
+  motivoBolson?: string;
   tipoRuta?: 'Entrega' | 'Traslado';
   origen?: string;
   destino?: string;
