@@ -1980,6 +1980,7 @@ export default function App() {
             esRecarga: isRecarga,
             esReasignacion: isRevisita,
             aPiso: effectiveTipo === 'Ruta a Piso',
+            esBolson: false,
             fechaAsignacion: fechaHoraAsignacion,
             asignacion: {
               camionId: assignment.truckId,
@@ -2110,6 +2111,60 @@ export default function App() {
 
   // Corrección: mismo motivo que handleConfirmAssignment — se identifica la fila
   // exacta con ID + Fecha para no afectar otra fila con el mismo ID en otra fecha.
+  // Ruta Bolsón: la ruta se envía a rechazo y NO sale (sin camión ni
+  // tripulación). Queda en el tablero como "Bolsón · por liquidar" con su fecha
+  // y carga originales, y luego se liquida como rechazo.
+  const handleMoveToBolson = (routeId: string, fecha: string, motivo: string) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    if (targetRoute.asignacion) {
+      showToast('La ruta tiene camión y tripulación asignados. Liquídala o pásala a piso antes de enviarla a Bolsón.', 'error');
+      return;
+    }
+    const undo = makeUndo([targetRoute]);
+    setRoutes((prev) =>
+      prev.map((r) =>
+        routeMatchesKey(r, routeId, fecha)
+          ? {
+              ...r,
+              estado: 'Pendiente',
+              asignacion: null,
+              tipoAsignacion: 'Ruta Bolsón',
+              esBolson: true,
+              fechaBolson: formatDateTimeToGuatemala(new Date()),
+              motivoBolson: motivo,
+              aPiso: false,
+            }
+          : r
+      )
+    );
+    setAssignTarget(null);
+    showToast(`Ruta ${routeId} enviada a Bolsón (rechazo). Queda pendiente de liquidar; no lleva camión ni tripulación.`, 'info', {
+      label: 'Deshacer',
+      onClick: undo,
+    });
+  };
+
+  const handleRemoveBolson = (routeId: string, fecha: string) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    const undo = makeUndo([targetRoute]);
+    setRoutes((prev) =>
+      prev.map((r) =>
+        routeMatchesKey(r, routeId, fecha)
+          ? {
+              ...r,
+              esBolson: false,
+              tipoAsignacion: (r.historialDespachos?.length || 0) > 0 ? 'Revisita' : r.esRecarga ? 'Recarga' : 'Primer Viaje',
+              motivoBolson: undefined,
+              fechaBolson: undefined,
+            }
+          : r
+      )
+    );
+    showToast(`Ruta ${routeId} salió del Bolsón: vuelve a quedar por asignar.`, 'info', { label: 'Deshacer', onClick: undo });
+  };
+
   const handleMoveToFloor = (
     routeId: string,
     fecha: string,
@@ -3514,6 +3569,7 @@ export default function App() {
             }
             onOpenNewRouteModal={() => setIsRouteTypeSelectModalOpen(true)}
             onMoveToFloor={handleMoveToFloor}
+            onRemoveBolson={handleRemoveBolson}
             onBulkMoveToFloor={handleBulkMoveToFloor}
             onOpenDeleteModal={canDeleteData ? (ids) => setDeleteRoutesTargetIds(ids) : undefined}
           />
@@ -3687,6 +3743,7 @@ export default function App() {
         historyRoutes={historicalRoutes}
         onConfirmAssignment={handleConfirmAssignment}
         onMoveToFloor={handleMoveToFloor}
+        onMoveToBolson={handleMoveToBolson}
         onShowToast={showToast}
       />
 
