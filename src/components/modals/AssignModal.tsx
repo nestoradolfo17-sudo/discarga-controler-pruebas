@@ -622,7 +622,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   const splitInfo = route.isSplitRoute ? ` [Viaje ${route.tripNumber} de ${route.totalTrips}]` : '';
 
   return (
-    <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center ${isMaximized ? 'p-0' : 'p-3 sm:p-5 md:p-6'}`}>
+    <div className={`fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center ${isMaximized ? 'p-0' : 'p-3 sm:p-5 md:p-6'}`}>
       <div
         className={`bg-white w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all flex flex-col ${
           isMaximized ? 'h-full max-h-full rounded-none' : 'rounded-2xl max-w-4xl lg:max-w-5xl max-h-[94vh]'
