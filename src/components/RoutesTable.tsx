@@ -48,6 +48,7 @@ interface RoutesTableProps {
   onViewConsolidatedReceipt: (parentRouteId: string, ref?: Route) => void;
   onOpenNewRouteModal: () => void;
   onMoveToFloor?: (routeId: string, fecha: string, tomorrowDate: string, motivo?: string) => void;
+  onRemoveBolson?: (routeId: string, fecha: string) => void;
   // routeIds aquí son claves compuestas ID+Fecha (ver getRouteKey), no solo el ID.
   onBulkMoveToFloor?: (routeIds: string[]) => void;
   onOpenDeleteModal?: (routeIds: string[]) => void;
@@ -83,6 +84,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   onViewConsolidatedReceipt,
   onOpenNewRouteModal,
   onMoveToFloor,
+  onRemoveBolson,
   onBulkMoveToFloor,
   onOpenDeleteModal,
 }) => {
@@ -524,6 +526,11 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                         <RotateCcw className="w-2.5 h-2.5 text-amber-700" />
                         Revisita #{route.historialDespachos?.length || 1}
                       </span>
+                    ) : route.esBolson || route.tipoAsignacion === 'Ruta Bolsón' ? (
+                      <span className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-0.2 rounded text-[10px] md:text-[11px] font-bold bg-rose-100 text-rose-900 border border-rose-300 whitespace-nowrap">
+                        <Warehouse className="w-2.5 h-2.5 text-rose-700" />
+                        Bolsón
+                      </span>
                     ) : route.aPiso || route.tipoAsignacion === 'Ruta a Piso' ? (
                       <span className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-0.2 rounded text-[10px] md:text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
                         <Warehouse className="w-2.5 h-2.5 text-amber-700" />
@@ -639,6 +646,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                                 'Ruta a Piso para despacho de mañana'
                               )
                           : undefined,
+                        onRemoveBolson: onRemoveBolson ? () => onRemoveBolson(route.id, routeKey) : undefined,
                         onViewReceipt: () => onViewSettlementReceipt(route.id, routeKey),
                         onViewConsolidated:
                           allSettled && route.parentRouteId
@@ -658,7 +666,16 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 whitespace-nowrap">
                     {route.estado === 'Pendiente' && (
                       <div className="space-y-0.5">
-                        {route.aPiso || route.tipoAsignacion === 'Ruta a Piso' ? (
+                        {route.esBolson || route.tipoAsignacion === 'Ruta Bolsón' ? (
+                          <div title={route.motivoBolson || 'Ruta enviada a rechazo: no sale, pendiente de liquidar'}>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-100 text-rose-900 border border-rose-300">
+                              <Warehouse className="w-3 h-3 mr-1 text-rose-700" /> Bolsón · por liquidar
+                            </span>
+                            {route.motivoBolson && (
+                              <div className="text-[10px] font-semibold text-rose-800 mt-0.5 max-w-[180px] truncate">{route.motivoBolson}</div>
+                            )}
+                          </div>
+                        ) : route.aPiso || route.tipoAsignacion === 'Ruta a Piso' ? (
                           <div>
                             <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-100 text-amber-900 border border-amber-300">
                               <Warehouse className="w-3 h-3 mr-1 text-amber-700" /> A Piso
