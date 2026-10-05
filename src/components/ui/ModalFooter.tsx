@@ -31,7 +31,7 @@ const BLEED: Record<NonNullable<ModalFooterProps['bleed']>, string> = {
 
 export const ModalFooter: React.FC<ModalFooterProps> = ({ children, secondary, info, bleed = 'p-6', className = '' }) => (
   <div
-    className={`sticky bottom-0 z-10 ${BLEED[bleed]} py-3 bg-white/95 backdrop-blur border-t border-slate-200 flex flex-wrap items-center gap-2 sm:gap-3 ${className}`}
+    className={`sticky bottom-0 z-10 ${BLEED[bleed]} py-3 bg-white border-t border-slate-200 flex flex-wrap items-center gap-2 sm:gap-3 ${className}`}
   >
     {secondary && <div className="flex items-center gap-2">{secondary}</div>}
     {info && <div className="text-xs text-slate-500 min-w-0 flex-1 truncate">{info}</div>}
