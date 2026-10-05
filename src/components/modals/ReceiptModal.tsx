@@ -446,6 +446,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                         <>
                           <strong className="uppercase tracking-wide">Caja Abierta — Pendiente de Validar</strong>
                           {liq.motivoCajaAbierta && <span>: {liq.motivoCajaAbierta}</span>}
+                          {typeof liq.montoDiferenciaCaja === 'number' && (
+                            <span> · Diferencia: Q {liq.montoDiferenciaCaja.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          )}
                         </>
                       )}
                     </div>
