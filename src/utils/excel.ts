@@ -688,6 +688,7 @@ export function isClientesSheet(wb: XLSXTypes.WorkBook, name: string): boolean {
 
 export function getRouteAssignmentType(r: Route): string {
   const currentTipo = r.asignacion?.tipoAsignacion || r.tipoAsignacion;
+  if (r.esBolson || currentTipo === 'Ruta Bolsón') return 'Ruta Bolsón';
   if (currentTipo === 'Recarga') return 'Recarga';
   if (currentTipo === 'Revisita') return 'Revisita';
   if (currentTipo === 'Ruta a Piso') return 'Ruta a Piso';
