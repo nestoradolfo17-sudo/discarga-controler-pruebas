@@ -17,4 +17,8 @@ export const CAJA_ABIERTA_OPTIONS: CajaAbiertaOption[] = [
   { reason: 'Pendiente Validación de Boleta', icon: '🧾' },
   { reason: 'Fuera POS', icon: '📴' },
   { reason: 'Nota de Crédito', icon: '📝' },
+  { reason: 'Producto pendiente de entregar', icon: '📦' },
+  { reason: 'Pago en línea pendiente', icon: '💳' },
+  { reason: 'Diferencia de producto faltante en ruta (Bodega)', icon: '🏬' },
+  { reason: 'Asalto', icon: '🚨' },
 ];
