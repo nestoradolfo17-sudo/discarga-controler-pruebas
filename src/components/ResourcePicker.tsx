@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, X, Check, Eye, EyeOff } from 'lucide-react';
 
 // --- Buscador táctil de recursos (camiones / pilotos / auxiliares) ---
@@ -116,13 +117,21 @@ export const ResourcePicker: React.FC<ResourcePickerProps> = ({
   }, [items, query, showAll, selectedIds]);
 
   if (!isOpen) return null;
+  if (typeof document === 'undefined') return null;
 
   const selectedCount = selectedIds.length;
   const isFull = multi && selectedCount >= maxSelect;
 
-  return (
-    <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-stretch sm:items-center justify-center sm:p-4">
-      <div className="bg-white w-full sm:max-w-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-full sm:max-h-[90vh]">
+  return createPortal((
+    // Corrección (tablet, pantalla completa): antes este panel ponía OTRA capa
+    // oscura con desenfoque (60 % + blur) encima de la ventana de asignación, que
+    // ya está oscurecida; con el flujo guiado (camión → piloto → auxiliares) el
+    // panel se abre y cierra varias veces y la pantalla "se oscurecía" en cada
+    // paso, además de hacer lenta la tablet. Ahora la capa es muy suave y sin
+    // desenfoque, y el panel se dibuja directamente en <body> (portal) para que
+    // siempre ocupe la pantalla real y no dependa de la ventana que lo abre.
+    <div className="fixed inset-0 z-[70] bg-slate-900/15 flex items-stretch sm:items-center justify-center sm:p-4">
+      <div className="bg-white w-full sm:max-w-2xl sm:rounded-2xl shadow-2xl ring-1 ring-slate-900/10 flex flex-col max-h-full sm:max-h-[90vh]">
         {/* Encabezado + búsqueda */}
         <div className="p-4 border-b border-slate-200 space-y-3 flex-shrink-0">
           <div className="flex items-center justify-between gap-3">
@@ -259,5 +268,5 @@ export const ResourcePicker: React.FC<ResourcePickerProps> = ({
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 };
