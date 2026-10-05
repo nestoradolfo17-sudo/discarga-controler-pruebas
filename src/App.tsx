@@ -2466,6 +2466,7 @@ export default function App() {
       // definitivo, pero queda marcada como pendiente de validar la caja/boleta.
       isCajaAbierta?: boolean;
       motivoCajaAbierta?: CajaAbiertaReason;
+      montoDiferenciaCaja?: number;
       // Comentario libre y opcional, disponible para las 3 modalidades de cierre.
       comentario?: string;
       // Clientes marcados puntualmente como pendientes (Ruta Abierta / Caja
@@ -2634,6 +2635,7 @@ export default function App() {
         // marcada como pendiente de validar la caja/boleta del punto de venta.
         cajaAbierta: !!data.isCajaAbierta,
         motivoCajaAbierta: data.motivoCajaAbierta,
+        montoDiferenciaCaja: data.montoDiferenciaCaja,
         clientesPendientes: data.clientesPendientes,
         // Primer registro del historial de status: se guarda la fecha exacta del
         // status inicial con el que queda esta liquidación (Liquidada o Caja
