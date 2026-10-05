@@ -541,6 +541,11 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                             {liq.motivoCajaAbierta}
                           </span>
                         )}
+                        {typeof liq.montoDiferenciaCaja === 'number' && (
+                          <span className="block text-[10px] text-amber-800 font-bold font-mono">
+                            Diferencia: Q {liq.montoDiferenciaCaja.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
