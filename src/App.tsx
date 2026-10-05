@@ -1084,6 +1084,13 @@ export default function App() {
   const [dailySummaryMode, setDailySummaryMode] = useState<'inicio' | 'fin'>('inicio');
   const [isClosingActaModalOpen, setIsClosingActaModalOpen] = useState(false);
   const [deleteRoutesTargetIds, setDeleteRoutesTargetIds] = useState<string[] | null>(null);
+  // Rutas que puede mostrar la ventana de eliminar: las del tablero y también las
+  // del historial de liquidadas (para eliminar varias liquidadas a la vez).
+  const deleteModalRoutes = useMemo(() => {
+    if (!deleteRoutesTargetIds || !deleteRoutesTargetIds.length) return routes;
+    const seen = new Set(routes.map((r) => getRouteKey(r)));
+    return [...routes, ...historicalRoutes.filter((r) => !seen.has(getRouteKey(r)))];
+  }, [deleteRoutesTargetIds, routes, historicalRoutes]);
   const [isUnassignedResourcesModalOpen, setIsUnassignedResourcesModalOpen] = useState(false);
 
   const handleOpenDailySummary = (mode: 'inicio' | 'fin' = 'inicio') => {
@@ -3530,6 +3537,7 @@ export default function App() {
             }
             onOpenFinalizeCajaAbierta={(routeObj) => setFinalizeCajaAbiertaTarget(routeObj)}
             onShowToast={showToast}
+            onDeleteRoutes={currentUser?.isAdmin ? (keys) => setDeleteRoutesTargetIds(keys) : undefined}
           />
         )}
 
@@ -3764,7 +3772,7 @@ export default function App() {
         isOpen={!!deleteRoutesTargetIds && deleteRoutesTargetIds.length > 0}
         onClose={() => setDeleteRoutesTargetIds(null)}
         routeIds={deleteRoutesTargetIds || []}
-        routes={routes}
+        routes={deleteModalRoutes}
         onConfirmDelete={handleConfirmDeleteRoutes}
         onVerifyPassword={handleVerifyPassword}
       />
