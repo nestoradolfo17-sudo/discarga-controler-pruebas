@@ -1,6 +1,24 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+export interface SegmentoPdfRow {
+  segmento: string;
+  rutas: number;
+  cjPlan: number;
+  paradas: number;
+  pendientes: number;
+  transito: number;
+  piso: number;
+  atrasadas: number;
+  liquidadas: number;
+  noLiquidadas: number;
+  cjPendientes: number;
+  cjEnt: number;
+  cjDev: number;
+  efectividad: number;
+  cumplimiento: number;
+}
+
 export interface DailySummaryPdfData {
   mode: 'inicio' | 'fin';
   fechaHoy: string;
@@ -109,6 +127,11 @@ export interface DailySummaryPdfData {
   // salieron a ruta (con su motivo), pero el PDF de Inicio/Fin de Día los
   // descartaba por completo — un dato clave para explicar por qué no se cubrió
   // el 100% de la operación (falta de recursos vs. falta de rutas).
+  // Análisis por segmento (rutas y cajas CJ) — mismo cálculo que la pestaña "Por segmento" del modal.
+  segmentos?: {
+    rows: SegmentoPdfRow[];
+    total: SegmentoPdfRow;
+  };
   unassignedResources?: {
     trucks: Array<{ id: string; placa: string; motivo: string }>;
     staff: Array<{ id: string; nombre: string; puesto: string; motivo: string }>;
@@ -482,6 +505,45 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
   // @ts-ignore
   const table1EndY = (doc as any).lastAutoTable?.finalY || currentY + 40;
   currentY = table1EndY + 5;
+
+  // 3b. ANÁLISIS POR SEGMENTO (rutas y cajas CJ)
+  if (data.segmentos && data.segmentos.rows.length) {
+    const seg = data.segmentos, T = seg.total;
+    const pc = (v: number, t: number) => (t > 0 ? ((v / t) * 100).toFixed(1) : '0.0') + '%';
+    const n1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('es-GT', { maximumFractionDigits: 1 });
+    if (currentY > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); currentY = 15; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(30, 41, 59);
+    doc.text('ANÁLISIS POR SEGMENTO · RUTAS Y CAJAS (CJ)', margin, currentY + 3);
+    currentY += 5;
+    const head = isInicio
+      ? [['SEGMENTO', 'RUTAS', '% RUTAS', 'CAJAS (CJ)', '% CJ', 'PARADAS', 'PENDIENTES', 'EN TRÁNSITO', 'A PISO', 'ATRASADAS', 'CJ / RUTA']]
+      : [['SEGMENTO', 'RUTAS PLAN', 'LIQUIDADAS', 'SIN LIQUIDAR', '% CUMPL.', 'CJ PLAN', '% CJ', 'CJ ENTREGADAS', 'CJ DEVUELTAS', 'CJ POR LIQUIDAR', '% EFECT.']];
+    const row = (r: SegmentoPdfRow) => isInicio
+      ? [r.segmento, `${r.rutas}`, pc(r.rutas, T.rutas), n1(r.cjPlan), pc(r.cjPlan, T.cjPlan), `${r.paradas}`, `${r.pendientes}`, `${r.transito}`, `${r.piso}`, `${r.atrasadas}`, r.rutas ? n1(r.cjPlan / r.rutas) : '0']
+      : [r.segmento, `${r.rutas}`, `${r.liquidadas}`, `${r.noLiquidadas}`, r.cumplimiento.toFixed(1) + '%', n1(r.cjPlan), pc(r.cjPlan, T.cjPlan), n1(r.cjEnt), n1(r.cjDev), n1(r.cjPendientes), r.efectividad.toFixed(1) + '%'];
+    const body = [...seg.rows.map(row), row(T)];
+    autoTable(doc, {
+      startY: currentY,
+      head,
+      body,
+      theme: 'grid',
+      styles: { fontSize: 7, cellPadding: 1.5, textColor: [30, 41, 59], lineColor: [203, 213, 225], lineWidth: 0.2, halign: 'center' },
+      headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+      columnStyles: { 0: { fontStyle: 'bold', halign: 'left' } },
+      didParseCell: (hookData) => {
+        if (hookData.section === 'body' && hookData.row.index === body.length - 1) {
+          hookData.cell.styles.fillColor = [226, 232, 240];
+          hookData.cell.styles.fontStyle = 'bold';
+          hookData.cell.styles.textColor = [15, 23, 42];
+        }
+      },
+      margin: { left: margin, right: margin },
+    });
+    // @ts-ignore
+    currentY = ((doc as any).lastAutoTable?.finalY || currentY + 30) + 5;
+  }
 
   // 4. TABLA 2: TABLA DETALLADA DE RUTAS PLANIFICADAS
   const detailedHead = isInicio
