@@ -85,6 +85,8 @@ interface AssignModalProps {
     tomorrowDate: string,
     motivo?: string
   ) => void;
+  // Ruta Bolsón: la ruta se envía a rechazo y no sale (sin camión ni tripulación).
+  onMoveToBolson?: (routeId: string, fecha: string, motivo: string) => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -98,6 +100,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   historyRoutes = [],
   onConfirmAssignment,
   onMoveToFloor,
+  onMoveToBolson,
   onShowToast,
 }) => {
   const [assignmentType, setAssignmentType] = useState<AssignmentType>('Primer Viaje');
@@ -111,6 +114,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   const [allowPilotsAsHelpers, setAllowPilotsAsHelpers] = useState(false);
   const [selectedActiveCrewRouteId, setSelectedActiveCrewRouteId] = useState('');
   const [motivoPiso, setMotivoPiso] = useState('Capacidad de flota / Reprogramación a piso para mañana');
+  const [motivoBolson, setMotivoBolson] = useState('');
   // Buscador táctil abierto: camión, piloto o auxiliares (ver ResourcePicker).
   const [pickerOpen, setPickerOpen] = useState<null | 'truck' | 'driver' | 'helpers'>(null);
   // Ventana de asignación a pantalla completa (se recuerda en este navegador).
@@ -176,6 +180,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       setAssignmentType(defaultType);
       setSelectedActiveCrewRouteId('');
       setMotivoPiso('Capacidad de flota / Reprogramación a piso para mañana');
+      setMotivoBolson('');
 
       // If already assigned or reassigning
       const curAsig = route.asignacion;
@@ -269,6 +274,9 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   // asignado a esta ruta.
   const isRecarga = assignmentType === 'Recarga';
   const isPiso = assignmentType === 'Ruta a Piso';
+  // Bolsón solo aplica si la ruta NO tiene camión/tripulación asignados en este momento.
+  const canBolson = !!onMoveToBolson && !route.asignacion;
+  const isBolson = assignmentType === 'Ruta Bolsón';
   const isRevisita = assignmentType === 'Revisita';
 
   // Segmentación por agencia: solo se pueden asignar camiones y personal que
@@ -362,6 +370,11 @@ export const AssignModal: React.FC<AssignModalProps> = ({
 
     if (isPiso) {
       onMoveToFloor(route.id, getRouteKey(route), tomorrowDate, motivoPiso);
+      return;
+    }
+    if (isBolson) {
+      if (!canBolson || !onMoveToBolson) return;
+      onMoveToBolson(route.id, getRouteKey(route), motivoBolson.trim() || 'Ruta enviada a rechazo (Bolsón)');
       return;
     }
 
@@ -632,7 +645,9 @@ export const AssignModal: React.FC<AssignModalProps> = ({
         <div className="px-6 sm:px-8 py-4.5 bg-slate-900 text-white flex items-center justify-between flex-shrink-0 border-b border-slate-800">
           <div>
             <h3 className="font-bold text-base sm:text-lg flex items-center text-white">
-              {isPiso ? (
+              {isBolson ? (
+                <Warehouse className="w-5 h-5 mr-2 text-rose-400 flex-shrink-0" />
+              ) : isPiso ? (
                 <Warehouse className="w-5 h-5 mr-2 text-amber-400 flex-shrink-0" />
               ) : isRecarga ? (
                 <Repeat className="w-5 h-5 mr-2 text-purple-400 flex-shrink-0" />
@@ -641,7 +656,9 @@ export const AssignModal: React.FC<AssignModalProps> = ({
               ) : (
                 <Send className="w-5 h-5 mr-2 text-blue-400 flex-shrink-0" />
               )}
-              {isPiso
+              {isBolson
+                ? 'Ruta Bolsón: se envía a rechazo (no sale)'
+                : isPiso
                 ? 'Ruta a Piso: Reprogramación Automática para Mañana'
                 : isRecarga
                 ? `Asignación de Recarga ${dispatchNum > 1 ? `(Salida #${dispatchNum})` : '(Segundo Viaje de Tripulación)'}`
@@ -685,7 +702,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
               Modalidad de Asignación / Destino de la Carga *
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className={`grid grid-cols-2 gap-2 ${canBolson ? 'sm:grid-cols-3 lg:grid-cols-5' : 'sm:grid-cols-4'}`}>
               {/* Opción 1: Primer Viaje */}
               <button
                 type="button"
@@ -812,6 +829,30 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   Queda para mañana.
                 </p>
               </button>
+
+              {/* Opción 5: Ruta Bolsón (se envía a rechazo, no sale) */}
+              {canBolson && (
+                <button
+                  type="button"
+                  onClick={() => setAssignmentType('Ruta Bolsón')}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    isBolson
+                      ? 'bg-rose-50 border-rose-400 ring-2 ring-rose-500/20 shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-xs text-rose-900 flex items-center">
+                      <Warehouse className="w-3.5 h-3.5 mr-1 text-rose-700" />
+                      Bolsón
+                    </span>
+                    {isBolson && <span className="w-2 h-2 rounded-full bg-rose-600"></span>}
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-tight">
+                    A rechazo, no sale.
+                  </p>
+                </button>
+              )}
             </div>
           </div>
 
@@ -869,7 +910,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
           )}
 
           {/* VISTA OPTIMIZACIÓN: CARGA COMPARTIDA EN EL MISMO CAMIÓN Y TRIPULACIÓN */}
-          {!isRecarga && !isPiso && activeRoutesWithCrew.length > 0 && (
+          {!isRecarga && !isPiso && !isBolson && activeRoutesWithCrew.length > 0 && (
             <div className="p-3.5 bg-sky-50/80 border border-sky-200 rounded-xl text-sky-950 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center font-bold text-xs text-sky-900">
@@ -906,8 +947,52 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             </div>
           )}
 
-          {/* VISTA 3: RUTA A PISO (SE QUEDA PARA MAÑANA) */}
-          {isPiso ? (
+          {/* VISTA 5: RUTA BOLSÓN (A RECHAZO, NO SALE) */}
+          {isBolson ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-rose-50 border border-rose-300 rounded-xl text-rose-950 space-y-3">
+                <div className="flex items-center font-bold text-sm text-rose-900">
+                  <Warehouse className="w-4 h-4 mr-2 text-rose-700" />
+                  Ruta Bolsón: se envía a rechazo y no sale a ruta
+                </div>
+                <p className="text-xs leading-relaxed text-rose-900">
+                  No se asigna camión ni tripulación. La ruta queda en el tablero marcada como <strong>Bolsón · por liquidar</strong>,
+                  con su fecha y su carga originales, y luego se liquida como <strong>rechazo</strong> con el botón “Liquidar bolsón”.
+                  Si fue un error, se puede quitar del bolsón desde “⋯”.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                  <div className="bg-white/80 p-2.5 rounded-lg border border-rose-200">
+                    <div className="text-[10px] text-slate-500 font-semibold uppercase">Cajas físicas</div>
+                    <div className="font-mono font-bold text-rose-800 text-xs mt-0.5">{route.cajasFisicas || 0} cajas</div>
+                  </div>
+                  <div className="bg-white/80 p-2.5 rounded-lg border border-rose-200">
+                    <div className="text-[10px] text-slate-500 font-semibold uppercase">Paradas</div>
+                    <div className="font-mono font-bold text-slate-800 text-xs mt-0.5">{route.paradas || 0}</div>
+                  </div>
+                  <div className="bg-white/80 p-2.5 rounded-lg border border-rose-200">
+                    <div className="text-[10px] text-slate-500 font-semibold uppercase">Nuevo estado</div>
+                    <div className="font-bold text-rose-800 text-xs mt-0.5">Bolsón · por liquidar</div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                <label htmlFor="motivoBolsonInput" className="block font-bold text-slate-800 text-xs">
+                  Motivo / observación del rechazo (opcional):
+                </label>
+                <input
+                  id="motivoBolsonInput"
+                  type="text"
+                  value={motivoBolson}
+                  onChange={(e) => setMotivoBolson(e.target.value)}
+                  maxLength={160}
+                  placeholder="Ej. Cliente rechazó el pedido completo, pedido cancelado, etc."
+                  className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg text-xs font-medium bg-white text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
+                />
+                <p className="text-[10px] text-slate-500">Queda registrado en la ruta y en su liquidación.</p>
+              </div>
+            </div>
+          ) : /* VISTA 3: RUTA A PISO (SE QUEDA PARA MAÑANA) */
+          isPiso ? (
             <div className="space-y-4">
               <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl text-amber-950 space-y-3">
                 <div className="flex items-center font-bold text-sm text-amber-900">
@@ -1308,7 +1393,11 @@ export const AssignModal: React.FC<AssignModalProps> = ({
               </span>
             }
           >
-            {isPiso ? (
+            {isBolson ? (
+              <Button type="submit" variant="danger" size="lg" icon={ACTION_ICONS.aPiso}>
+                Enviar a Bolsón (rechazo)
+              </Button>
+            ) : isPiso ? (
               <Button type="submit" variant="warning" size="lg" icon={ACTION_ICONS.aPiso}>
                 Enviar a Piso (mañana)
               </Button>
