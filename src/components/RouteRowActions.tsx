@@ -35,6 +35,8 @@ export interface RowActionHandlers {
   onSplit: () => void;
   onRevertSplit: () => void;
   onMoveToFloor?: () => void;
+  // Ruta Bolsón: sacarla del bolsón (vuelve a quedar por asignar).
+  onRemoveBolson?: () => void;
   onViewReceipt: () => void;
   onViewConsolidated?: () => void;
   onDelete?: () => void;
@@ -45,6 +47,7 @@ export function getRowActions(
   h: RowActionHandlers
 ): { primary: RowAction | null; more: RowAction[]; danger: RowAction[] } {
   const isPiso = !!(route.aPiso || route.tipoAsignacion === 'Ruta a Piso');
+  const isBolson = !!(route.esBolson || route.tipoAsignacion === 'Ruta Bolsón');
   const canSplit = !route.isSplitRoute && route.estado === 'Pendiente';
   const more: RowAction[] = [];
   let primary: RowAction | null = null;
@@ -57,6 +60,12 @@ export function getRowActions(
 
   switch (route.estado) {
     case 'Pendiente':
+      if (isBolson) {
+        // No sale a ruta: se liquida directo como rechazo (sin camión ni tripulación).
+        primary = { key: 'liquidar', label: 'Liquidar bolsón', hint: 'Cerrar como rechazo (no salió)', icon: ACTION_ICONS.liquidar, tone: 'success', run: h.onLiquidate };
+        if (h.onRemoveBolson) more.push({ key: 'quitarBolson', label: 'Quitar de Bolsón', hint: 'Vuelve a quedar por asignar', icon: ACTION_ICONS.revertir, tone: 'primary', run: h.onRemoveBolson });
+        break;
+      }
       if (isPiso) {
         primary = { key: 'asignar', label: 'Sacar de Piso', hint: 'Asignar camión y despachar hoy', icon: ACTION_ICONS.asignar, tone: 'primary', run: h.onAssign };
       } else {
