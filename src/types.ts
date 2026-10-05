@@ -60,7 +60,15 @@ export type MotivoDevolucionReason =
 // tienen que ver con la mercadería entregada/devuelta, sino con el cierre de
 // caja/boleta del punto de venta al momento de liquidar. Ver
 // '../data/motivosCajaAbierta' para el catálogo con íconos.
-export type CajaAbiertaReason = 'PIN de Abasto' | 'Pendiente Validación de Boleta' | 'Fuera POS' | 'Nota de Crédito';
+export type CajaAbiertaReason =
+  | 'PIN de Abasto'
+  | 'Pendiente Validación de Boleta'
+  | 'Fuera POS'
+  | 'Nota de Crédito'
+  | 'Producto pendiente de entregar'
+  | 'Pago en línea pendiente'
+  | 'Diferencia de producto faltante en ruta (Bodega)'
+  | 'Asalto';
 
 // Un cliente/punto de venta dentro de una ruta, tal como viene en el archivo
 // "Clientes N" que envía el cliente (operador logístico) junto con el resumen de
@@ -191,6 +199,8 @@ export interface RouteLiquidation {
   // que se resuelva. Ver CajaAbiertaReason en este mismo archivo.
   cajaAbierta?: boolean;
   motivoCajaAbierta?: CajaAbiertaReason;
+  // Valor (Q) de la diferencia de la ruta que deja la caja pendiente (opcional).
+  montoDiferenciaCaja?: number;
   // Liquidación Final: para una ruta que quedó en Caja Abierta, esta opción
   // (disponible desde el Tablero de Rutas Liquidadas) permite cerrar
   // definitivamente el pendiente de validación una vez resuelto, sin alterar
