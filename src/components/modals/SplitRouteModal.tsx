@@ -202,7 +202,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
   const hasMismatch = sumParadasMismatch || sumCajasMismatch || emptyTrips.length > 0;
 
   return (
-    <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center ${isMaximized ? 'p-0' : 'p-3 sm:p-4'}`}>
+    <div className={`fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center ${isMaximized ? 'p-0' : 'p-3 sm:p-4'}`}>
       <div
         className={`bg-white w-full shadow-2xl border border-slate-200 overflow-hidden transform transition-all flex flex-col ${
           isMaximized ? 'h-full max-h-full rounded-none' : `rounded-2xl ${hasClients ? 'max-w-3xl' : 'max-w-lg'} max-h-[92vh]`
