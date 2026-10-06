@@ -77,6 +77,8 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   const [motivoCajaAbierta, setMotivoCajaAbierta] = useState<CajaAbiertaReason | null>(null);
   const [cajaAbiertaError, setCajaAbiertaError] = useState('');
   const [montoDiferencia, setMontoDiferencia] = useState('');
+  // Ventana emergente "¿Estás seguro?" antes del OK final.
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [comentario, setComentario] = useState('');
   // Clientes marcados puntualmente como pendientes en Ruta Abierta / Caja
   // Abierta (código -> motivo elegido, vacío mientras no se elija). Solo tiene
@@ -102,6 +104,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       setMotivoCajaAbierta(null);
       setCajaAbiertaError('');
       setMontoDiferencia('');
+      setConfirmOpen(false);
       setComentario('');
       setClientesMarcados(new Map());
       setClientesFiltro('');
@@ -178,8 +181,30 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
     (tipoResolucion === 'abierta' && !tieneClientes) ||
     (tipoResolucion !== 'abierta' && hayDiferencia && (tipoResolucion === 'cajaAbierta' || clientesMarcados.size === 0));
 
+  // Validación previa (ventana emergente): avisos antes de confirmar.
+  const clientesSinMotivo = Array.from(clientesMarcados.values()).some((m) => !m);
+  const bloqueos: string[] = [];
+  const avisos: string[] = [];
+  if (tipoResolucion === 'cajaAbierta') {
+    if (!motivoCajaAbierta) bloqueos.push('El motivo de la caja abierta no está marcado.');
+    if (montoDiferencia.trim() === '') avisos.push('El valor de dinero (Q) de la diferencia está en blanco.');
+    else if (!(Number(montoDiferencia.replace(',', '.')) > 0)) avisos.push('El valor de dinero (Q) de la diferencia es 0.');
+  }
+  if (tipoResolucion === 'liquidada' && hayDiferencia && clientesMarcados.size === 0 && !motivoGeneral) {
+    bloqueos.push('Hay diferencia (cajas devueltas o paradas no entregadas) y no se marcó ningún motivo.');
+  }
+  if (tipoResolucion === 'abierta' && !motivoGeneral && clientesMarcados.size === 0) {
+    avisos.push('No se marcó motivo para dejar la ruta abierta (se registrará como Revisita).');
+  }
+  if (clientesSinMotivo) bloqueos.push('Hay clientes marcados como pendientes sin motivo.');
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setConfirmOpen(true);
+  };
+
+  const doSubmit = () => {
+    setConfirmOpen(false);
     const isCajaAbierta = tipoResolucion === 'cajaAbierta';
     if (isCajaAbierta && !motivoCajaAbierta) {
       setCajaAbiertaError('Selecciona el motivo por el que la caja queda pendiente de validar.');
@@ -829,6 +854,71 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
           </ModalFooter>
         </form>
       </div>
+
+      {/* Ventana emergente de confirmación antes del OK final */}
+      {confirmOpen && (() => {
+        const n3 = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 3 });
+        const modalidad = tipoResolucion === 'abierta' ? 'Ruta Abierta (para reasignar)' : tipoResolucion === 'cajaAbierta' ? 'Caja Abierta (pendiente de validar)' : 'Cierre definitivo (liquidada)';
+        const motivoTxt =
+          tipoResolucion === 'cajaAbierta'
+            ? motivoCajaAbierta || '— sin marcar —'
+            : clientesMarcados.size > 0
+            ? Array.from(new Set(Array.from(clientesMarcados.values()).filter(Boolean))).join(', ') || '— sin marcar —'
+            : motivoGeneral || (hayDiferencia || tipoResolucion === 'abierta' ? '— sin marcar —' : 'No aplica (entrega completa)');
+        const montoTxt = montoDiferencia.trim() === '' ? '— en blanco —' : `Q ${Number(montoDiferencia.replace(',', '.') || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        return (
+          <div className="fixed inset-0 z-[60] bg-slate-900/50 flex items-center justify-center p-4" role="alertdialog" aria-modal="true" aria-labelledby="liqConfirmTitle">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden">
+              <div className={`px-5 py-3.5 text-white ${bloqueos.length ? 'bg-rose-600' : avisos.length ? 'bg-amber-500' : 'bg-slate-900'}`}>
+                <h4 id="liqConfirmTitle" className="font-bold text-base">
+                  {bloqueos.length ? 'Falta información antes de liquidar' : '¿Estás seguro de liquidar esta ruta?'}
+                </h4>
+                <p className="text-xs opacity-90">Ruta {route.id} · {route.agencia}</p>
+              </div>
+              <div className="p-5 space-y-3 text-sm">
+                {bloqueos.length > 0 && (
+                  <ul className="space-y-1.5">
+                    {bloqueos.map((b) => (
+                      <li key={b} className="flex gap-2 text-rose-700 font-semibold"><span>⛔</span><span>{b}</span></li>
+                    ))}
+                  </ul>
+                )}
+                {avisos.length > 0 && (
+                  <ul className="space-y-1.5">
+                    {avisos.map((a) => (
+                      <li key={a} className="flex gap-2 text-amber-800 font-semibold"><span>⚠️</span><span>{a}</span></li>
+                    ))}
+                  </ul>
+                )}
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs bg-slate-50 border border-slate-200 rounded-xl p-3">
+                  <dt className="text-slate-500">Modalidad</dt><dd className="font-semibold text-slate-800">{modalidad}</dd>
+                  <dt className="text-slate-500">Paradas</dt><dd className="font-semibold text-slate-800">{guiasExitosas} entregadas · {guiasRechazadas} no entregadas</dd>
+                  <dt className="text-slate-500">Cajas</dt><dd className="font-semibold text-slate-800">{n3(cajasEntregadas)} entregadas · {n3(devueltasNum)} devueltas</dd>
+                  <dt className="text-slate-500">Motivo</dt><dd className={`font-semibold ${motivoTxt.startsWith('—') ? 'text-rose-700' : 'text-slate-800'}`}>{motivoTxt}</dd>
+                  {tipoResolucion === 'cajaAbierta' && (
+                    <>
+                      <dt className="text-slate-500">Valor (Q)</dt><dd className={`font-semibold ${montoTxt.startsWith('—') ? 'text-amber-700' : 'text-slate-800'}`}>{montoTxt}</dd>
+                    </>
+                  )}
+                </dl>
+                {!bloqueos.length && avisos.length > 0 && (
+                  <p className="text-xs text-slate-600">Puedes volver para completar los datos o continuar así.</p>
+                )}
+              </div>
+              <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap justify-end gap-2">
+                <Button variant="secondary" size="lg" onClick={() => setConfirmOpen(false)} autoFocus={bloqueos.length > 0 || avisos.length > 0}>
+                  {bloqueos.length ? 'Volver y completar' : 'Volver a revisar'}
+                </Button>
+                {!bloqueos.length && (
+                  <Button variant={tipoResolucion === 'cajaAbierta' ? 'warning' : tipoResolucion === 'abierta' ? 'primary' : 'success'} size="lg" onClick={doSubmit}>
+                    {avisos.length ? 'Sí, liquidar así' : 'Sí, confirmar'}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
