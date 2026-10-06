@@ -261,6 +261,9 @@ export interface Route {
   // a la Agencia y el Mercado). Se captura desde la Plantilla de Carga de Rutas,
   // se muestra en el Tablero de Rutas y viaja con la ruta hasta su liquidación.
   segmento?: string;
+  // Bitácora de cambios de segmento hechos desde el Tablero (con autorización
+  // de un administrador).
+  historialSegmento?: { fecha: string; de: string; a: string; por: string; autorizadoPor: string }[];
   fecha: string;
   fechaAsignacion?: string;
   fechaLiquidacion?: string;
