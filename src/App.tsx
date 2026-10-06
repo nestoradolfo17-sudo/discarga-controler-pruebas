@@ -1747,9 +1747,12 @@ export default function App() {
 
     // 1. Rutas Pendientes estrictamente por asignar camión y tripulación para salir a reparto hoy
     // Las rutas trasladadas a piso NO se cuentan como pendientes por asignar hoy
+    // Ruta Bolsón (enviada a rechazo, sin asignación ni salida) NO es pendiente de asignar.
+    const isBolsonRoute = (r: Route) => Boolean(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
     const pendientesCount = scoped.filter(
-      (r) => r.estado === 'Pendiente' && !isFloor(r)
+      (r) => r.estado === 'Pendiente' && !isFloor(r) && !isBolsonRoute(r)
     ).length;
+    const bolsonCount = scoped.filter((r) => r.estado !== 'Liquidada' && isBolsonRoute(r)).length;
 
     // 2. Rutas en Tránsito en la jornada
     const transitoCount = scoped.filter((r) => r.estado === 'En Tránsito').length;
@@ -1825,6 +1828,7 @@ export default function App() {
       pendientes: pendientesCount,
       transito: transitoCount,
       recargasTransito: recargasTransitoCount,
+      bolson: bolsonCount,
       abiertas: abiertasCount,
       liquidadas: liqHoy.length,
       liquidadasTotal: liqScoped.length,
@@ -3633,6 +3637,7 @@ export default function App() {
           pendientes={stats.pendientes}
           transito={stats.transito - stats.recargasTransito}
           recargas={stats.recargasTransito}
+          bolson={stats.bolson}
           abiertas={stats.abiertas}
           liquidadas={stats.liquidadas}
           liquidadasTotal={stats.liquidadasTotal}
