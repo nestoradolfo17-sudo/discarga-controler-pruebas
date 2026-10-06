@@ -27,14 +27,17 @@ import { ACTION_ICONS } from '../ui/actionIcons';
 import { formatDateToGuatemala, getTomorrowGuatemalaDate } from '../../utils/date';
 import { ResourcePicker, PickerItem, PickerStatus } from '../ResourcePicker';
 import { suggestCrewForRoute } from '../../utils/crewSuggestion';
+import { mismaJornada, esJornadaFutura } from '../../utils/jornada';
 
-// Recursos ocupados ahora mismo en OTRAS rutas en tránsito (para no
-// precargarlos como sugerencia por defecto).
-function busyNamesAndTrucks(routes: Route[], excludeKey: string) {
+// Recursos ocupados ahora mismo en OTRAS rutas en tránsito DE LA MISMA JORNADA
+// (para no precargarlos como sugerencia por defecto). Las rutas del día
+// siguiente no compiten con las de hoy: se pueden asignar sin liquidar hoy.
+function busyNamesAndTrucks(routes: Route[], excludeKey: string, ref?: Route | null) {
   const people = new Set<string>();
   const trucksBusy = new Set<string>();
   routes.forEach((r) => {
     if (r.estado !== 'En Tránsito' || !r.asignacion || getRouteKey(r) === excludeKey) return;
+    if (ref && !mismaJornada(r, ref)) return;
     const a = r.asignacion;
     if (a.camionId) trucksBusy.add(a.camionId);
     [a.conductor, a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].forEach((n) => n && people.add(n));
@@ -217,8 +220,9 @@ export const AssignModal: React.FC<AssignModalProps> = ({
         // en otra ruta o marcado como no disponible. Si no hay historial, los
         // campos quedan vacíos para elegirlos con el buscador.
         const sug = suggestCrewForRoute(route, [...activeRoutes, ...historyRoutes], trucks, staff);
-        const busy = busyNamesAndTrucks(activeRoutes, getRouteKey(route));
-        const todayStr = formatDateToGuatemala(new Date());
+        const busy = busyNamesAndTrucks(activeRoutes, getRouteKey(route), route);
+        // Motivos de no asignación: cuentan para el día de la ruta (hoy o la fecha futura).
+        const todayStr = esJornadaFutura(route.fecha) ? formatDateToGuatemala(route.fecha) : formatDateToGuatemala(new Date());
         const unavailableToday = (name: string) => {
           const st = staff.find((x) => x.nombre === name);
           return !!st && isNotAvailableToday(st.motivoNoAsignado, st.motivoNoAsignadoFecha, todayStr);
@@ -332,7 +336,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   };
 
   const activeRoutesWithCrew = activeRoutes.filter(
-    (r) => r.estado === 'En Tránsito' && getRouteKey(r) !== getRouteKey(route) && r.asignacion
+    (r) => r.estado === 'En Tránsito' && getRouteKey(r) !== getRouteKey(route) && r.asignacion && mismaJornada(r, route)
   );
 
   const handleActiveCrewSelect = (routeId: string) => {
@@ -431,17 +435,21 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   };
 
   // --- Buscador táctil: listas de camiones, pilotos y auxiliares ---
-  const todayStr = formatDateToGuatemala(new Date());
+  // Día de referencia para motivos de no asignación: hoy, o la fecha de la ruta si es futura.
+  const todayStr = esJornadaFutura(route.fecha) ? formatDateToGuatemala(route.fecha) : formatDateToGuatemala(new Date());
   const suggestion = suggestCrewForRoute(route, [...activeRoutes, ...historyRoutes], trucks, staff);
   const helpersSelected = [helper1, helper2, helper3, helper4].filter(Boolean);
   const inTransitOthers = activeRoutes.filter(
-    (ar) => ar.estado === 'En Tránsito' && getRouteKey(ar) !== getRouteKey(route) && ar.asignacion
+    (ar) => ar.estado === 'En Tránsito' && getRouteKey(ar) !== getRouteKey(route) && ar.asignacion && mismaJornada(ar, route)
   );
   // Recursos ya asignados a OTRA ruta en tránsito: se quitan de los buscadores.
   // Para unir dos rutas en un mismo camión (carga compartida) la única vía es
   // "Optimización de Carga" / "Autocompletar con tripulación en ruta": los
   // recursos de la ruta elegida ahí son los únicos ocupados que se permiten.
-  const busyNow = busyNamesAndTrucks(activeRoutes, getRouteKey(route));
+  const busyNow = busyNamesAndTrucks(activeRoutes, getRouteKey(route), route);
+  // Ruta de una fecha futura (p. ej. asignación de mañana a las 21:00): el estado
+  // "En ruta" de hoy no la afecta; camión y tripulación quedan disponibles.
+  const rutaFutura = esJornadaFutura(route.fecha);
   const sharedRoute = selectedActiveCrewRouteId
     ? activeRoutes.find((r) => getRouteKey(r) === selectedActiveCrewRouteId && r.asignacion)
     : undefined;
@@ -475,7 +483,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     } else if (routesOnTruck.length > 0) {
       status = 'compartida';
       label = `Carga compartida: ${routesOnTruck.map((r) => r.id).join(', ')}`;
-    } else if (t.estado === 'En Ruta') {
+    } else if (t.estado === 'En Ruta' && !rutaFutura) {
       status = 'enruta';
       label = 'En ruta';
     } else if (isSug) {
@@ -512,7 +520,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     } else if (sameTruck.length > 0) {
       status = 'compartida';
       label = `Carga compartida: ${sameTruck.map((r) => r.id).join(', ')}`;
-    } else if (d.estado === 'En Ruta') {
+    } else if (d.estado === 'En Ruta' && !rutaFutura) {
       status = 'enruta';
       label = 'En ruta';
     } else if (isSug) {
@@ -547,7 +555,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       } else if (routesOnHelper.length > 0) {
         status = 'compartida';
         label = `En ruta ${routesOnHelper.map((r) => r.id).join(', ')}`;
-      } else if (h.estado === 'En Ruta') {
+      } else if (h.estado === 'En Ruta' && !rutaFutura) {
         status = 'enruta';
         label = 'En ruta';
       } else if (isSug) {
