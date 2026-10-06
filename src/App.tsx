@@ -35,6 +35,7 @@ import { TRUCK_REASON_REMUNERA, STAFF_REASON_REMUNERA } from './data/unavailable
 import { exportRoutesToExcel } from './utils/excel';
 import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate, parseFlexibleDate } from './utils/date';
 import { getRouteKey, routeMatchesKey, isSameSplitGroup } from './utils/routeKey';
+import { esJornadaFutura } from './utils/jornada';
 import {
   getSessionUserId,
   onAuthChange,
@@ -1600,6 +1601,9 @@ export default function App() {
     const people = new Set<string>();
     routes.forEach((r) => {
       if (r.estado !== 'En Tránsito' || !r.asignacion) return;
+      // Rutas de fechas futuras ya asignadas (p. ej. las de mañana, asignadas a
+      // las 21:00) no ponen "En Ruta" hoy al camión ni a la tripulación.
+      if (esJornadaFutura(r.fecha)) return;
       const a = r.asignacion;
       if (a.camionId) truckIds.add(a.camionId);
       [a.conductor, a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].forEach((n) => {
