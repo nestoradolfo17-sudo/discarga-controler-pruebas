@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 import type { AppUser, TablePermissions } from '../types';
 
@@ -95,6 +96,51 @@ export async function verifyOwnPassword(username: string, password: string): Pro
     password,
   });
   return !error;
+}
+
+/**
+ * Verifica usuario y contraseña de un ADMINISTRADOR sin tocar la sesión de
+ * quien está usando la app (p. ej. un supervisor pide autorización a un
+ * administrador para cambiar el segmento de una ruta). Usa un cliente
+ * temporal en memoria que se cierra al terminar; la sesión principal no cambia.
+ */
+export async function verifyAdminCredentials(
+  username: string,
+  password: string
+): Promise<{ ok: boolean; nombre?: string; error?: string }> {
+  if (!supabase) return { ok: false, error: 'La base de datos no está configurada.' };
+  const url = import.meta.env.VITE_SUPABASE_URL as string;
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+  const temp = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'dc-verificacion-admin' },
+  });
+  try {
+    const { data, error } = await temp.auth.signInWithPassword({ email: usernameToEmail(username), password });
+    if (error || !data.user) {
+      if (error && !/invalid login credentials/i.test(error.message)) {
+        return { ok: false, error: `No se pudo verificar: ${error.message}` };
+      }
+      return { ok: false, error: 'Usuario o contraseña de administrador incorrectos.' };
+    }
+    const { data: prof } = await temp
+      .from('app_users')
+      .select('username, nombre, is_admin, activo')
+      .eq('id', data.user.id)
+      .maybeSingle();
+    if (!prof || !prof.is_admin || prof.activo === false) {
+      return { ok: false, error: 'Ese usuario no es un administrador activo.' };
+    }
+    return { ok: true, nombre: prof.nombre || prof.username };
+  } catch (e) {
+    return { ok: false, error: `No se pudo verificar: ${(e as Error)?.message || 'error de conexión'}` };
+  } finally {
+    try {
+      // Solo cierra la sesión temporal (no afecta otras sesiones del administrador).
+      await temp.auth.signOut({ scope: 'local' });
+    } catch {
+      /* nada que cerrar */
+    }
+  }
 }
 
 /**
