@@ -4065,6 +4065,10 @@ export default function App() {
         routes={routes}
         onSetTruckReason={handleSetTruckReason}
         onSetStaffReason={handleSetStaffReason}
+        summaryRoutes={routes.filter((r) => canViewAgency(r.agencia))}
+        fechaOperacion={stats.fechaHoy}
+        agencies={boardAgencies}
+        selectedAgency={selectedAgency}
       />
 
       {isSupabaseConfigured && !isOnline && (
