@@ -16,6 +16,7 @@ import {
   X,
   Users,
   Plus,
+  Tag,
 } from 'lucide-react';
 import React from 'react';
 
@@ -53,6 +54,7 @@ export const ACTION_ICONS = {
   cerrar: X,
   nuevo: Plus,
   mas: MoreDots,
+  segmento: Tag,
 } as const;
 
 export type ActionIconKey = keyof typeof ACTION_ICONS;
