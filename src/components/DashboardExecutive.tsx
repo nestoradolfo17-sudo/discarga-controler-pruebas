@@ -46,7 +46,24 @@ interface Props {
   staff: Staff[];
   stats: DashboardStats;
   selectedAgency: string;
+  // Si solo se cargaron los últimos N días del historial (ver App.tsx).
+  historyLimitedDays?: number;
+  onLoadFullHistory?: () => void;
+  isLoadingFullHistory?: boolean;
 }
+
+type PeriodKind = 'hoy' | 'ayer' | '7d' | 'rango' | 'mes';
+const sod = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fromIso = (s: string) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return y && m && d ? new Date(y, m - 1, d) : null;
+};
+const routeDayKey = (r: Route) => {
+  const raw = r.fechaOriginalRuta || r.fecha;
+  return raw ? formatDateToGuatemala(raw) : null;
+};
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
 const n0 = (v: number) => Math.round(v).toLocaleString('es-GT');
 const n1 = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 1 });
@@ -169,42 +186,112 @@ const Columns: React.FC<{ data: { key: string; label: string; value: number; tip
   );
 };
 
-export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, trucks, staff, stats, selectedAgency }) => {
+export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, trucks, staff, stats: statsHoy, selectedAgency, historyLimitedDays, onLoadFullHistory, isLoadingFullHistory }) => {
   const now = Date.now();
   const today = formatDateToGuatemala(new Date());
-  const opDate = stats.fechaHoy || today;
+  const opDate = statsHoy.fechaHoy || today;
 
-  // Universo del día: rutas del tablero + liquidadas hoy (sin repetir).
+  // ---------- Filtro de fechas: Hoy · Ayer · Últimos 7 días · Rango (varios días) · Mes ----------
+  const hoyD = sod(new Date());
+  const [kind, setKind] = useState<PeriodKind>('hoy');
+  const [desde, setDesde] = useState(isoDay(new Date(+hoyD - 6 * 864e5)));
+  const [hasta, setHasta] = useState(isoDay(hoyD));
+  const [mes, setMes] = useState(isoDay(hoyD).slice(0, 7));
+  const periodDays = useMemo(() => {
+    let a = hoyD, b = hoyD;
+    if (kind === 'ayer') a = b = new Date(+hoyD - 864e5);
+    else if (kind === '7d') a = new Date(+hoyD - 6 * 864e5);
+    else if (kind === 'rango') {
+      const x = fromIso(desde), y = fromIso(hasta);
+      if (x && y) [a, b] = x <= y ? [x, y] : [y, x];
+    } else if (kind === 'mes') {
+      const [yy, mm] = mes.split('-').map(Number);
+      if (yy && mm) {
+        a = new Date(yy, mm - 1, 1);
+        b = new Date(yy, mm, 0);
+      }
+    }
+    const out: Date[] = [];
+    for (let d = new Date(a); d <= b && out.length < 400; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) out.push(d);
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, desde, hasta, mes]);
+  const periodKeys = useMemo(() => new Set(periodDays.map((d) => formatDateToGuatemala(d))), [periodDays]);
+  const isHoy = kind === 'hoy';
+  const fmtD = (d: Date) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  const periodLabel = isHoy
+    ? `Jornada ${opDate}`
+    : kind === 'mes' && periodDays.length
+    ? `Mes de ${MESES[periodDays[0].getMonth()]} ${periodDays[0].getFullYear()}`
+    : periodDays.length === 1
+    ? `Día ${fmtD(periodDays[0])}`
+    : periodDays.length
+    ? `Del ${fmtD(periodDays[0])} al ${fmtD(periodDays[periodDays.length - 1])} (${periodDays.length} días)`
+    : 'Periodo sin días';
+  const firstDay = periodDays[0];
+  const fueraDeHistorial = !!historyLimitedDays && !!firstDay && (+hoyD - +firstDay) / 864e5 > historyLimitedDays;
+
+  // Universo del periodo.
+  //  • Hoy: rutas del tablero + liquidadas hoy (igual que siempre).
+  //  • Otro periodo: todas las rutas (tablero + historial) cuya FECHA DE RUTA cae en los días elegidos.
   const liqHoy = useMemo(
-    () => liquidatedRoutes.filter((r) => {
-      const d = liqDateOf(r);
-      return d === today || d === opDate;
-    }),
-    [liquidatedRoutes, today, opDate]
+    () =>
+      isHoy
+        ? liquidatedRoutes.filter((r) => {
+            const d = liqDateOf(r);
+            return d === today || d === opDate;
+          })
+        : [],
+    [liquidatedRoutes, today, opDate, isHoy]
   );
   const dayRoutes = useMemo(() => {
     const m = new Map<string, Route>();
-    routes.forEach((r) => m.set(getRouteKey(r), r));
-    liqHoy.forEach((r) => {
-      const k = getRouteKey(r);
-      if (!m.has(k)) m.set(k, r);
-    });
+    if (isHoy) {
+      routes.forEach((r) => m.set(getRouteKey(r), r));
+      liqHoy.forEach((r) => {
+        const k = getRouteKey(r);
+        if (!m.has(k)) m.set(k, r);
+      });
+    } else {
+      // primero el historial (liquidadas) y luego el tablero, que tiene el estado más reciente
+      [...liquidatedRoutes, ...routes].forEach((r) => {
+        const k = routeDayKey(r);
+        if (k && periodKeys.has(k)) m.set(getRouteKey(r) + '|' + (r.tripNumber || 1) + '|' + (r.liquidacion?.fechaLiquidacion || ''), r);
+      });
+    }
     return Array.from(m.values());
-  }, [routes, liqHoy]);
+  }, [routes, liqHoy, liquidatedRoutes, isHoy, periodKeys]);
+  const liqPeriodo = useMemo(() => (isHoy ? liqHoy : dayRoutes.filter((r) => !!r.liquidacion)), [isHoy, liqHoy, dayRoutes]);
+
+  // Indicadores del periodo (para "Hoy" se usan los mismos del tablero).
+  const stats = useMemo(() => {
+    if (isHoy) return statsHoy;
+    const noLiq = dayRoutes.filter((r) => !r.liquidacion && r.estado !== 'Liquidada');
+    return {
+      ...statsHoy,
+      pendientes: noLiq.filter((r) => r.estado === 'Pendiente' && !isPiso(r)).length,
+      transito: noLiq.filter((r) => r.estado === 'En Tránsito').length,
+      abiertas: noLiq.filter((r) => r.estado === 'Abierta').length,
+      pisoHoy: noLiq.filter((r) => r.estado === 'Pendiente' && isPiso(r)).length,
+      liquidadas: dayRoutes.length - noLiq.length,
+      cajasFisicasHoy: dayRoutes.reduce((a, r) => a + cajasPlan(r), 0),
+      cajasEntregadasHoy: liqPeriodo.reduce((a, r) => a + Number(r.liquidacion?.cajasEntregadas || 0), 0),
+    };
+  }, [isHoy, statsHoy, dayRoutes, liqPeriodo]);
 
   // ---------- KPIs principales ----------
   const totalPlan = stats.pendientes + stats.transito + stats.abiertas + stats.liquidadas + stats.pisoHoy;
   const cumplimiento = totalPlan > 0 ? stats.liquidadas / totalPlan : 0;
-  const cjEnt = liqHoy.reduce((a, r) => a + Number(r.liquidacion?.cajasEntregadas || 0), 0);
-  const cjDev = liqHoy.reduce((a, r) => a + Number(r.liquidacion?.cajasDevueltas || 0), 0);
+  const cjEnt = liqPeriodo.reduce((a, r) => a + Number(r.liquidacion?.cajasEntregadas || 0), 0);
+  const cjDev = liqPeriodo.reduce((a, r) => a + Number(r.liquidacion?.cajasDevueltas || 0), 0);
   const efectividad = cjEnt + cjDev > 0 ? cjEnt / (cjEnt + cjDev) : 1;
-  const activas = routes.filter((r) => r.estado !== 'Liquidada');
+  const activas = (isHoy ? routes : dayRoutes).filter((r) => r.estado !== 'Liquidada' && !r.liquidacion);
   const enOperacion = activas.filter((r) => r.estado === 'En Tránsito' || r.estado === 'Abierta').length;
   const bolsonCount = activas.filter(isBolson).length;
   const atrasadas = useMemo(
     () => activas.map((r) => ({ r, h: hoursSince(r, now) })).filter((x) => x.h >= 24).sort((a, b) => b.h - a.h),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [routes]
+    [routes, dayRoutes, isHoy]
   );
   const crit72 = atrasadas.filter((x) => x.h > 72).length;
   const truckActivos = trucks.filter((t) => t.estado !== 'Baja');
@@ -214,7 +301,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   const utilFlota = truckActivos.length ? truckEnRuta / truckActivos.length : 0;
 
   // ---------- Embudo del día ----------
-  const despachadas = dayRoutes.filter((r) => r.estado !== 'Pendiente').length;
+  const despachadas = dayRoutes.filter((r) => r.estado !== 'Pendiente' || !!r.liquidacion).length;
   const funnel = [
     { label: 'Planificadas', value: totalPlan, color: C_INFO },
     { label: 'Despachadas', value: despachadas, color: C_INFO },
@@ -222,23 +309,36 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   ];
 
   // ---------- Tendencia 7 días ----------
-  const trend = useMemo(() => {
-    const days: { key: string; label: string; rutas: number; ent: number; dev: number }[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      days.push({ key: formatDateToGuatemala(d), label: `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`, rutas: 0, ent: 0, dev: 0 });
+  // Hoy: últimos 7 días. Otro periodo: un punto por día del periodo (por semana si son más de 31 días).
+  const trendDays = useMemo(() => {
+    if (isHoy) {
+      const out: Date[] = [];
+      for (let i = 6; i >= 0; i--) out.push(new Date(+hoyD - i * 864e5));
+      return out;
     }
-    const by = new Map(days.map((d) => [d.key, d]));
+    return periodDays;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHoy, periodDays]);
+  const trendKeys = useMemo(() => new Set(trendDays.map((d) => formatDateToGuatemala(d))), [trendDays]);
+  const porSemana = trendDays.length > 31;
+  const trend = useMemo(() => {
+    const buckets: { key: string; label: string; rutas: number; ent: number; dev: number }[] = [];
+    const byDay = new Map<string, (typeof buckets)[number]>();
+    trendDays.forEach((d, i) => {
+      if (!porSemana || i % 7 === 0) {
+        buckets.push({ key: formatDateToGuatemala(d), label: `${porSemana ? 'Sem ' : ''}${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`, rutas: 0, ent: 0, dev: 0 });
+      }
+      byDay.set(formatDateToGuatemala(d), buckets[buckets.length - 1]);
+    });
     liquidatedRoutes.forEach((r) => {
-      const b = by.get(liqDateOf(r) || '');
+      const b = byDay.get(liqDateOf(r) || '');
       if (!b) return;
       b.rutas += 1;
       b.ent += Number(r.liquidacion?.cajasEntregadas || 0);
       b.dev += Number(r.liquidacion?.cajasDevueltas || 0);
     });
-    return days;
-  }, [liquidatedRoutes]);
+    return buckets;
+  }, [liquidatedRoutes, trendDays, porSemana]);
   const trendRutas = trend.map((d) => ({ key: d.key, label: d.label, value: d.rutas, tip: `${d.label}: ${d.rutas} ruta${d.rutas !== 1 ? 's' : ''} liquidada${d.rutas !== 1 ? 's' : ''}` }));
   const trendEfect = trend.map((d) => {
     const v = d.ent + d.dev > 0 ? (d.ent / (d.ent + d.dev)) * 100 : 0;
@@ -292,7 +392,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
 
   // ---------- Devoluciones (últimos 7 días) ----------
   const motivos = useMemo(() => {
-    const keys = new Set(trend.map((d) => d.key));
+    const keys = trendKeys;
     const m = new Map<string, { rutas: number; cajas: number }>();
     liquidatedRoutes.forEach((r) => {
       if (!keys.has(liqDateOf(r) || '')) return;
@@ -308,7 +408,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
       });
     });
     return Array.from(m.entries()).map(([motivo, v]) => ({ motivo, ...v })).sort((a, b) => b.cajas - a.cajas).slice(0, 6);
-  }, [liquidatedRoutes, trend]);
+  }, [liquidatedRoutes, trendKeys]);
   const motMax = Math.max(1, ...motivos.map((m) => m.cajas));
 
   // ---------- Alertas ----------
@@ -326,16 +426,75 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
         <div>
           <h2 className="text-lg font-bold text-slate-800">Dashboard ejecutivo</h2>
           <p className="text-xs text-slate-500">
-            Jornada {opDate} · Agencia: <span className="font-semibold text-slate-700">{selectedAgency === 'TODAS' ? 'Todas' : selectedAgency}</span> · {n0(totalPlan)} rutas planificadas
+            {periodLabel} · Agencia: <span className="font-semibold text-slate-700">{selectedAgency === 'TODAS' ? 'Todas' : selectedAgency}</span> · {n0(totalPlan)} rutas planificadas
           </p>
         </div>
         <span className="text-[11px] text-slate-400">Se actualiza solo con cada cambio del tablero</span>
       </div>
 
+      {/* Filtro de periodo */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mr-1">Periodo</span>
+        <div role="tablist" aria-label="Periodo del dashboard" className="inline-flex flex-wrap gap-1 bg-slate-100 rounded-xl p-1">
+          {([
+            ['hoy', 'Hoy'],
+            ['ayer', 'Ayer'],
+            ['7d', 'Últimos 7 días'],
+            ['rango', 'Rango de días'],
+            ['mes', 'Mes'],
+          ] as [PeriodKind, string][]).map(([k, l]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={kind === k}
+              onClick={() => setKind(k)}
+              className={`min-h-[40px] px-3 rounded-lg text-xs sm:text-sm font-semibold cursor-pointer ${kind === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        {kind === 'rango' && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <label className="flex items-center gap-1 font-semibold text-slate-600">
+              Desde
+              <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} className="min-h-[40px] px-2 border border-slate-300 rounded-lg bg-white" />
+            </label>
+            <label className="flex items-center gap-1 font-semibold text-slate-600">
+              Hasta
+              <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} className="min-h-[40px] px-2 border border-slate-300 rounded-lg bg-white" />
+            </label>
+          </div>
+        )}
+        {kind === 'mes' && (
+          <label className="flex items-center gap-1 text-xs font-semibold text-slate-600">
+            Mes
+            <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="min-h-[40px] px-2 border border-slate-300 rounded-lg bg-white" />
+          </label>
+        )}
+        <span className="text-xs font-semibold text-slate-700 ml-auto">{periodLabel}</span>
+        {!isHoy && (
+          <p className="basis-full text-[11px] text-slate-500">
+            Se analizan las rutas cuya <b>fecha de ruta</b> cae en el periodo (liquidadas y pendientes). Camiones y personal muestran el estado actual.
+          </p>
+        )}
+        {!isHoy && fueraDeHistorial && (
+          <div className="basis-full flex flex-wrap items-center gap-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            ⚠ Solo están cargados los últimos {historyLimitedDays} días del historial; el periodo elegido puede salir incompleto.
+            {onLoadFullHistory && (
+              <button type="button" onClick={onLoadFullHistory} disabled={isLoadingFullHistory} className="font-bold underline cursor-pointer disabled:opacity-50">
+                {isLoadingFullHistory ? 'Cargando historial…' : 'Cargar historial completo'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* 1. KPIs principales */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Kpi
-          label="Cumplimiento del día"
+          label={isHoy ? 'Cumplimiento del día' : 'Cumplimiento del periodo'}
           value={`${Math.round(cumplimiento * 100)}%`}
           progress={cumplimiento}
           accent={cumplStatus.c}
@@ -353,7 +512,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           icon={<PackageCheck className="w-4 h-4" />}
         />
         <Kpi
-          label="Cajas del día (CJ)"
+          label={isHoy ? 'Cajas del día (CJ)' : 'Cajas del periodo (CJ)'}
           value={n0(stats.cajasFisicasHoy)}
           progress={stats.cajasFisicasHoy > 0 ? Math.min(1, stats.cajasEntregadasHoy / stats.cajasFisicasHoy) : undefined}
           accent={C_INFO}
@@ -361,7 +520,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           icon={<Layers className="w-4 h-4" />}
         />
         <Kpi
-          label="En operación"
+          label={isHoy ? 'En operación' : 'Aún en operación'}
           value={n0(enOperacion)}
           accent={C_INFO}
           sub={`${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`}
@@ -386,7 +545,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
 
       {/* 2. Embudo + recursos */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card title="Avance de la jornada" sub="De lo planificado a lo liquidado" icon={<CheckCircle2 className="w-4 h-4 text-slate-500" />} className="lg:col-span-2">
+        <Card title={isHoy ? 'Avance de la jornada' : 'Avance del periodo'} sub="De lo planificado a lo liquidado" icon={<CheckCircle2 className="w-4 h-4 text-slate-500" />} className="lg:col-span-2">
           <div className="space-y-2.5">
             {funnel.map((f) => (
               <HBar key={f.label} label={f.label} value={f.value} max={Math.max(1, totalPlan)} color={f.color} display={`${n0(f.value)} · ${pctTxt(f.value, totalPlan)}`} />
@@ -441,12 +600,12 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
 
       {/* 3. Tendencia 7 días (dos gráficos, una medida cada uno) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title="Rutas liquidadas · últimos 7 días" sub={`${n0(sem.rutas)} rutas en la semana · promedio ${n1(sem.rutas / 7)} por día`}>
+        <Card title={`Rutas liquidadas · ${isHoy ? 'últimos 7 días' : porSemana ? 'por semana' : 'por día'}`} sub={`${n0(sem.rutas)} rutas en ${isHoy ? 'la semana' : 'el periodo'} · promedio ${n1(sem.rutas / Math.max(1, trendDays.length))} por día`}>
           <Columns data={trendRutas} color={C_INFO} />
         </Card>
         <Card
-          title="Efectividad de entrega · últimos 7 días"
-          sub={`Semana: ${sem.ent + sem.dev > 0 ? ((sem.ent / (sem.ent + sem.dev)) * 100).toFixed(1) + '%' : '—'} (${n1(sem.ent)} CJ entregadas / ${n1(sem.dev)} devueltas)`}
+          title={`Efectividad de entrega · ${isHoy ? 'últimos 7 días' : porSemana ? 'por semana' : 'por día'}`}
+          sub={`${isHoy ? 'Semana' : 'Periodo'}: ${sem.ent + sem.dev > 0 ? ((sem.ent / (sem.ent + sem.dev)) * 100).toFixed(1) + '%' : '—'} (${n1(sem.ent)} CJ entregadas / ${n1(sem.dev)} devueltas)`}
         >
           <Columns data={trendEfect} color={C_GOOD} fmt={(v) => `${Math.round(v)}%`} maxValue={100} />
         </Card>
@@ -454,7 +613,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
 
       {/* 4. Agencias + segmentos */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-        <Card title="Desempeño por agencia" sub="Jornada actual" icon={<Building2 className="w-4 h-4 text-slate-500" />} className="xl:col-span-3">
+        <Card title="Desempeño por agencia" sub={isHoy ? 'Jornada actual' : periodLabel} icon={<Building2 className="w-4 h-4 text-slate-500" />} className="xl:col-span-3">
           <div className="overflow-x-auto -mx-1">
             <table className="w-full text-xs">
               <thead>
@@ -521,12 +680,12 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
 
       {/* 5. Devoluciones + alertas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title="Principales motivos de devolución" sub="Cajas devueltas, últimos 7 días" icon={<PackageX className="w-4 h-4 text-slate-500" />}>
+        <Card title="Principales motivos de devolución" sub={`Cajas devueltas, ${isHoy ? 'últimos 7 días' : periodLabel.toLowerCase()}`} icon={<PackageX className="w-4 h-4 text-slate-500" />}>
           <div className="space-y-2.5">
             {motivos.map((m) => (
               <HBar key={m.motivo} label={m.motivo} value={m.cajas} max={motMax} color={C_SERIOUS} display={`${n1(m.cajas)} CJ`} tip={`${m.motivo}: ${n1(m.cajas)} CJ en ${m.rutas} ruta(s)`} />
             ))}
-            {motivos.length === 0 && <p className="text-xs text-slate-500">Sin devoluciones en los últimos 7 días. 👍</p>}
+            {motivos.length === 0 && <p className="text-xs text-slate-500">Sin devoluciones en {isHoy ? 'los últimos 7 días' : 'el periodo'}. 👍</p>}
           </div>
         </Card>
         <Card title="Alertas para atender" sub="Lo que requiere acción hoy" icon={<AlertTriangle className="w-4 h-4" style={{ color: C_CRIT }} />}>
