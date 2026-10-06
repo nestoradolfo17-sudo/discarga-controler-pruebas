@@ -19,6 +19,15 @@ export interface SegmentoPdfRow {
   cumplimiento: number;
 }
 
+export interface LiqSegMotivoRow {
+  motivo: string;
+  rutas: number;
+  cjPlan: number;
+  cjEnt: number;
+  cjDev: number;
+  cajaAbierta: number;
+}
+
 export interface DailySummaryPdfData {
   mode: 'inicio' | 'fin';
   fechaHoy: string;
@@ -127,6 +136,11 @@ export interface DailySummaryPdfData {
   // salieron a ruta (con su motivo), pero el PDF de Inicio/Fin de Día los
   // descartaba por completo — un dato clave para explicar por qué no se cubrió
   // el 100% de la operación (falta de recursos vs. falta de rutas).
+  // Cierre de día: liquidación de rutas por segmento y motivo (solo Fin de Día).
+  liqSegMotivo?: {
+    grupos: Array<{ segmento: string; rows: LiqSegMotivoRow[]; sub: LiqSegMotivoRow }>;
+    total: LiqSegMotivoRow;
+  };
   // Análisis por segmento (rutas y cajas CJ) — mismo cálculo que la pestaña "Por segmento" del modal.
   segmentos?: {
     rows: SegmentoPdfRow[];
@@ -537,6 +551,46 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
           hookData.cell.styles.fillColor = [226, 232, 240];
           hookData.cell.styles.fontStyle = 'bold';
           hookData.cell.styles.textColor = [15, 23, 42];
+        }
+      },
+      margin: { left: margin, right: margin },
+    });
+    // @ts-ignore
+    currentY = ((doc as any).lastAutoTable?.finalY || currentY + 30) + 5;
+  }
+
+  // 3c. CIERRE: LIQUIDACIÓN POR SEGMENTO Y MOTIVO
+  if (!isInicio && data.liqSegMotivo && data.liqSegMotivo.grupos.length) {
+    const L = data.liqSegMotivo;
+    const n1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('es-GT', { maximumFractionDigits: 1 });
+    const pDev = (r: LiqSegMotivoRow) => (r.cjEnt + r.cjDev > 0 ? ((r.cjDev / (r.cjEnt + r.cjDev)) * 100).toFixed(1) : '0.0') + '%';
+    if (currentY > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); currentY = 15; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(30, 41, 59);
+    doc.text('LIQUIDACIÓN DE RUTAS POR SEGMENTO Y MOTIVO', margin, currentY + 3);
+    currentY += 5;
+    const body: string[][] = [];
+    const strong: number[] = [];
+    L.grupos.forEach((g) => {
+      g.rows.forEach((r, i) => body.push([i === 0 ? g.segmento : '', r.motivo, `${r.rutas}`, n1(r.cjPlan), n1(r.cjEnt), n1(r.cjDev), pDev(r), r.cajaAbierta ? `${r.cajaAbierta}` : '-']));
+      strong.push(body.length);
+      body.push(['', `Subtotal ${g.segmento}`, `${g.sub.rutas}`, n1(g.sub.cjPlan), n1(g.sub.cjEnt), n1(g.sub.cjDev), pDev(g.sub), g.sub.cajaAbierta ? `${g.sub.cajaAbierta}` : '-']);
+    });
+    strong.push(body.length);
+    body.push(['TOTAL', '', `${L.total.rutas}`, n1(L.total.cjPlan), n1(L.total.cjEnt), n1(L.total.cjDev), pDev(L.total), L.total.cajaAbierta ? `${L.total.cajaAbierta}` : '-']);
+    autoTable(doc, {
+      startY: currentY,
+      head: [['SEGMENTO', 'MOTIVO', 'RUTAS', 'CJ PLAN', 'CJ ENTREGADAS', 'CJ DEVUELTAS', '% DEVOLUCIÓN', 'CAJA ABIERTA']],
+      body,
+      theme: 'grid',
+      styles: { fontSize: 7, cellPadding: 1.5, textColor: [30, 41, 59], lineColor: [203, 213, 225], lineWidth: 0.2, halign: 'center' },
+      headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+      columnStyles: { 0: { fontStyle: 'bold', halign: 'left' }, 1: { halign: 'left' } },
+      didParseCell: (hookData) => {
+        if (hookData.section === 'body' && strong.includes(hookData.row.index)) {
+          hookData.cell.styles.fillColor = hookData.row.index === body.length - 1 ? [226, 232, 240] : [241, 245, 249];
+          hookData.cell.styles.fontStyle = 'bold';
         }
       },
       margin: { left: margin, right: margin },
