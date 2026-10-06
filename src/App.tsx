@@ -3423,7 +3423,7 @@ export default function App() {
   // Botón "Rutas Prioridades": Excel con No. Ruta, Camión, Piloto y Segmento
   // de las rutas visibles en el Tablero (con los filtros aplicados).
   const handleExportRutasPrioridades = async () => {
-    const ok = await exportRutasPrioridadesToExcel(filteredActiveRoutes);
+    const ok = await exportRutasPrioridadesToExcel(filteredActiveRoutes, trucks);
     showToast(ok ? 'Excel de Rutas Prioridades descargado' : 'No hay rutas en el tablero para exportar', ok ? 'success' : 'error');
   };
 
