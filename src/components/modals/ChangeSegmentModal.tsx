@@ -46,7 +46,8 @@ export const ChangeSegmentModal: React.FC<ChangeSegmentModalProps> = ({
   if (!route) return null;
 
   const actual = (route.segmento || '').trim();
-  const opciones = Array.from(new Set([...SEGMENTO_OPTIONS, ...(actual ? [actual.toUpperCase()] : [])]));
+  // Lista desplegable: los segmentos de la Carga Masiva por Excel.
+  const opciones = SEGMENTO_OPTIONS;
   const puedeConfirmar = !!segmento && segmento !== actual.toUpperCase() && !!adminUser.trim() && !!password && !busy;
 
   const submit = async (e: React.FormEvent) => {
@@ -80,31 +81,24 @@ export const ChangeSegmentModal: React.FC<ChangeSegmentModalProps> = ({
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <p className="text-xs font-bold text-slate-600 uppercase mb-2">Nuevo segmento</p>
-            <div className="grid grid-cols-2 gap-2">
-              {opciones.map((op) => {
-                const esActual = op === actual.toUpperCase();
-                return (
-                  <button
-                    key={op}
-                    type="button"
-                    disabled={esActual}
-                    onClick={() => setSegmento(op)}
-                    aria-pressed={segmento === op}
-                    className={`min-h-[44px] px-3 rounded-xl text-sm font-semibold border transition ${
-                      segmento === op
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : esActual
-                        ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 cursor-pointer'
-                    }`}
-                  >
-                    {op}
-                    {esActual ? ' (actual)' : ''}
-                  </button>
-                );
-              })}
-            </div>
+            <label htmlFor="selNuevoSegmento" className="block text-xs font-bold text-slate-600 uppercase mb-2">
+              Nuevo segmento
+            </label>
+            <select
+              id="selNuevoSegmento"
+              value={segmento}
+              onChange={(e) => setSegmento(e.target.value)}
+              className="w-full min-h-[44px] border border-slate-300 rounded-xl px-3 text-sm font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">— Selecciona un segmento —</option>
+              {opciones.map((op) => (
+                <option key={op} value={op} disabled={op === actual.toUpperCase()}>
+                  {op}
+                  {op === actual.toUpperCase() ? ' (actual)' : ''}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-400 mt-1">Mismos segmentos que se usan al cargar las rutas por Excel.</p>
           </div>
 
           {splitCount > 1 && (
