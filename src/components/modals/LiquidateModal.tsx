@@ -6,7 +6,7 @@ import { Button, IconButton } from '../ui/Button';
 import { ModalFooter } from '../ui/ModalFooter';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { useMaximized } from '../ui/useMaximized';
-import { MOTIVO_DEVOLUCION_OPTIONS, MOTIVO_REVISITA } from '../../data/motivosDevolucion';
+import { MOTIVO_DEVOLUCION_OPTIONS, MOTIVO_REVISITA, MOTIVOS_RUTA_ABIERTA } from '../../data/motivosDevolucion';
 import { CAJA_ABIERTA_OPTIONS } from '../../data/motivosCajaAbierta';
 
 interface LiquidateModalProps {
@@ -171,7 +171,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   const esBolson = isBolsonRoute(route);
   const motivosDevolucionOpts: { reason: string; icon: string }[] =
     tipoResolucion === 'abierta'
-      ? [{ reason: MOTIVO_REVISITA, icon: '🔁' }, ...MOTIVO_DEVOLUCION_OPTIONS]
+      ? [{ reason: MOTIVO_REVISITA, icon: '🔁' }, ...MOTIVO_DEVOLUCION_OPTIONS, ...MOTIVOS_RUTA_ABIERTA]
       : esBolson
       ? [{ reason: MOTIVO_BOLSON, icon: '🗃️' }, ...MOTIVO_DEVOLUCION_OPTIONS]
       : MOTIVO_DEVOLUCION_OPTIONS;
@@ -263,7 +263,11 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
     let finalMotivos: string[] = motivosDeClientes.length > 0 ? motivosDeClientes : motivoGeneral ? [motivoGeneral] : [];
     if (isRutaAbierta && finalMotivos.length === 0) finalMotivos = [MOTIVO_REVISITA];
     if (!isRutaAbierta && !hayDiferencia) finalMotivos = [];
-    const validReasons = new Set<string>([MOTIVO_REVISITA, ...MOTIVO_DEVOLUCION_OPTIONS.map((o) => o.reason)]);
+    const validReasons = new Set<string>([
+      MOTIVO_REVISITA,
+      ...MOTIVO_DEVOLUCION_OPTIONS.map((o) => o.reason),
+      ...(isRutaAbierta ? MOTIVOS_RUTA_ABIERTA.map((o) => o.reason) : []),
+    ]);
     const finalMotivoDevolucion = finalMotivos.join(', ');
 
     onConfirmLiquidation(route.id, getRouteKey(route), {
