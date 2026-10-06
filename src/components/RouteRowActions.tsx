@@ -39,6 +39,8 @@ export interface RowActionHandlers {
   onRemoveBolson?: () => void;
   onViewReceipt: () => void;
   onViewConsolidated?: () => void;
+  // Cambiar el segmento de la ruta (pide usuario y contraseña de administrador).
+  onChangeSegment?: () => void;
   onDelete?: () => void;
 }
 
@@ -91,6 +93,10 @@ export function getRowActions(
         more.push({ key: 'consolidada', label: 'Acta consolidada', hint: 'Resumen de viajes divididos', icon: ACTION_ICONS.acta, tone: 'purple', run: h.onViewConsolidated });
       }
       break;
+  }
+
+  if (h.onChangeSegment && route.estado !== 'Liquidada') {
+    more.push({ key: 'segmento', label: 'Cambiar segmento', hint: 'Requiere contraseña de administrador', icon: ACTION_ICONS.segmento, tone: 'neutral', run: h.onChangeSegment });
   }
 
   const danger: RowAction[] = h.onDelete
