@@ -239,82 +239,45 @@ function buildRouteSummaryMetric(r: Route, fechaHoyStr?: string): RouteSummaryMe
     despachoLabel = 'Pendiente';
   }
 
-  // 3. TOTAL DE HORAS DESDE LA FECHA PLANIFICADA
+  // 3. ANTIGÜEDAD EN DÍAS ENTEROS (no por hora del día)
+  // Se cuentan días de calendario completos entre la fecha planificada y hoy
+  // (o el día de liquidación si ya se liquidó). Cada día = 24 h:
+  //   0 días → del día · 1 día → 24 h · 2–3 días → 72 h · 4+ días → mayor a 72 h.
   const now = new Date();
-  let elapsedMs = 0;
-
+  let refDate: Date = now;
   if (isLiquidada && r.liquidacion) {
-    // Si la ruta ya fue liquidada, calcular las horas que duró el ciclo operativo desde la fecha/hora planificada hasta la liquidación
-    let liqDate: Date | null = null;
-    if (r.fechaLiquidacion) {
-      liqDate = parseFlexibleDate(r.fechaLiquidacion);
-    } else if (r.liquidacion.fechaLiquidacion) {
-      liqDate = parseFlexibleDate(r.liquidacion.fechaLiquidacion);
-    } else {
-      liqDate = getRouteBaseDate(r) || now;
-    }
-
-    let liqHour = 17;
-    let liqMin = 0;
-    if (r.liquidacion.horaLiquidacion && r.liquidacion.horaLiquidacion.includes(':')) {
-      const [lh, lm] = r.liquidacion.horaLiquidacion.split(':');
-      liqHour = parseInt(lh, 10) || 17;
-      liqMin = parseInt(lm, 10) || 0;
-    }
-
-    if (liqDate && !isNaN(liqDate.getTime())) {
-      const liqDateTime = new Date(
-        liqDate.getFullYear(),
-        liqDate.getMonth(),
-        liqDate.getDate(),
-        liqHour,
-        liqMin,
-        0
-      );
-      elapsedMs = Math.max(0, liqDateTime.getTime() - plannedDateTime.getTime());
-    } else {
-      elapsedMs = Math.max(0, now.getTime() - plannedDateTime.getTime());
-    }
-  } else {
-    // Rutas activas, en tránsito o a piso: tiempo transcurrido desde la fecha/hora planificada hasta el momento actual
-    elapsedMs = Math.max(0, now.getTime() - plannedDateTime.getTime());
+    const liqDate =
+      parseFlexibleDate(r.fechaLiquidacion) || parseFlexibleDate(r.liquidacion.fechaLiquidacion) || null;
+    if (liqDate && !isNaN(liqDate.getTime())) refDate = liqDate;
   }
+  const diaNum = (d: Date): number | null => {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(formatDateToGuatemala(d) || '');
+    return m ? Math.round(Date.UTC(+m[3], +m[2] - 1, +m[1]) / 86400000) : null;
+  };
+  const planDia = diaNum(baseDate);
+  const refDia = diaNum(refDate);
+  const diasAtraso = planDia !== null && refDia !== null ? Math.max(0, refDia - planDia) : 0;
+  void plannedDateTime;
 
-  const totalHorasDesdePlan = Math.floor(elapsedMs / (1000 * 60 * 60));
-  const days = Math.floor(totalHorasDesdePlan / 24);
-  const remainingHours = totalHorasDesdePlan % 24;
-
-  let horasTexto = `${totalHorasDesdePlan}h`;
-  if (days > 0) {
-    horasTexto = `${totalHorasDesdePlan}h (${days}d ${remainingHours}h)`;
-  } else if (totalHorasDesdePlan === 0) {
-    horasTexto = '< 1h';
-  }
+  const totalHorasDesdePlan = diasAtraso * 24;
+  const horasTexto =
+    diasAtraso === 0 ? 'Del día' : diasAtraso === 1 ? '1 día (24 h)' : `${diasAtraso} días (${totalHorasDesdePlan} h)`;
 
   // 4. INDICADOR: ¿ATRASADO O EN TIEMPO?
-  // Criterios de atraso:
-  // - Proviene de días anteriores o supera las 24 horas transcurridas
-  // - Está a piso o no despachada cuando ya han transcurrido más de 3 horas desde el horario planificado
-  // - En tránsito con más de 10 horas sin concluir liquidación
-  let estaAtrasado = false;
-  let indicadorDetalle = 'En horario normal';
-
-  if (isRezagada || totalHorasDesdePlan >= 24) {
-    estaAtrasado = true;
-    indicadorDetalle = `Rezagada (${horasTexto} acumuladas)`;
-  } else if (isFloor) {
-    estaAtrasado = true;
-    indicadorDetalle = 'En resguardo / Bodega';
-  } else if (!isDespachada && totalHorasDesdePlan >= 3) {
-    estaAtrasado = true;
-    indicadorDetalle = `Sin salir (+${totalHorasDesdePlan}h de atraso)`;
-  } else if (isDespachada && totalHorasDesdePlan >= 10 && !isLiquidada) {
-    estaAtrasado = true;
-    indicadorDetalle = `En ruta demorada (+${totalHorasDesdePlan}h)`;
-  } else {
-    estaAtrasado = false;
-    indicadorDetalle = isDespachada ? 'Despacho puntual' : 'En programación';
-  }
+  // Atrasada = ruta con 24 horas o más (uno o más días completos desde su
+  // fecha planificada). Rango: 24 h, 72 h o mayor a 72 h.
+  const estaAtrasado = diasAtraso >= 1;
+  const indicadorDetalle = !estaAtrasado
+    ? isFloor
+      ? 'En resguardo / Bodega (del día)'
+      : isDespachada
+      ? 'Despacho del día'
+      : 'En programación'
+    : diasAtraso === 1
+    ? 'Atrasada 24 h'
+    : diasAtraso <= 3
+    ? 'Atrasada 72 h'
+    : 'Atrasada mayor a 72 h';
 
   // 5. CAJAS FÍSICAS
   const cajasFisicasPlan = Number(r.cajasFisicas || r.cajasOriginales || 0);
@@ -418,15 +381,17 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   // - Rutas ACTIVAS: siempre todo lo que está hoy en el Tablero de Rutas
   //   (pendientes, en tránsito, recargas, a piso, abiertas), sin importar la fecha.
   // - Rutas LIQUIDADAS: solo las liquidadas (o programadas) en la fecha elegida.
-  const allCurrentRoutes = useMemo(() => {
+  const liquidadaEnFecha = useMemo(() => {
     const fechasValidas = new Set<string>([fechaReporte]);
     if (esJornadaActual) fechasValidas.add(fechaRealHoy);
     const enFecha = (...vals: unknown[]) => vals.some((v) => {
       const d = fmtDay(v);
       return d !== null && fechasValidas.has(d);
     });
-    const liquidadaEnFecha = (r: Route) =>
-      enFecha(r.liquidacion?.fechaLiquidacion, r.fechaLiquidacion, r.fecha, r.fechaOriginalRuta);
+    return (r: Route) => enFecha(r.liquidacion?.fechaLiquidacion, r.fechaLiquidacion, r.fecha, r.fechaOriginalRuta);
+  }, [fechaReporte, esJornadaActual, fechaRealHoy]);
+
+  const allCurrentRoutes = useMemo(() => {
 
     const map = new Map<string, Route>();
     routes.forEach((r) => {
@@ -438,7 +403,25 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
       }
     });
     return Array.from(map.values());
-  }, [routes, allLiquidatedRoutes, fechaReporte, esJornadaActual, fechaRealHoy]);
+  }, [routes, allLiquidatedRoutes, liquidadaEnFecha]);
+
+  // Recargas (2° viaje) YA LIQUIDADAS en la fecha del reporte, contando cada
+  // viaje por separado (para "Total Recargas Realizadas" de Fin de Día).
+  const recargasLiquidadasFecha = useMemo(() => {
+    const seen = new Set<string>();
+    const out: RouteSummaryMetric[] = [];
+    allLiquidatedRoutes.forEach((r) => {
+      if (r.estado !== 'Liquidada') return;
+      const esRec = Boolean(r.esRecarga || r.tipoAsignacion === 'Recarga' || r.asignacion?.tipoAsignacion === 'Recarga');
+      if (!esRec || !liquidadaEnFecha(r)) return;
+      if (filterAgency !== 'TODAS' && (r.agencia || 'Mercado Abierto') !== filterAgency) return;
+      const k = `${r.id}__${r.fechaLiquidacion || r.liquidacion?.fechaLiquidacion || ''}__${r.agencia || ''}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push(buildRouteSummaryMetric(r, fechaReporte));
+    });
+    return out;
+  }, [allLiquidatedRoutes, liquidadaEnFecha, filterAgency, fechaReporte]);
 
   // Rutas activas del tablero (para no confundirlas con registros liquidados).
   const activeRouteSet = useMemo(
@@ -581,7 +564,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     // 1. Total Rutas en Tránsito (efectivamente despachadas a reparto hacia clientes)
     // Las recargas (2° viaje) en tránsito se cuentan aparte, no como "Tránsito".
     const enTransito = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga);
-    const recTransito = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito' && m.isRecarga);
+    // Recargas: Inicio = programadas (activas en el tablero como recarga);
+    // Fin = realizadas (recargas liquidadas en la fecha + las que siguen en ruta).
+    const recProgramadas = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.isRecarga);
+    const recEnRuta = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito' && m.isRecarga);
+    const recLiquidadas = mode === 'fin' ? recargasLiquidadasFecha : [];
+    const recTransito = mode === 'fin' ? [...recLiquidadas, ...recEnRuta] : recProgramadas;
     const enTransitoLiquidadas = enTransito.filter((m) => m.isLiquidada);
     const enTransitoPendientes = enTransito.filter((m) => !m.isLiquidada);
 
@@ -644,11 +632,11 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         totalPlan: recTransito.length,
         cajasPlan: recTransito.reduce((acc, m) => acc + m.cajasFisicasPlan, 0),
         paradasPlan: recTransito.reduce((acc, m) => acc + m.paradasPlan, 0),
-        finLiquidadas: 0,
-        finPendientes: recTransito.length,
-        finCajasEntregadas: 0,
-        finCajasDevueltas: 0,
-        finParadasRealizadas: 0,
+        finLiquidadas: recLiquidadas.length,
+        finPendientes: mode === 'fin' ? recEnRuta.length : recTransito.length,
+        finCajasEntregadas: recLiquidadas.reduce((acc, m) => acc + m.cajasFisicasEntregadas, 0),
+        finCajasDevueltas: recLiquidadas.reduce((acc, m) => acc + m.cajasFisicasDevueltas, 0),
+        finParadasRealizadas: recLiquidadas.reduce((acc, m) => acc + m.guiasExitosas, 0),
       },
       enTransito: {
         totalPlan: enTransito.length,
@@ -710,7 +698,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         finParadasRealizadas: rutasMayor72hLiquidadas.reduce((acc, m) => acc + m.guiasExitosas, 0),
       },
     };
-  }, [filteredMetrics]);
+  }, [filteredMetrics, mode, recargasLiquidadasFecha]);
 
   // ==============================================================
   // ANÁLISIS POR SEGMENTO: rutas y cajas (CJ) por segmento, para Inicio y Fin de Día
@@ -1045,7 +1033,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               </div>
               <p className="text-xs text-slate-400 print:text-slate-600 print:text-[11px] mt-0.5">
                 {mode === 'inicio'
-                  ? 'DISCARGA CONTROLER • Control de salida: No. Ruta, Fecha planificada, Fecha despachada, Horas transcurridas, Indicador de retraso, Cajas físicas, Paradas, Agencia y Segmento'
+                  ? 'DISCARGA CONTROLER • Control de salida: No. Ruta, Fecha planificada, Fecha despachada, Indicador de retraso (24 h / 72 h / +72 h), Cajas físicas, Paradas, Agencia y Segmento'
                   : 'DISCARGA CONTROLER • Cierre operativo: Comparativo de lo planificado vs ejecución real, efectividad de cajas entregadas, devoluciones y horas transcurridas'}
               </p>
               {!esJornadaActual && (
@@ -1326,7 +1314,9 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   <span className="text-xs font-semibold text-slate-500">con retraso</span>
                 </div>
                 <p className="text-[11px] text-rose-600 font-bold mt-0.5">
-                  {inicioAtrasadasCount > 0 ? `Hasta ${inicioMaxHorasAtraso}h transcurridas` : '0 atrasos registrados'}
+                  {inicioAtrasadasCount > 0
+                    ? `${summaryTotals.rutas24h.totalPlan} de 24 h · ${summaryTotals.rutas72h.totalPlan} de 72 h · ${summaryTotals.rutasMayor72h.totalPlan} de +72 h`
+                    : '0 atrasos registrados'}
                 </p>
               </div>
 
@@ -2331,9 +2321,13 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                           <Repeat className="w-4 h-4" />
                         </div>
                         <div>
-                          <p className="font-black text-slate-900 text-xs">Total Recargas en Tránsito</p>
+                          <p className="font-black text-slate-900 text-xs">
+                            {mode === 'inicio' ? 'Total Recargas Programadas' : 'Total Recargas Realizadas'}
+                          </p>
                           <p className="text-[11px] text-slate-500 font-normal">
-                            Rutas despachadas como Recarga (2° viaje), aún en ruta
+                            {mode === 'inicio'
+                              ? 'Rutas programadas como Recarga (2° viaje) en el Tablero de Rutas'
+                              : 'Recargas (2° viaje) despachadas: liquidadas en la fecha + las que siguen en ruta'}
                           </p>
                         </div>
                       </div>
@@ -2405,8 +2399,8 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     {/* Estatus / Resultado */}
                     <td className="px-3.5 py-3 text-center">
                       {mode === 'inicio' ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                          En Tránsito (Despachadas)
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                          Programadas
                         </span>
                       ) : summaryTotals.recargasTransito.finPendientes === 0 ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
@@ -3139,13 +3133,15 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       {/* 3. Fecha Despachada */}
                       <th className="px-3.5 py-3 text-center whitespace-nowrap">Fecha Despachada</th>
 
-                      {/* 4. Total de Horas desde la Fecha Planificada */}
+                      {/* 4. Antigüedad (días enteros) — solo Fin de Día; en Inicio no se muestra contador de horas */}
+                      {mode !== 'inicio' && (
                       <th className="px-3.5 py-3 text-center whitespace-nowrap">
                         <span className="inline-flex items-center">
                           <Clock className="w-3.5 h-3.5 mr-1 text-indigo-600" />
-                          Total Horas Plan
+                          Antigüedad (días)
                         </span>
                       </th>
+                      )}
 
                       {/* 5. Indicador para verificar si es atrasado o está en tiempo */}
                       <th className="px-3.5 py-3 text-center whitespace-nowrap">Indicador / Estado</th>
@@ -3234,22 +3230,24 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                             )}
                           </td>
 
-                          {/* 4. TOTAL DE HORAS DESDE LA FECHA PLANIFICADA */}
+                          {/* 4. ANTIGÜEDAD EN DÍAS (solo Fin de Día) */}
+                          {mode !== 'inicio' && (
                           <td className="px-3.5 py-3 text-center whitespace-nowrap font-bold">
                             <span
                               className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-black border ${
-                                item.totalHorasDesdePlan >= 24
+                                item.totalHorasDesdePlan > 72
                                   ? 'bg-rose-100 text-rose-900 border-rose-300'
-                                  : item.totalHorasDesdePlan >= 4
+                                  : item.totalHorasDesdePlan >= 24
                                   ? 'bg-orange-100 text-orange-900 border-orange-300'
                                   : 'bg-slate-100 text-slate-800 border-slate-300'
                               }`}
-                              title={`Horas transcurridas desde el inicio planificado: ${item.totalHorasDesdePlan}h`}
+                              title="Días completos desde la fecha planificada (cada día = 24 h)"
                             >
                               <Clock className="w-3 h-3 mr-1 text-current" />
                               {item.horasTexto}
                             </span>
                           </td>
+                          )}
 
                           {/* 5. INDICADOR PARA VERIFICAR SI ES ATRASADO O ESTÁ EN TIEMPO */}
                           <td className="px-3.5 py-3 text-center whitespace-nowrap">
@@ -3261,7 +3259,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                                 <AlertCircle className="w-3.5 h-3.5 mr-1 text-rose-600" />
                                 Atrasado
                                 <span className="ml-1 text-[10px] font-bold text-rose-700">
-                                  ({item.horasTexto})
+                                  ({item.totalHorasDesdePlan > 72 ? '+72 h' : item.totalHorasDesdePlan >= 48 ? '72 h' : '24 h'})
                                 </span>
                               </span>
                             ) : (
