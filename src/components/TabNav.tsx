@@ -227,7 +227,7 @@ export const TabNav: React.FC<TabNavProps> = ({
         <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden />
       </div>
 
-      <div className="flex items-center gap-2 ml-auto">
+      <div className="flex flex-wrap items-center justify-end gap-2 ml-auto max-w-full">
         {onFullscreen && (
           <IconButton
             variant="secondary"
@@ -248,14 +248,18 @@ export const TabNav: React.FC<TabNavProps> = ({
           />
         )}
         {onExportPrioridades && (
-          <IconButton
+          // Siempre con texto visible (también en tablet/celular) y con su propio
+          // ícono, para no confundirlo con "Descargar Excel".
+          <Button
+            id="btnRutasPrioridades"
             variant="secondary"
-            icon={ACTION_ICONS.exportar}
-            label="Rutas Prioridades"
-            showLabel
+            icon={ACTION_ICONS.prioridades}
             onClick={onExportPrioridades}
-            className="text-indigo-700"
-          />
+            title="Descargar Excel de Rutas Prioridades: No. Ruta, ID Camión, Camión, Piloto, Segmento, Horario y Prioridad de Carga"
+            className="text-indigo-700 border-indigo-300"
+          >
+            <span className="whitespace-nowrap">Rutas Prioridades</span>
+          </Button>
         )}
         {onOpenUnassignedResourcesModal && (
           <Button
