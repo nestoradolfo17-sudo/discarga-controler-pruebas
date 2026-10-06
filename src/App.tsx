@@ -26,20 +26,23 @@ import {
   deleteSharedRecords,
   setSyncErrorHandler,
   fetchSharedRowsByKeys,
+  fetchDatabaseSpace,
   SyncKeyFn,
   SyncedRow,
   SyncableTable,
 } from './services/sync';
 import { TRUCK_REASON_REMUNERA, STAFF_REASON_REMUNERA } from './data/unavailableReasons';
-import { exportRoutesToExcel } from './utils/excel';
-import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate } from './utils/date';
-import { getRouteKey, routeMatchesKey } from './utils/routeKey';
+import { exportRoutesToExcel, exportRutasPrioridadesToExcel } from './utils/excel';
+import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate, parseFlexibleDate } from './utils/date';
+import { getRouteKey, routeMatchesKey, isSameSplitGroup } from './utils/routeKey';
+import { esJornadaFutura } from './utils/jornada';
 import {
   getSessionUserId,
   onAuthChange,
   signIn,
   signOut,
   verifyOwnPassword,
+  verifyAdminCredentials,
   fetchProfiles,
   subscribeToProfiles,
   adminCreateUser,
@@ -62,6 +65,7 @@ import { NewRouteModal } from './components/modals/NewRouteModal';
 import { NewTrasladoRouteModal } from './components/modals/NewTrasladoRouteModal';
 import { RouteTypeSelectModal } from './components/modals/RouteTypeSelectModal';
 import { SplitRouteModal } from './components/modals/SplitRouteModal';
+import { ChangeSegmentModal } from './components/modals/ChangeSegmentModal';
 import { RevertSplitModal } from './components/modals/RevertSplitModal';
 import { AssignModal } from './components/modals/AssignModal';
 import { LiquidateModal } from './components/modals/LiquidateModal';
@@ -76,6 +80,9 @@ const DailySummaryModal = lazy(() =>
 );
 import { ClosingActaModal } from './components/modals/ClosingActaModal';
 import { DeleteRoutesModal } from './components/modals/DeleteRoutesModal';
+import { SaveIndicator } from './components/ui/SaveIndicator';
+import { Button } from './components/ui/Button';
+import { ACTION_ICONS } from './components/ui/actionIcons';
 import { UnassignedResourcesModal } from './components/modals/UnassignedResourcesModal';
 import { ToastContainer } from './components/ToastContainer';
 import { LoginScreen } from './components/auth/LoginScreen';
@@ -95,6 +102,12 @@ const STORAGE_KEY_SESSION = 'rutamaster_session_v1';
 // quedaba en la tablet aunque se cerrara sesión, y con miles de registros podía
 // llenar el almacenamiento del navegador sin avisar. Solo en modo local (sin
 // Supabase) se sigue usando, igual que antes.
+// Punto 15 del análisis: al abrir la app solo se descargan las liquidadas de
+// los últimos 45 días (el historial crece todos los días y cargarlo completo
+// cada vez volvía lenta la entrada). El resto se trae a pedido desde
+// "Rutas Liquidadas" → "Cargar historial completo".
+const HISTORY_INITIAL_DAYS = 45;
+
 const LOCAL_DATA_KEYS = [STORAGE_KEY_ROUTES, STORAGE_KEY_TRUCKS, STORAGE_KEY_STAFF, STORAGE_KEY_HISTORY, STORAGE_KEY_USERS];
 if (isSupabaseConfigured) {
   try {
@@ -180,8 +193,34 @@ export default function App() {
   // profilesLoaded: ya se leyó la tabla de perfiles tras iniciar sesión.
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(!isSupabaseConfigured);
+  // Blindaje: si la sesión se cae SOLA (token vencido que no se pudo renovar),
+  // ya no se manda a la pantalla de inicio — eso cerraba cualquier ventana
+  // abierta (p. ej. una liquidación a medio llenar) y se perdía lo escrito.
+  // Ahora la app se queda tal cual y aparece encima un recuadro para volver a
+  // ingresar la contraseña; los cambios pendientes se guardan al reingresar.
+  const [sessionLost, setSessionLost] = useState(false);
+  const sessionLostRef = useRef(false);
+  const intentionalSignOutRef = useRef(false);
+  const authUserIdRef = useRef<string | null>(null);
+  // Solo se usa el recuadro de reingreso si la app ya estaba cargada y en uso;
+  // en cualquier otro momento (arranque, carga de perfil) se va al inicio normal.
+  const appInUseRef = useRef(false);
+  // Cierre de sesión pedido por la app o el usuario (no es una caída de sesión).
+  const signOutIntentionally = useCallback(() => {
+    intentionalSignOutRef.current = true;
+    return signOut();
+  }, []);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
-  const [loginNotice, setLoginNotice] = useState('');
+  const [loginNotice, setLoginNotice] = useState<string>(() => {
+    // Aviso que sobrevive a la recarga tras un cierre de sesión automático.
+    try {
+      const reason = sessionStorage.getItem('dc_logout_reason') || '';
+      sessionStorage.removeItem('dc_logout_reason');
+      return reason;
+    } catch {
+      return '';
+    }
+  });
 
   const currentUser = useMemo(() => {
     if (isSupabaseConfigured) {
@@ -196,11 +235,33 @@ export default function App() {
     let active = true;
     getSessionUserId().then((id) => {
       if (!active) return;
+      authUserIdRef.current = id;
       setAuthUserId(id);
       setAuthChecked(true);
     });
     const unsubscribe = onAuthChange((id) => {
-      if (active) setAuthUserId(id);
+      if (!active) return;
+      const prev = authUserIdRef.current;
+      if (!id && prev && !intentionalSignOutRef.current && appInUseRef.current) {
+        // Caída de sesión no pedida: se conserva la pantalla y se pide reingresar.
+        sessionLostRef.current = true;
+        setSessionLost(true);
+        return;
+      }
+      if (id && prev && id !== prev) {
+        // Entró un usuario distinto en esta pestaña: se recarga limpio.
+        window.location.reload();
+        return;
+      }
+      if (id) intentionalSignOutRef.current = false;
+      if (id && sessionLostRef.current) {
+        sessionLostRef.current = false;
+        setSessionLost(false);
+        // Se reenvían los cambios que quedaron pendientes mientras no había sesión.
+        setResyncTick((t) => t + 1);
+      }
+      authUserIdRef.current = id;
+      setAuthUserId(id);
     });
     return () => {
       active = false;
@@ -235,7 +296,7 @@ export default function App() {
   useEffect(() => {
     if (!isSupabaseConfigured || !authUserId || !profilesLoaded || currentUser) return;
     setLoginNotice((prev) => prev || 'Tu usuario no tiene acceso activo. Consulta con el administrador.');
-    void signOut();
+    void signOutIntentionally();
   }, [authUserId, profilesLoaded, currentUser]);
 
   // --- Sincronización compartida (Supabase) — fase de pruebas ---
@@ -245,6 +306,18 @@ export default function App() {
   // localStorage, un usuario por navegador). Esto evita que agregar la base de
   // datos compartida cambie el comportamiento de nadie que siga sin configurarla.
   const [isRemoteReady, setIsRemoteReady] = useState(!isSupabaseConfigured);
+  // Estado de conexión y contador para reenviar cambios al volver la señal
+  // (ver punto 11 más abajo, junto a los avisos de sincronización).
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine
+  );
+  const [resyncTick, setResyncTick] = useState(0);
+  // Indicador de guardado (barra superior): cuántas subidas a la base están en
+  // curso y si la última falló. Así el usuario ve "Guardando… / Guardado".
+  const [pendingSaves, setPendingSaves] = useState(0);
+  const [lastSaveFailed, setLastSaveFailed] = useState(false);
+  // Blindaje: cuántos guardados seguidos han fallado (para reintentar solos).
+  const [saveFailStreak, setSaveFailStreak] = useState(0);
   // Corrección: este ref ya NO guarda un set de "ids anteriores" — ver la nota
   // de seguridad en pushSharedCollection (services/sync.ts): el borrado en
   // Supabase ya nunca se infiere comparando snapshots, así que ya no hace
@@ -345,6 +418,9 @@ export default function App() {
       onRejected?: (keys: string[]) => void
     ) => {
       if (!isSupabaseConfigured || !isRemoteReady) return;
+      // Sin sesión válida la base rechazaría todo: se espera a que el usuario
+      // reingrese (al hacerlo se dispara un reenvío automático).
+      if (sessionLostRef.current) return;
       // Lectura inicial fallida: no subir nada de esta tabla (ver `blocked`).
       if (ref.current.blocked) return;
       const json = JSON.stringify(items);
@@ -374,7 +450,15 @@ export default function App() {
       queueRef.current = queueRef.current
         .catch(() => {})
         .then(async () => {
-          const ok = await pushSharedCollection(table, changed, getKey);
+          setPendingSaves((n) => n + 1);
+          let ok = false;
+          try {
+            ok = await pushSharedCollection(table, changed, getKey);
+          } finally {
+            setPendingSaves((n) => Math.max(0, n - 1));
+          }
+          setLastSaveFailed(!ok);
+          setSaveFailStreak((n) => (ok ? 0 : n + 1));
           if (!ok) {
             // No se guardó: se "olvida" que estaban sincronizados para que el
             // próximo cambio en esta colección los vuelva a intentar subir.
@@ -406,6 +490,32 @@ export default function App() {
         return next;
       });
     });
+  }, []);
+
+  const [historyLimited, setHistoryLimited] = useState<boolean>(isSupabaseConfigured);
+  const [isLoadingFullHistory, setIsLoadingFullHistory] = useState(false);
+  const loadFullHistory = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    setIsLoadingFullHistory(true);
+    const rows = await fetchSharedCollection<Route>('app_historical_routes');
+    setIsLoadingFullHistory(false);
+    if (!rows) return;
+    setHistoricalRoutes((prev) => {
+      const byKey = new Map(prev.map((r) => [getRouteKey(r), r]));
+      rows.forEach((row) => {
+        const k = getRouteKey(row.data);
+        if (!byKey.has(k)) byKey.set(k, row.data);
+      });
+      const next = Array.from(byKey.values());
+      // Lo recién descargado ya está guardado en la base: no se vuelve a subir.
+      historySyncRef.current = {
+        json: JSON.stringify(next),
+        byKey: new Map(next.map((r) => [getRouteKey(r), JSON.stringify(r)])),
+        blocked: historySyncRef.current.blocked,
+      };
+      return next;
+    });
+    setHistoryLimited(false);
   }, []);
 
   // Claves de sincronización por tabla (ver SyncKeyFn en services/sync.ts). Todas
@@ -447,7 +557,7 @@ export default function App() {
       try {
         const [remoteRoutes, remoteHistory, remoteTrucks, remoteStaff] = await Promise.all([
           fetchSharedCollection<Route>('app_routes'),
-          fetchSharedCollection<Route>('app_historical_routes'),
+          fetchSharedCollection<Route>('app_historical_routes', { sinceDays: HISTORY_INITIAL_DAYS }),
           fetchSharedCollection<Truck>('app_trucks'),
           fetchSharedCollection<Staff>('app_staff'),
         ]);
@@ -632,7 +742,7 @@ export default function App() {
   const handleLogout = () => {
     if (isSupabaseConfigured) {
       // Recargar deja la aplicación limpia (sin datos en memoria del usuario anterior).
-      void signOut().finally(() => window.location.reload());
+      void signOutIntentionally().finally(() => window.location.reload());
       return;
     }
     setCurrentUsername(null);
@@ -802,6 +912,69 @@ export default function App() {
     }
   };
 
+  // Punto 19 del análisis: respaldo manual descargable (solo administrador).
+  // Se lee todo directamente de la base compartida (incluido el historial
+  // completo) y se descarga como archivo .json con fecha y hora.
+  const handleDownloadBackup = async () => {
+    const tables: SyncableTable[] = ['app_routes', 'app_historical_routes', 'app_trucks', 'app_staff'];
+    const result: Record<string, unknown> = { generado: new Date().toISOString(), por: currentUser?.username };
+    for (const t of tables) {
+      const rows = await fetchSharedCollection(t);
+      if (!rows) {
+        showToast(`No se pudo leer "${t}". Revisa tu conexión e intenta de nuevo.`, 'error');
+        return;
+      }
+      result[t] = rows.map((r) => ({ id: r.key, data: r.data }));
+    }
+    const blob = new Blob([JSON.stringify(result)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    a.href = url;
+    a.download = `respaldo_discarga_${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('Respaldo descargado.', 'success');
+  };
+
+  // Punto 20 del análisis: en tablets compartidas la sesión quedaba abierta
+  // indefinidamente. Ahora se cierra sola tras 30 minutos sin tocar la pantalla
+  // (con aviso 1 minuto antes). Cualquier toque o tecla reinicia el conteo.
+  const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
+  const lastActivityRef = useRef(Date.now());
+  const inactivityWarnedRef = useRef(false);
+  useEffect(() => {
+    if (!isSupabaseConfigured || !currentUser) return;
+    const touch = () => {
+      lastActivityRef.current = Date.now();
+      inactivityWarnedRef.current = false;
+    };
+    const events: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'wheel'];
+    events.forEach((ev) => window.addEventListener(ev, touch, { passive: true }));
+    lastActivityRef.current = Date.now();
+    const timer = window.setInterval(() => {
+      const idle = Date.now() - lastActivityRef.current;
+      if (idle >= INACTIVITY_LIMIT_MS) {
+        try {
+          sessionStorage.setItem('dc_logout_reason', 'Tu sesión se cerró por 30 minutos de inactividad. Vuelve a ingresar.');
+        } catch {
+          /* sin almacenamiento */
+        }
+        void signOutIntentionally().finally(() => window.location.reload());
+      } else if (idle >= INACTIVITY_LIMIT_MS - 60 * 1000 && !inactivityWarnedRef.current) {
+        inactivityWarnedRef.current = true;
+        showToast('Tu sesión se cerrará en 1 minuto por inactividad. Toca la pantalla para continuar.', 'info');
+      }
+    }, 15 * 1000);
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, touch));
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
   // Confirmación de acciones delicadas en Usuarios con la contraseña del admin.
   const handleVerifyPassword = async (password: string): Promise<boolean> => {
     if (!currentUser) return false;
@@ -946,6 +1119,8 @@ export default function App() {
   const [isRouteTypeSelectModalOpen, setIsRouteTypeSelectModalOpen] = useState(false);
   const [isTrasladoRouteModalOpen, setIsTrasladoRouteModalOpen] = useState(false);
   const [splitRouteTarget, setSplitRouteTarget] = useState<Route | null>(null);
+  // Cambio de segmento (con autorización de administrador).
+  const [segmentTarget, setSegmentTarget] = useState<Route | null>(null);
   const [revertSplitTarget, setRevertSplitTarget] = useState<Route | null>(null);
   const [assignTarget, setAssignTarget] = useState<Route | null>(null);
   const [liquidateTarget, setLiquidateTarget] = useState<Route | null>(null);
@@ -960,6 +1135,13 @@ export default function App() {
   const [dailySummaryMode, setDailySummaryMode] = useState<'inicio' | 'fin'>('inicio');
   const [isClosingActaModalOpen, setIsClosingActaModalOpen] = useState(false);
   const [deleteRoutesTargetIds, setDeleteRoutesTargetIds] = useState<string[] | null>(null);
+  // Rutas que puede mostrar la ventana de eliminar: las del tablero y también las
+  // del historial de liquidadas (para eliminar varias liquidadas a la vez).
+  const deleteModalRoutes = useMemo(() => {
+    if (!deleteRoutesTargetIds || !deleteRoutesTargetIds.length) return routes;
+    const seen = new Set(routes.map((r) => getRouteKey(r)));
+    return [...routes, ...historicalRoutes.filter((r) => !seen.has(getRouteKey(r)))];
+  }, [deleteRoutesTargetIds, routes, historicalRoutes]);
   const [isUnassignedResourcesModalOpen, setIsUnassignedResourcesModalOpen] = useState(false);
 
   const handleOpenDailySummary = (mode: 'inicio' | 'fin' = 'inicio') => {
@@ -971,29 +1153,56 @@ export default function App() {
   useEffect(() => {
     writeLocal(STORAGE_KEY_ROUTES, routes);
     pushIfChanged('app_routes', routes, routeSyncKey, routesSyncRef, routesPushQueueRef, restoreRoutesFromServer);
-  }, [routes, pushIfChanged]);
+  }, [routes, pushIfChanged, resyncTick]);
 
   useEffect(() => {
     writeLocal(STORAGE_KEY_TRUCKS, trucks);
     pushIfChanged('app_trucks', trucks, defaultSyncKey, trucksSyncRef, trucksPushQueueRef);
-  }, [trucks, pushIfChanged]);
+  }, [trucks, pushIfChanged, resyncTick]);
 
   useEffect(() => {
     writeLocal(STORAGE_KEY_STAFF, staff);
     pushIfChanged('app_staff', staff, defaultSyncKey, staffSyncRef, staffPushQueueRef);
-  }, [staff, pushIfChanged]);
+  }, [staff, pushIfChanged, resyncTick]);
 
   useEffect(() => {
     writeLocal(STORAGE_KEY_HISTORY, historicalRoutes);
     pushIfChanged('app_historical_routes', historicalRoutes, routeSyncKey, historySyncRef, historyPushQueueRef);
-  }, [historicalRoutes, pushIfChanged]);
+  }, [historicalRoutes, pushIfChanged, resyncTick]);
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = `${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+  const showToast = useCallback(
+    (
+      message: string,
+      type: 'success' | 'error' | 'info' = 'info',
+      action?: { label: string; onClick: () => void }
+    ) => {
+      const id = `${Date.now()}-${Math.random()}`;
+      setToasts((prev) => [...prev, { id, message, type, action }]);
+      // Los avisos con "Deshacer" duran más para dar tiempo de reaccionar.
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, action ? 8000 : 4000);
+    },
+    []
+  );
+
+  // Punto 11 del análisis: aviso de conexión. Sin señal, los cambios no se
+  // pueden guardar en la base compartida; se muestra un aviso fijo y, al volver
+  // la señal, se reenvían automáticamente los cambios que quedaron pendientes.
+  useEffect(() => {
+    const goOnline = () => {
+      setIsOnline(true);
+      setResyncTick((t) => t + 1);
+      if (isSupabaseConfigured) showToast('Conexión recuperada. Guardando los cambios pendientes...', 'info');
+    };
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Avisos en pantalla cuando falla la lectura/escritura en la base de datos
@@ -1003,17 +1212,98 @@ export default function App() {
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     setSyncErrorHandler((message) => {
+      // Sin señal ya se muestra el aviso fijo de conexión; no se repite en avisos.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
       const now = Date.now();
       if (message.startsWith('No se guardó la asignación')) {
         showToast(`⚠ ${message}`, 'error');
         return;
       }
+      // Con la sesión caída ya se muestra el recuadro para reingresar.
+      if (sessionLostRef.current) return;
       if (now - lastSyncToastRef.current < 10000) return;
       lastSyncToastRef.current = now;
-      showToast(`⚠ ${message} Revisa tu conexión y recarga la página.`, 'error');
+      showToast(`⚠ ${message}`, 'error');
     });
     return () => setSyncErrorHandler(null);
   }, [showToast]);
+
+  useEffect(() => {
+    appInUseRef.current = !!currentUser && isRemoteReady;
+    // Si con la sesión caída ya no hay perfil visible, se vuelve al inicio normal
+    // (nunca quedarse atascado entre el recuadro y la pantalla de ingreso).
+    if (sessionLost && !currentUser) {
+      sessionLostRef.current = false;
+      setSessionLost(false);
+      authUserIdRef.current = null;
+      setAuthUserId(null);
+    }
+  }, [currentUser, isRemoteReady, sessionLost]);
+
+  // Blindaje: reintento automático de guardado. Si un guardado falla, la app
+  // vuelve a intentarlo sola (a los 15 s, 30 s, 45 s… hasta 2 min entre
+  // intentos) sin esperar a que el usuario haga otro cambio. Solo reenvía lo
+  // que quedó pendiente; lo ya guardado no se vuelve a subir.
+  useEffect(() => {
+    if (!isSupabaseConfigured || saveFailStreak === 0 || !isOnline || sessionLost) return;
+    if (saveFailStreak > 12) return; // tras ~15 min fallando se deja de insistir (queda el aviso rojo)
+    const delay = Math.min(15000 * saveFailStreak, 120000);
+    const t = window.setTimeout(() => setResyncTick((n) => n + 1), delay);
+    return () => window.clearTimeout(t);
+  }, [saveFailStreak, isOnline, sessionLost]);
+
+  // Blindaje: al volver a la app tras tenerla en segundo plano (tablet
+  // bloqueada, otra aplicación), se confirma la sesión y se reenvía lo
+  // pendiente, para no trabajar sobre una sesión que ya venció.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || !authUserIdRef.current) return;
+      void getSessionUserId().then(() => {
+        if (!sessionLostRef.current) setResyncTick((t) => t + 1);
+      });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
+  // Blindaje: aviso de espacio en la base de datos (solo administradores).
+  // Usa la función estado_espacio() de supabase/fase4_blindaje.sql; si aún no
+  // se ha ejecutado ese archivo, simplemente no se muestra nada.
+  const [spaceAlert, setSpaceAlert] = useState<{ mb: number; pct: number; alerta: string } | null>(null);
+  const [spaceAlertDismissed, setSpaceAlertDismissed] = useState(false);
+  const isAdminUser = !!currentUser?.isAdmin;
+  useEffect(() => {
+    if (!isSupabaseConfigured || !isRemoteReady || !isAdminUser) return;
+    let active = true;
+    const check = () =>
+      void fetchDatabaseSpace().then((r) => {
+        if (active && r) setSpaceAlert(r.alerta && r.alerta !== 'OK' ? r : null);
+      });
+    check();
+    const timer = window.setInterval(check, 6 * 60 * 60 * 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [isRemoteReady, isAdminUser]);
+
+  // Recuadro para reingresar la contraseña cuando la sesión se cayó sola.
+  const [reloginPassword, setReloginPassword] = useState('');
+  const [reloginError, setReloginError] = useState('');
+  const [reloginBusy, setReloginBusy] = useState(false);
+  const handleRelogin = async () => {
+    if (!currentUser || !reloginPassword || reloginBusy) return;
+    setReloginBusy(true);
+    setReloginError('');
+    const err = await signIn(currentUser.username, reloginPassword);
+    setReloginBusy(false);
+    if (err) {
+      setReloginError(err);
+      return;
+    }
+    setReloginPassword('');
+  };
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -1230,12 +1520,12 @@ export default function App() {
         if (a.id === b.id && a.tripNumber && b.tripNumber) {
           return a.tripNumber - b.tripNumber;
         }
-        const timeA = a.liquidacion?.fechaLiquidacion
-          ? new Date(a.liquidacion.fechaLiquidacion).getTime()
-          : 0;
-        const timeB = b.liquidacion?.fechaLiquidacion
-          ? new Date(b.liquidacion.fechaLiquidacion).getTime()
-          : 0;
+        // Punto 10 del análisis: la fecha de liquidación se guarda como
+        // "dd/mm/aaaa hh:mm"; new Date() no entiende ese formato (lo lee al revés
+        // o como inválido) y el orden de Liquidadas salía mal. Se usa el lector
+        // de fechas de la app, que sí respeta día/mes/año.
+        const timeA = parseFlexibleDate(a.liquidacion?.fechaLiquidacion || a.fechaLiquidacion)?.getTime() || 0;
+        const timeB = parseFlexibleDate(b.liquidacion?.fechaLiquidacion || b.fechaLiquidacion)?.getTime() || 0;
         return timeB - timeA;
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1301,25 +1591,67 @@ export default function App() {
   // agencia podía dejar el selector en "-- Todas las Agencias --" (disponible
   // para todos) y ver igual los camiones/personal de agencias a las que no tenía
   // acceso — el permiso solo se aplicaba a las Rutas, no a estos dos módulos.
+  // Punto 9 del análisis: el estado "En Ruta" / "Disponible" de camiones y
+  // personal se CALCULA a partir de las rutas en tránsito, en vez de confiar en
+  // el valor guardado (que podía quedar desactualizado si una acción fallaba a
+  // medias). "Baja" se respeta tal cual. Las pantallas usan estas listas; el
+  // estado guardado solo se sigue actualizando por compatibilidad.
+  const busyResources = useMemo(() => {
+    const truckIds = new Set<string>();
+    const people = new Set<string>();
+    routes.forEach((r) => {
+      if (r.estado !== 'En Tránsito' || !r.asignacion) return;
+      // Rutas de fechas futuras ya asignadas (p. ej. las de mañana, asignadas a
+      // las 21:00) no ponen "En Ruta" hoy al camión ni a la tripulación.
+      if (esJornadaFutura(r.fecha)) return;
+      const a = r.asignacion;
+      if (a.camionId) truckIds.add(a.camionId);
+      [a.conductor, a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].forEach((n) => {
+        if (n) people.add(`${r.agencia || ''}|${n.trim().toLowerCase()}`);
+      });
+    });
+    return { truckIds, people };
+  }, [routes]);
+  const trucksLive = useMemo(
+    () =>
+      trucks.map((t) => {
+        if (t.estado === 'Baja') return t;
+        const estado = busyResources.truckIds.has(t.id) ? 'En Ruta' : 'Disponible';
+        return t.estado === estado ? t : { ...t, estado };
+      }),
+    [trucks, busyResources]
+  );
+  const staffLive = useMemo(
+    () =>
+      staff.map((s) => {
+        if (s.estado === 'Baja') return s;
+        const estado = busyResources.people.has(`${s.agencia || ''}|${(s.nombre || '').trim().toLowerCase()}`)
+          ? 'En Ruta'
+          : 'Disponible';
+        return s.estado === estado ? s : { ...s, estado };
+      }),
+    [staff, busyResources]
+  );
+
   const visibleTrucks = useMemo(
     () =>
-      trucks.filter(
+      trucksLive.filter(
         (t) =>
           (selectedAgency === 'TODAS' || t.agencia === selectedAgency) &&
           (!t.agencia || canViewAgency(t.agencia))
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [trucks, selectedAgency, currentUser]
+    [trucksLive, selectedAgency, currentUser]
   );
   const visibleStaff = useMemo(
     () =>
-      staff.filter(
+      staffLive.filter(
         (s) =>
           (selectedAgency === 'TODAS' || s.agencia === selectedAgency) &&
           (!s.agencia || canViewAgency(s.agencia))
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [staff, selectedAgency, currentUser]
+    [staffLive, selectedAgency, currentUser]
   );
 
   // Indicadores de Personal: activos por puesto (VPP / VPPB / APP). Respetan el
@@ -1419,12 +1751,19 @@ export default function App() {
 
     // 1. Rutas Pendientes estrictamente por asignar camión y tripulación para salir a reparto hoy
     // Las rutas trasladadas a piso NO se cuentan como pendientes por asignar hoy
+    // Ruta Bolsón (enviada a rechazo, sin asignación ni salida) NO es pendiente de asignar.
+    const isBolsonRoute = (r: Route) => Boolean(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
     const pendientesCount = scoped.filter(
-      (r) => r.estado === 'Pendiente' && !isFloor(r)
+      (r) => r.estado === 'Pendiente' && !isFloor(r) && !isBolsonRoute(r)
     ).length;
+    const bolsonCount = scoped.filter((r) => r.estado !== 'Liquidada' && isBolsonRoute(r)).length;
 
     // 2. Rutas en Tránsito en la jornada
     const transitoCount = scoped.filter((r) => r.estado === 'En Tránsito').length;
+    // Recargas (2° viaje) en tránsito: se muestran aparte de "Tránsito" en el tablero.
+    const isRecargaRoute = (r: Route) =>
+      Boolean(r.esRecarga || r.tipoAsignacion === 'Recarga' || r.asignacion?.tipoAsignacion === 'Recarga');
+    const recargasTransitoCount = scoped.filter((r) => r.estado === 'En Tránsito' && isRecargaRoute(r)).length;
 
     // 3. Rutas Abiertas / Con Devolución en la jornada
     const abiertasCount = scoped.filter((r) => r.estado === 'Abierta').length;
@@ -1492,6 +1831,8 @@ export default function App() {
     return {
       pendientes: pendientesCount,
       transito: transitoCount,
+      recargasTransito: recargasTransitoCount,
+      bolson: bolsonCount,
       abiertas: abiertasCount,
       liquidadas: liqHoy.length,
       liquidadasTotal: liqScoped.length,
@@ -1547,6 +1888,72 @@ export default function App() {
     showToast(`Ruta ${created.id} creada en estado Pendiente`, 'success');
   };
 
+  // --- Cambio de segmento con contraseña de administrador ---
+  const segmentSplitGroup = (r: Route | null): Route[] =>
+    r && r.isSplitRoute && r.parentRouteId
+      ? routes.filter((x) => x.estado !== 'Liquidada' && isSameSplitGroup(x, String(r.parentRouteId), r))
+      : r
+      ? [r]
+      : [];
+
+  const handleVerifyAdminForSegment = async (
+    username: string,
+    password: string
+  ): Promise<{ ok: boolean; nombre?: string; error?: string }> => {
+    if (isSupabaseConfigured) return verifyAdminCredentials(username, password);
+    const u = users.find((x) => x.username.toLowerCase() === username.toLowerCase());
+    if (!u || u.password !== password) return { ok: false, error: 'Usuario o contraseña de administrador incorrectos.' };
+    if (!u.isAdmin || u.activo === false) return { ok: false, error: 'Ese usuario no es un administrador activo.' };
+    return { ok: true, nombre: u.nombre || u.username };
+  };
+
+  const handleConfirmSegmentChange = (segmento: string, applyToGroup: boolean, autorizadoPor: string) => {
+    const target = segmentTarget;
+    if (!target) return;
+    const keys = new Set(
+      (applyToGroup ? segmentSplitGroup(target) : [target]).map((r) => getRouteKey(r))
+    );
+    const ahora = formatDateTimeToGuatemala(new Date());
+    const por = currentUser?.nombre || currentUser?.username || '';
+    // Solo cambia "segmento" (y deja constancia en historialSegmento).
+    setRoutes((prev) =>
+      prev.map((r) =>
+        keys.has(getRouteKey(r))
+          ? {
+              ...r,
+              segmento,
+              historialSegmento: [
+                ...(r.historialSegmento || []),
+                { fecha: ahora, de: r.segmento || '', a: segmento, por, autorizadoPor },
+              ],
+            }
+          : r
+      )
+    );
+    setSegmentTarget(null);
+    showToast(
+      `Segmento cambiado a ${segmento} en ${keys.size} ruta(s). Autorizó: ${autorizadoPor}.`,
+      'success'
+    );
+  };
+
+  // Rutas partidas antes de esta corrección quedaron sin segmento: se completa
+  // con el segmento de la ruta de origen (solo se AGREGA el dato que faltaba).
+  useEffect(() => {
+    if (!isRemoteReady) return;
+    const faltan = routes.some(
+      (r) => r.isSplitRoute && !r.segmento && (r.originalRouteData as Route | undefined)?.segmento
+    );
+    if (!faltan) return;
+    setRoutes((prev) =>
+      prev.map((r) =>
+        r.isSplitRoute && !r.segmento && (r.originalRouteData as Route | undefined)?.segmento
+          ? { ...r, segmento: (r.originalRouteData as Route).segmento }
+          : r
+      )
+    );
+  }, [routes, isRemoteReady]);
+
   const handleConfirmSplit = (originalRoute: Route, childRoutes: Route[]) => {
     setRoutes((prev) => {
       const idx = prev.findIndex((r) => getRouteKey(r) === getRouteKey(originalRoute));
@@ -1567,12 +1974,8 @@ export default function App() {
     );
   };
 
-  const handleConfirmRevert = (parentRouteId: string) => {
-    const siblings = routes.filter(
-      (r) =>
-        r.parentRouteId === parentRouteId ||
-        (r.isSplitRoute && String(r.id).startsWith(parentRouteId + '.'))
-    );
+  const handleConfirmRevert = (parentRouteId: string, ref?: Route | null) => {
+    const siblings = routes.filter((r) => isSameSplitGroup(r, parentRouteId, ref));
 
     if (siblings.length === 0) return;
 
@@ -1702,18 +2105,8 @@ export default function App() {
     }
 
     setRoutes((prev) => {
-      const firstIdx = prev.findIndex(
-        (r) =>
-          r.parentRouteId === parentRouteId ||
-          (r.isSplitRoute && String(r.id).startsWith(parentRouteId + '.'))
-      );
-      const filtered = prev.filter(
-        (r) =>
-          !(
-            r.parentRouteId === parentRouteId ||
-            (r.isSplitRoute && String(r.id).startsWith(parentRouteId + '.'))
-          )
-      );
+      const firstIdx = prev.findIndex((r) => isSameSplitGroup(r, parentRouteId, ref));
+      const filtered = prev.filter((r) => !isSameSplitGroup(r, parentRouteId, ref));
       filtered.splice(firstIdx >= 0 ? firstIdx : 0, 0, restoredRoute);
       return filtered;
     });
@@ -1733,6 +2126,17 @@ export default function App() {
   // aplicando la misma asignación también a otra fila con el mismo ID pero de otra
   // fecha. Ahora se identifica la fila exacta con ID + Fecha (ver
   // src/utils/routeKey.ts).
+  // Id del colaborador por nombre dentro de la agencia de la ruta (si hay
+  // homónimos en la misma agencia, se toma el primero que no esté de baja).
+  const staffIdByName = (agencia: string, nombre?: string | null): string | undefined => {
+    if (!nombre) return undefined;
+    const clean = nombre.trim().toLowerCase();
+    const candidates = staff.filter((st) => (st.nombre || '').trim().toLowerCase() === clean);
+    const sameAgency = candidates.filter((st) => st.agencia === agencia);
+    const pool = sameAgency.length ? sameAgency : candidates;
+    return (pool.find((st) => st.estado !== 'Baja') || pool[0])?.id;
+  };
+
   const handleConfirmAssignment = (
     routeId: string,
     fecha: string,
@@ -1784,6 +2188,7 @@ export default function App() {
             esRecarga: isRecarga,
             esReasignacion: isRevisita,
             aPiso: effectiveTipo === 'Ruta a Piso',
+            esBolson: false,
             fechaAsignacion: fechaHoraAsignacion,
             asignacion: {
               camionId: assignment.truckId,
@@ -1793,6 +2198,13 @@ export default function App() {
               auxiliar2: assignment.helper2 || null,
               auxiliar3: assignment.helper3 || null,
               auxiliar4: assignment.helper4 || null,
+              // Punto 7 del análisis: además del nombre se guarda el código
+              // interno (id) del piloto y de cada auxiliar, para no depender
+              // solo del nombre (homónimos, correcciones de ortografía).
+              conductorId: staffIdByName(r.agencia, assignment.driverName),
+              auxiliarIds: [assignment.helper1, assignment.helper2, assignment.helper3, assignment.helper4].map((n) =>
+                n ? staffIdByName(r.agencia, n) || null : null
+              ),
               horaSalida: assignment.horaSalida,
               fechaDespacho: formatDateToGuatemala(new Date()),
               fechaAsignacion: fechaHoraAsignacion,
@@ -1882,8 +2294,85 @@ export default function App() {
     }
   };
 
+  // "Deshacer" (análisis de botones, punto 8): guarda cómo estaban las rutas,
+  // camiones y personas que toca una acción reversible (p. ej. A Piso) y
+  // devuelve la función que los restaura. Se ofrece en el aviso por 8 segundos.
+  const makeUndo = (affectedRoutes: Route[]) => {
+    const routeSnap = new Map(affectedRoutes.map((r) => [getRouteKey(r), r]));
+    const truckIds = new Set<string>();
+    const crew = new Set<string>();
+    affectedRoutes.forEach((r) => {
+      const a = r.asignacion || r.ultimoDespacho;
+      if (!a) return;
+      if (a.camionId) truckIds.add(a.camionId);
+      [a.conductor, a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].forEach((n) => n && crew.add(n));
+    });
+    const truckSnap = new Map(trucks.filter((t) => truckIds.has(t.id)).map((t) => [t.id, t]));
+    const staffSnap = new Map(staff.filter((st) => crew.has(st.nombre)).map((st) => [st.id, st]));
+    return () => {
+      setRoutes((prev) => prev.map((r) => routeSnap.get(getRouteKey(r)) ?? r));
+      if (truckSnap.size) setTrucks((prev) => prev.map((t) => truckSnap.get(t.id) ?? t));
+      if (staffSnap.size) setStaff((prev) => prev.map((st) => staffSnap.get(st.id) ?? st));
+      showToast('Acción deshecha.', 'info');
+    };
+  };
+
   // Corrección: mismo motivo que handleConfirmAssignment — se identifica la fila
   // exacta con ID + Fecha para no afectar otra fila con el mismo ID en otra fecha.
+  // Ruta Bolsón: la ruta se envía a rechazo y NO sale (sin camión ni
+  // tripulación). Queda en el tablero como "Bolsón · por liquidar" con su fecha
+  // y carga originales, y luego se liquida como rechazo.
+  const handleMoveToBolson = (routeId: string, fecha: string, motivo: string) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    if (targetRoute.asignacion) {
+      showToast('La ruta tiene camión y tripulación asignados. Liquídala o pásala a piso antes de enviarla a Bolsón.', 'error');
+      return;
+    }
+    const undo = makeUndo([targetRoute]);
+    setRoutes((prev) =>
+      prev.map((r) =>
+        routeMatchesKey(r, routeId, fecha)
+          ? {
+              ...r,
+              estado: 'Pendiente',
+              asignacion: null,
+              tipoAsignacion: 'Ruta Bolsón',
+              esBolson: true,
+              fechaBolson: formatDateTimeToGuatemala(new Date()),
+              motivoBolson: motivo,
+              aPiso: false,
+            }
+          : r
+      )
+    );
+    setAssignTarget(null);
+    showToast(`Ruta ${routeId} enviada a Bolsón (rechazo). Queda pendiente de liquidar; no lleva camión ni tripulación.`, 'info', {
+      label: 'Deshacer',
+      onClick: undo,
+    });
+  };
+
+  const handleRemoveBolson = (routeId: string, fecha: string) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    const undo = makeUndo([targetRoute]);
+    setRoutes((prev) =>
+      prev.map((r) =>
+        routeMatchesKey(r, routeId, fecha)
+          ? {
+              ...r,
+              esBolson: false,
+              tipoAsignacion: (r.historialDespachos?.length || 0) > 0 ? 'Revisita' : r.esRecarga ? 'Recarga' : 'Primer Viaje',
+              motivoBolson: undefined,
+              fechaBolson: undefined,
+            }
+          : r
+      )
+    );
+    showToast(`Ruta ${routeId} salió del Bolsón: vuelve a quedar por asignar.`, 'info', { label: 'Deshacer', onClick: undo });
+  };
+
   const handleMoveToFloor = (
     routeId: string,
     fecha: string,
@@ -1892,6 +2381,7 @@ export default function App() {
   ) => {
     const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
     if (!targetRoute) return;
+    const undo = makeUndo([targetRoute]);
 
     // Liberar camión o personal si estaban asignados previamente, verificando si otras rutas activas los siguen usando
     const asig = targetRoute.asignacion || targetRoute.ultimoDespacho;
@@ -1961,7 +2451,8 @@ export default function App() {
     const origDate = targetRoute?.fechaOriginalRuta || targetRoute?.fecha || '';
     showToast(
       `Ruta ${routeId} guardada a Piso. Permanece con su fecha de ruta original (${origDate}) y reprogramada para mañana (${tomorrowDate}).`,
-      'info'
+      'info',
+      { label: 'Deshacer', onClick: undo }
     );
   };
 
@@ -1993,6 +2484,7 @@ export default function App() {
     }
 
     const eligibleKeysSet = new Set(eligibleRoutes.map((r) => getRouteKey(r)));
+    const undo = makeUndo(eligibleRoutes);
 
     // Rutas activas que permanecen sin cambios, para liberar camión/personal
     // correctamente (mismo criterio que handleConfirmDeleteRoutes).
@@ -2072,7 +2564,8 @@ export default function App() {
     showToast(
       `${eligibleRoutes.length} ruta(s) enviada(s) a Piso para despacho de mañana` +
         (skippedCount > 0 ? ` (${skippedCount} omitida(s): ya estaban a Piso o Liquidadas).` : '.'),
-      'success'
+      'success',
+      { label: 'Deshacer', onClick: undo }
     );
   };
 
@@ -2181,6 +2674,7 @@ export default function App() {
       // definitivo, pero queda marcada como pendiente de validar la caja/boleta.
       isCajaAbierta?: boolean;
       motivoCajaAbierta?: CajaAbiertaReason;
+      montoDiferenciaCaja?: number;
       // Comentario libre y opcional, disponible para las 3 modalidades de cierre.
       comentario?: string;
       // Clientes marcados puntualmente como pendientes (Ruta Abierta / Caja
@@ -2349,6 +2843,7 @@ export default function App() {
         // marcada como pendiente de validar la caja/boleta del punto de venta.
         cajaAbierta: !!data.isCajaAbierta,
         motivoCajaAbierta: data.motivoCajaAbierta,
+        montoDiferenciaCaja: data.montoDiferenciaCaja,
         clientesPendientes: data.clientesPendientes,
         // Primer registro del historial de status: se guarda la fecha exacta del
         // status inicial con el que queda esta liquidación (Liquidada o Caja
@@ -2387,7 +2882,7 @@ export default function App() {
 
     // Check if part of split
     if (targetRoute.isSplitRoute && targetRoute.parentRouteId) {
-      const siblings = routes.filter((r) => r.parentRouteId === targetRoute.parentRouteId);
+      const siblings = routes.filter((r) => isSameSplitGroup(r, targetRoute.parentRouteId!, targetRoute));
       const allSettled = siblings.every(
         (s) => String(s.id) === String(routeId) || s.estado === 'Liquidada'
       );
@@ -2396,7 +2891,7 @@ export default function App() {
           `¡Completados todos los viajes de la ruta ${targetRoute.parentRouteId}!${cajaAbiertaSuffix}`,
           data.isCajaAbierta ? 'info' : 'success'
         );
-        handleViewConsolidatedReceipt(targetRoute.parentRouteId);
+        handleViewConsolidatedReceipt(targetRoute.parentRouteId, targetRoute);
         return;
       } else {
         showToast(`Línea ${targetRoute.id} liquidada y transferida al Tablero de Rutas Liquidadas.${cajaAbiertaSuffix}`, 'info');
@@ -2909,11 +3404,42 @@ export default function App() {
       );
       return;
     }
+    const snapshot = { routes, trucks, staff, historicalRoutes };
     setRoutes(JSON.parse(JSON.stringify(INITIAL_ROUTES)));
     setTrucks(JSON.parse(JSON.stringify(INITIAL_TRUCKS)));
     setStaff(JSON.parse(JSON.stringify(INITIAL_STAFF)));
     setHistoricalRoutes([]);
-    showToast('Datos restaurados al reporte de ejemplo', 'info');
+    showToast('Datos restaurados al reporte de ejemplo', 'info', {
+      label: 'Deshacer',
+      onClick: () => {
+        setRoutes(snapshot.routes);
+        setTrucks(snapshot.trucks);
+        setStaff(snapshot.staff);
+        setHistoricalRoutes(snapshot.historicalRoutes);
+      },
+    });
+  };
+
+  // Botón "Rutas Prioridades": Excel con No. Ruta, Camión, Piloto y Segmento
+  // de las rutas visibles en el Tablero (con los filtros aplicados).
+  const boardVisibleRoutesRef = useRef<Route[]>([]);
+  const handleBoardVisibleRoutes = useCallback((list: Route[]) => {
+    boardVisibleRoutesRef.current = list;
+  }, []);
+  const handleExportRutasPrioridades = async () => {
+    // Solo rutas que están en el Tablero en este momento: mismas que la tabla
+    // (mismo orden), nunca liquidadas ni de agencias/filtros fuera de pantalla.
+    const enTablero = new Set(filteredActiveRoutes.map((r) => getRouteKey(r)));
+    const base = boardVisibleRoutesRef.current.length ? boardVisibleRoutesRef.current : filteredActiveRoutes;
+    const vistos = new Set<string>();
+    const lista = base.filter((r) => {
+      const k = getRouteKey(r);
+      if (r.estado === 'Liquidada' || !enTablero.has(k) || vistos.has(k)) return false;
+      vistos.add(k);
+      return true;
+    });
+    const ok = await exportRutasPrioridadesToExcel(lista, trucks);
+    showToast(ok ? 'Excel de Rutas Prioridades descargado' : 'No hay rutas en el tablero para exportar', ok ? 'success' : 'error');
   };
 
   const handleExportActiveRoutesExcel = async () => {
@@ -2956,11 +3482,11 @@ export default function App() {
     setReceiptConsolidatedSiblings(undefined);
   };
 
-  const handleViewConsolidatedReceipt = (parentRouteId: string) => {
+  const handleViewConsolidatedReceipt = (parentRouteId: string, ref?: Route | null) => {
     const allKnown = [...routes, ...allLiquidatedRoutes];
     const uniqueMap = new Map<string, Route>();
     allKnown.forEach((r) => {
-      if (r.parentRouteId === parentRouteId) {
+      if (r.parentRouteId === parentRouteId && isSameSplitGroup(r, parentRouteId, ref)) {
         uniqueMap.set(String(r.id), r);
       }
     });
@@ -3057,6 +3583,13 @@ export default function App() {
         currentUsername={currentUser.nombre || currentUser.username}
         isAdmin={currentUser.isAdmin}
         onLogout={handleLogout}
+        saveIndicator={
+          isSupabaseConfigured ? (
+            <SaveIndicator isOnline={isOnline} pending={pendingSaves} failed={lastSaveFailed} compact />
+          ) : undefined
+        }
+        onDownloadBackup={isSupabaseConfigured && currentUser.isAdmin ? handleDownloadBackup : undefined}
+        onResetDemo={!isSupabaseConfigured && currentUser.isAdmin ? handleResetDemo : undefined}
       />
 
       {/* Rediseño para tablet: navegación en una barra lateral fija (en vez de
@@ -3071,9 +3604,6 @@ export default function App() {
           onTabChange={setActiveTab}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onExportExcel={handleExportActiveRoutesExcel}
-          onResetDemo={handleResetDemo}
-          allowResetDemo={!isSupabaseConfigured}
           onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
           pendingReasonsCount={pendingReasonsCount}
           activeCount={filteredActiveRoutes.length}
@@ -3100,9 +3630,6 @@ export default function App() {
           onTabChange={setActiveTab}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onExportExcel={handleExportActiveRoutesExcel}
-          onResetDemo={handleResetDemo}
-          allowResetDemo={!isSupabaseConfigured}
           onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
           pendingReasonsCount={pendingReasonsCount}
           activeCount={filteredActiveRoutes.length}
@@ -3134,7 +3661,9 @@ export default function App() {
               <StatsCards
                 compact
           pendientes={stats.pendientes}
-          transito={stats.transito}
+          transito={stats.transito - stats.recargasTransito}
+          recargas={stats.recargasTransito}
+          bolson={stats.bolson}
           abiertas={stats.abiertas}
           liquidadas={stats.liquidadas}
           liquidadasTotal={stats.liquidadasTotal}
@@ -3156,9 +3685,12 @@ export default function App() {
           onTabChange={setActiveTab}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onExportExcel={handleExportActiveRoutesExcel}
-          onResetDemo={handleResetDemo}
-          allowResetDemo={!isSupabaseConfigured}
+          onExportExcel={
+            // Exportación única: en Liquidadas se exporta desde la propia vista
+            // (con sus filtros); en Camiones/Personal no aplica.
+            activeTab === 'board' || activeTab === 'dashboard' ? handleExportActiveRoutesExcel : undefined
+          }
+          onExportPrioridades={activeTab === 'board' ? handleExportRutasPrioridades : undefined}
           onOpenUnassignedResourcesModal={
             // "Fin de Asignación" solo en el Tablero de Rutas (cierre del proceso de asignación).
             activeTab === 'board' ? () => setIsUnassignedResourcesModalOpen(true) : undefined
@@ -3189,6 +3721,9 @@ export default function App() {
             staff={visibleStaff}
             stats={stats}
             selectedAgency={selectedAgency}
+            historyLimitedDays={historyLimited ? HISTORY_INITIAL_DAYS : undefined}
+            onLoadFullHistory={loadFullHistory}
+            isLoadingFullHistory={isLoadingFullHistory}
           />
         )}
 
@@ -3224,31 +3759,26 @@ export default function App() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Buscar ruta, camión, piloto..."
-                className="flex-1 min-w-[160px] max-w-xs px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Buscar ruta, camión o piloto"
+                className="flex-1 min-w-[160px] max-w-xs min-h-[44px] px-3 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <button
-                onClick={() => setIsUnassignedResourcesModalOpen(true)}
-                title="Asignar motivo a camiones y personal disponibles que no salieron a ruta hoy"
-                className={`ml-auto flex items-center min-h-[40px] px-2.5 rounded-xl border text-xs font-semibold cursor-pointer ${
-                  pendingReasonsCount > 0
-                    ? 'bg-amber-50 border-amber-300 text-amber-800'
-                    : 'bg-white border-slate-300 text-slate-600'
-                }`}
-              >
-                Fin de Asignación
-                {pendingReasonsCount > 0 && (
-                  <span className="ml-1.5 px-1.5 rounded-full text-[10px] font-bold bg-amber-600 text-white">
-                    {pendingReasonsCount}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={exitBoardFullscreen}
-                className="min-h-[40px] px-3.5 rounded-xl bg-slate-900 text-white text-xs font-semibold cursor-pointer active:scale-95"
-                title="Salir de pantalla completa"
-              >
-                Salir de pantalla completa
-              </button>
+              <div className="ml-auto flex items-center gap-2">
+                <Button variant="secondary" icon={ACTION_ICONS.prioridades} onClick={handleExportRutasPrioridades} title="Descargar Excel de Rutas Prioridades" className="text-indigo-700 border-indigo-300">
+                  Rutas Prioridades
+                </Button>
+                <Button
+                  variant={pendingReasonsCount > 0 ? 'success' : 'secondary'}
+                  icon={ACTION_ICONS.finAsignacion}
+                  onClick={() => setIsUnassignedResourcesModalOpen(true)}
+                  title="Cerrar la asignación del día: motivo para camiones y personal que no salieron"
+                  badge={pendingReasonsCount > 0 ? pendingReasonsCount : undefined}
+                >
+                  Fin de Asignación
+                </Button>
+                <Button variant="dark" icon={ACTION_ICONS.restaurar} onClick={exitBoardFullscreen}>
+                  Salir de pantalla completa
+                </Button>
+              </div>
             </div>
           )}
           <div className={boardFullscreen ? 'flex-1 min-h-0' : 'h-full'}>
@@ -3256,8 +3786,8 @@ export default function App() {
             fillHeight
             routes={filteredActiveRoutes}
             allRoutes={routes}
-            trucks={trucks}
-            staff={staff}
+            trucks={trucksLive}
+            staff={staffLive}
             onOpenAssignModal={(id, fecha) => {
               const r = routes.find((item) => routeMatchesKey(item, id, fecha));
               if (r) setAssignTarget(r);
@@ -3275,11 +3805,17 @@ export default function App() {
               if (r) setRevertSplitTarget(r);
             }}
             onViewSettlementReceipt={(id, fecha) => handleViewSettlementReceipt(id, undefined, fecha)}
-            onViewConsolidatedReceipt={(parentRouteId) =>
-              handleViewConsolidatedReceipt(parentRouteId)
+            onViewConsolidatedReceipt={(parentRouteId, ref) =>
+              handleViewConsolidatedReceipt(parentRouteId, ref)
             }
             onOpenNewRouteModal={() => setIsRouteTypeSelectModalOpen(true)}
             onMoveToFloor={handleMoveToFloor}
+            onRemoveBolson={handleRemoveBolson}
+            onVisibleRoutesChange={handleBoardVisibleRoutes}
+            onChangeSegment={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
+              if (r) setSegmentTarget(r);
+            }}
             onBulkMoveToFloor={handleBulkMoveToFloor}
             onOpenDeleteModal={canDeleteData ? (ids) => setDeleteRoutesTargetIds(ids) : undefined}
           />
@@ -3290,16 +3826,20 @@ export default function App() {
         {activeTab === 'liquidated' && (
           <LiquidatedBoardView
             onKpisChange={setLiqKpis}
+            historyLimitedDays={historyLimited ? HISTORY_INITIAL_DAYS : undefined}
+            onLoadFullHistory={loadFullHistory}
+            isLoadingFullHistory={isLoadingFullHistory}
             liquidatedRoutes={allLiquidatedRoutes}
             allRoutes={routes}
-            staff={staff}
+            staff={staffLive}
             allAgencies={agencies}
             onViewSettlementReceipt={(id, routeObj) => handleViewSettlementReceipt(id, routeObj)}
-            onViewConsolidatedReceipt={(parentRouteId) =>
-              handleViewConsolidatedReceipt(parentRouteId)
+            onViewConsolidatedReceipt={(parentRouteId, ref) =>
+              handleViewConsolidatedReceipt(parentRouteId, ref)
             }
             onOpenFinalizeCajaAbierta={(routeObj) => setFinalizeCajaAbiertaTarget(routeObj)}
             onShowToast={showToast}
+            onDeleteRoutes={currentUser?.isAdmin ? (keys) => setDeleteRoutesTargetIds(keys) : undefined}
           />
         )}
 
@@ -3319,6 +3859,7 @@ export default function App() {
             onDeleteStaffMembers={handleDeleteStaffMembers}
             onShowToast={showToast}
             canDelete={canDeleteData}
+            onVerifyPassword={handleVerifyPassword}
             canBulkUploadTrucks={canBulkUploadTrucks}
             canManualAddTrucks={canManualAddTrucks}
             canBulkUploadStaff={canBulkUploadStaff}
@@ -3342,6 +3883,7 @@ export default function App() {
             onDeleteStaffMembers={handleDeleteStaffMembers}
             onShowToast={showToast}
             canDelete={canDeleteData}
+            onVerifyPassword={handleVerifyPassword}
             canBulkUploadTrucks={canBulkUploadTrucks}
             canManualAddTrucks={canManualAddTrucks}
             canBulkUploadStaff={canBulkUploadStaff}
@@ -3376,6 +3918,7 @@ export default function App() {
             onResetPassword={handleResetPassword}
             onDeleteUser={handleDeleteUser}
             onVerifyPassword={handleVerifyPassword}
+            onDownloadBackup={isSupabaseConfigured ? handleDownloadBackup : undefined}
           />
         )}
       </main>
@@ -3411,6 +3954,14 @@ export default function App() {
         agencia={effectiveAgencyForCreation}
       />
 
+      <ChangeSegmentModal
+        route={segmentTarget}
+        splitCount={segmentSplitGroup(segmentTarget).length}
+        defaultAdminUser={currentUser?.isAdmin ? currentUser.username : ''}
+        onVerifyAdmin={handleVerifyAdminForSegment}
+        onConfirm={handleConfirmSegmentChange}
+        onClose={() => setSegmentTarget(null)}
+      />
       <SplitRouteModal
         isOpen={!!splitRouteTarget}
         onClose={() => setSplitRouteTarget(null)}
@@ -3424,15 +3975,12 @@ export default function App() {
         route={revertSplitTarget}
         siblings={
           revertSplitTarget
-            ? routes.filter(
-                (r) =>
-                  r.parentRouteId ===
-                    (revertSplitTarget.parentRouteId || String(revertSplitTarget.id).split('.')[0]) ||
-                  (r.isSplitRoute &&
-                    String(r.id).startsWith(
-                      (revertSplitTarget.parentRouteId ||
-                        String(revertSplitTarget.id).split('.')[0]) + '.'
-                    ))
+            ? routes.filter((r) =>
+                isSameSplitGroup(
+                  r,
+                  revertSplitTarget.parentRouteId || String(revertSplitTarget.id).split('.')[0],
+                  revertSplitTarget
+                )
               )
             : []
         }
@@ -3443,12 +3991,13 @@ export default function App() {
         isOpen={!!assignTarget}
         onClose={() => setAssignTarget(null)}
         route={assignTarget}
-        trucks={trucks}
-        staff={staff}
+        trucks={trucksLive}
+        staff={staffLive}
         activeRoutes={routes}
         historyRoutes={historicalRoutes}
         onConfirmAssignment={handleConfirmAssignment}
         onMoveToFloor={handleMoveToFloor}
+        onMoveToBolson={handleMoveToBolson}
         onShowToast={showToast}
       />
 
@@ -3475,7 +4024,7 @@ export default function App() {
         }}
         route={receiptTarget}
         consolidatedSiblings={receiptConsolidatedSiblings}
-        staff={staff}
+        staff={staffLive}
       />
 
       <NewTruckModal
@@ -3534,8 +4083,9 @@ export default function App() {
         isOpen={!!deleteRoutesTargetIds && deleteRoutesTargetIds.length > 0}
         onClose={() => setDeleteRoutesTargetIds(null)}
         routeIds={deleteRoutesTargetIds || []}
-        routes={routes}
+        routes={deleteModalRoutes}
         onConfirmDelete={handleConfirmDeleteRoutes}
+        onVerifyPassword={handleVerifyPassword}
       />
 
       <UnassignedResourcesModal
@@ -3546,8 +4096,92 @@ export default function App() {
         routes={routes}
         onSetTruckReason={handleSetTruckReason}
         onSetStaffReason={handleSetStaffReason}
+        summaryRoutes={routes.filter((r) => canViewAgency(r.agencia))}
+        fechaOperacion={stats.fechaHoy}
+        agencies={boardAgencies}
+        selectedAgency={selectedAgency}
       />
 
+      {isSupabaseConfigured && !isOnline && (
+        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[80] max-w-[92vw] px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold shadow-xl flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+          Sin conexión: los cambios se guardarán cuando vuelva la señal. No cierres la app.
+        </div>
+      )}
+      {isSupabaseConfigured && spaceAlert && !spaceAlertDismissed && (
+        <div
+          className={`fixed bottom-3 right-3 z-[80] max-w-[92vw] w-[460px] px-4 py-3 rounded-xl text-white text-sm shadow-xl flex items-start gap-3 ${
+            spaceAlert.pct >= 90 ? 'bg-rose-600' : 'bg-amber-500'
+          }`}
+        >
+          <div className="flex-1">
+            <p className="font-bold">Espacio de la base de datos: {spaceAlert.mb} MB ({spaceAlert.pct}% del límite)</p>
+            <p className="text-white/90 text-xs mt-0.5">
+              {spaceAlert.alerta}. Descarga un respaldo y revisa el archivo supabase/diagnostico_espacio_y_seguridad.sql
+              o considera el plan Pro para evitar que la app deje de guardar.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSpaceAlertDismissed(true)}
+            className="shrink-0 px-2 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-xs font-bold"
+          >
+            Entendido
+          </button>
+        </div>
+      )}
+
+      {isSupabaseConfigured && sessionLost && currentUser && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <form
+            className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleRelogin();
+            }}
+          >
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Tu sesión venció</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                No se perdió nada de lo que tienes en pantalla. Ingresa tu contraseña para continuar; los cambios
+                pendientes se guardarán automáticamente.
+              </p>
+            </div>
+            <div className="text-sm">
+              <span className="text-slate-500">Usuario: </span>
+              <span className="font-semibold text-slate-800">{currentUser.username}</span>
+            </div>
+            <input
+              type="password"
+              autoFocus
+              autoComplete="current-password"
+              value={reloginPassword}
+              onChange={(e) => setReloginPassword(e.target.value)}
+              placeholder="Contraseña"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {reloginError && <p className="text-sm text-rose-600 font-medium">{reloginError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={!reloginPassword || reloginBusy}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-lg py-2 text-sm"
+              >
+                {reloginBusy ? 'Verificando…' : 'Continuar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void signOutIntentionally().finally(() => window.location.reload());
+                }}
+                className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg py-2 text-sm"
+              >
+                Salir
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
