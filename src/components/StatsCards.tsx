@@ -6,6 +6,8 @@ interface StatsCardsProps {
   transito: number;
   // Recargas (2° viaje) en tránsito, mostradas aparte de "Tránsito".
   recargas?: number;
+  // Rutas Bolsón (sin asignación ni salida), aparte de "Pendientes".
+  bolson?: number;
   abiertas: number;
   liquidadas: number;
   pisoHoy: number;
@@ -23,6 +25,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   pendientes,
   transito,
   recargas,
+  bolson,
   abiertas,
   liquidadas,
   pisoHoy,
@@ -45,6 +48,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       title: string;
     }[] = [
       { label: 'Pendientes', value: pendientes, icon: Clock, cls: 'bg-amber-50 border-amber-200 text-amber-700', tab: 'board', title: 'Rutas pendientes por asignar' },
+      ...(bolson
+        ? [{ label: 'Bolsón', value: bolson, icon: PackageX, cls: 'bg-rose-50 border-rose-200 text-rose-700', tab: 'board' as const, title: 'Rutas Bolsón: enviadas a rechazo, sin asignación ni salida' }]
+        : []),
       { label: 'Tránsito', value: transito, icon: Navigation, cls: 'bg-blue-50 border-blue-200 text-blue-700', tab: 'board', title: 'Rutas en reparto (primer viaje / revisita)' },
       ...(recargas !== undefined
         ? [{ label: 'Recargas', value: recargas, icon: Repeat, cls: 'bg-purple-50 border-purple-200 text-purple-700', tab: 'board' as const, title: 'Rutas despachadas como Recarga (2° viaje) en tránsito' }]
