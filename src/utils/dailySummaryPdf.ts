@@ -75,6 +75,8 @@ export interface DailySummaryPdfData {
       finCajasDevueltas: number;
       finParadasRealizadas: number;
     };
+    // Rutas Bolsón: enviadas a rechazo, sin asignación ni salida.
+    bolson?: { totalPlan: number; cajasPlan: number; paradasPlan: number };
     pendientes?: {
       totalPlan: number;
       cajasPlan: number;
@@ -407,6 +409,16 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
             'Programadas pendientes de asignación y despacho',
           ],
         ] : []),
+        ...(summaryTotals.bolson && summaryTotals.bolson.totalPlan > 0 ? [
+          [
+            'Total Rutas Bolsón',
+            `${summaryTotals.bolson.totalPlan}`,
+            calcPerc(summaryTotals.bolson.totalPlan, summaryTotals.totalRutasPlan),
+            summaryTotals.bolson.cajasPlan.toFixed(1),
+            `${summaryTotals.bolson.paradasPlan}`,
+            'Ruta Bolsón: sin asignación ni salida',
+          ],
+        ] : []),
         [
           'Total Rutas en Piso',
           `${summaryTotals.enPiso.totalPlan}`,
@@ -482,6 +494,17 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
             summaryTotals.pendientes.finCajasEntregadas.toFixed(1),
             summaryTotals.pendientes.finCajasDevueltas.toFixed(1),
             summaryTotals.pendientes.finPendientes === 0 ? 'Evacuadas al cierre' : `${summaryTotals.pendientes.finPendientes} sin despachar`,
+          ],
+        ] : []),
+        ...(summaryTotals.bolson && summaryTotals.bolson.totalPlan > 0 ? [
+          [
+            'Total Rutas Bolsón',
+            `${summaryTotals.bolson.totalPlan}`,
+            '0',
+            `${summaryTotals.bolson.totalPlan}`,
+            '0.0',
+            '0.0',
+            'Sin asignación ni salida (por liquidar como rechazo)',
           ],
         ] : []),
         [
@@ -746,7 +769,7 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
         r.isLiquidada ? `${r.cajasFisicasEntregadas}` : '-',
         r.isLiquidada ? `${r.cajasFisicasDevueltas}` : '-',
         r.isLiquidada ? `${r.guiasExitosas}/${r.paradasPlan}` : `${r.paradasPlan}`,
-        r.isLiquidada ? 'Liquidada' : r.isFloor ? 'En Piso' : 'Pendiente',
+        r.isLiquidada ? 'Liquidada' : (r as any).isBolson ? 'Ruta Bolsón' : r.isFloor ? 'En Piso' : 'Pendiente',
         r.agencia,
       ];
     }
