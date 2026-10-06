@@ -9,6 +9,7 @@ import {
 import { X, AlertTriangle, Truck as TruckIcon, Users, CheckCircle2 } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
+import { AssignmentDaySummary } from '../AssignmentDaySummary';
 
 const TRUCK_REASONS = TRUCK_REASON_OPTIONS;
 const STAFF_REASONS = STAFF_REASON_OPTIONS;
@@ -41,6 +42,12 @@ interface UnassignedResourcesModalProps {
   routes?: Route[];
   onSetTruckReason: (truckId: string, reason: TruckUnavailableReason | null) => void;
   onSetStaffReason: (staffId: string, reason: StaffUnavailableReason | null) => void;
+  // Resumen de Fin de Asignación (solo lectura): rutas visibles para el usuario,
+  // fecha de la jornada y agencias para filtrar.
+  summaryRoutes?: Route[];
+  fechaOperacion?: string;
+  agencies?: string[];
+  selectedAgency?: string;
 }
 
 export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> = ({
@@ -51,6 +58,10 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
   routes = [],
   onSetTruckReason,
   onSetStaffReason,
+  summaryRoutes,
+  fechaOperacion,
+  agencies = [],
+  selectedAgency,
 }) => {
   // Verificación cruzada contra las rutas activas: además del campo "estado" del
   // camión/persona, se confirma que no aparezcan realmente asignados en ninguna
@@ -105,6 +116,14 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
         </div>
 
         <div className="overflow-y-auto flex-1 space-y-5 pr-1">
+          {summaryRoutes && fechaOperacion && (
+            <AssignmentDaySummary
+              routes={summaryRoutes}
+              fechaOperacion={fechaOperacion}
+              agencies={agencies}
+              defaultAgency={selectedAgency}
+            />
+          )}
           {/* Camiones */}
           <div>
             <div className="flex items-center justify-between mb-2">
