@@ -26,6 +26,7 @@ import {
   deleteSharedRecords,
   setSyncErrorHandler,
   fetchSharedRowsByKeys,
+  fetchDatabaseSpace,
   SyncKeyFn,
   SyncedRow,
   SyncableTable,
@@ -189,6 +190,20 @@ export default function App() {
   // profilesLoaded: ya se leyó la tabla de perfiles tras iniciar sesión.
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(!isSupabaseConfigured);
+  // Blindaje: si la sesión se cae SOLA (token vencido que no se pudo renovar),
+  // ya no se manda a la pantalla de inicio — eso cerraba cualquier ventana
+  // abierta (p. ej. una liquidación a medio llenar) y se perdía lo escrito.
+  // Ahora la app se queda tal cual y aparece encima un recuadro para volver a
+  // ingresar la contraseña; los cambios pendientes se guardan al reingresar.
+  const [sessionLost, setSessionLost] = useState(false);
+  const sessionLostRef = useRef(false);
+  const intentionalSignOutRef = useRef(false);
+  const authUserIdRef = useRef<string | null>(null);
+  // Cierre de sesión pedido por la app o el usuario (no es una caída de sesión).
+  const signOutIntentionally = useCallback(() => {
+    intentionalSignOutRef.current = true;
+    return signOut();
+  }, []);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [loginNotice, setLoginNotice] = useState<string>(() => {
     // Aviso que sobrevive a la recarga tras un cierre de sesión automático.
@@ -214,11 +229,33 @@ export default function App() {
     let active = true;
     getSessionUserId().then((id) => {
       if (!active) return;
+      authUserIdRef.current = id;
       setAuthUserId(id);
       setAuthChecked(true);
     });
     const unsubscribe = onAuthChange((id) => {
-      if (active) setAuthUserId(id);
+      if (!active) return;
+      const prev = authUserIdRef.current;
+      if (!id && prev && !intentionalSignOutRef.current) {
+        // Caída de sesión no pedida: se conserva la pantalla y se pide reingresar.
+        sessionLostRef.current = true;
+        setSessionLost(true);
+        return;
+      }
+      if (id && prev && id !== prev) {
+        // Entró un usuario distinto en esta pestaña: se recarga limpio.
+        window.location.reload();
+        return;
+      }
+      if (id) intentionalSignOutRef.current = false;
+      if (id && sessionLostRef.current) {
+        sessionLostRef.current = false;
+        setSessionLost(false);
+        // Se reenvían los cambios que quedaron pendientes mientras no había sesión.
+        setResyncTick((t) => t + 1);
+      }
+      authUserIdRef.current = id;
+      setAuthUserId(id);
     });
     return () => {
       active = false;
@@ -253,7 +290,7 @@ export default function App() {
   useEffect(() => {
     if (!isSupabaseConfigured || !authUserId || !profilesLoaded || currentUser) return;
     setLoginNotice((prev) => prev || 'Tu usuario no tiene acceso activo. Consulta con el administrador.');
-    void signOut();
+    void signOutIntentionally();
   }, [authUserId, profilesLoaded, currentUser]);
 
   // --- Sincronización compartida (Supabase) — fase de pruebas ---
@@ -273,6 +310,8 @@ export default function App() {
   // curso y si la última falló. Así el usuario ve "Guardando… / Guardado".
   const [pendingSaves, setPendingSaves] = useState(0);
   const [lastSaveFailed, setLastSaveFailed] = useState(false);
+  // Blindaje: cuántos guardados seguidos han fallado (para reintentar solos).
+  const [saveFailStreak, setSaveFailStreak] = useState(0);
   // Corrección: este ref ya NO guarda un set de "ids anteriores" — ver la nota
   // de seguridad en pushSharedCollection (services/sync.ts): el borrado en
   // Supabase ya nunca se infiere comparando snapshots, así que ya no hace
@@ -373,6 +412,9 @@ export default function App() {
       onRejected?: (keys: string[]) => void
     ) => {
       if (!isSupabaseConfigured || !isRemoteReady) return;
+      // Sin sesión válida la base rechazaría todo: se espera a que el usuario
+      // reingrese (al hacerlo se dispara un reenvío automático).
+      if (sessionLostRef.current) return;
       // Lectura inicial fallida: no subir nada de esta tabla (ver `blocked`).
       if (ref.current.blocked) return;
       const json = JSON.stringify(items);
@@ -410,6 +452,7 @@ export default function App() {
             setPendingSaves((n) => Math.max(0, n - 1));
           }
           setLastSaveFailed(!ok);
+          setSaveFailStreak((n) => (ok ? 0 : n + 1));
           if (!ok) {
             // No se guardó: se "olvida" que estaban sincronizados para que el
             // próximo cambio en esta colección los vuelva a intentar subir.
@@ -693,7 +736,7 @@ export default function App() {
   const handleLogout = () => {
     if (isSupabaseConfigured) {
       // Recargar deja la aplicación limpia (sin datos en memoria del usuario anterior).
-      void signOut().finally(() => window.location.reload());
+      void signOutIntentionally().finally(() => window.location.reload());
       return;
     }
     setCurrentUsername(null);
@@ -913,7 +956,7 @@ export default function App() {
         } catch {
           /* sin almacenamiento */
         }
-        void signOut().finally(() => window.location.reload());
+        void signOutIntentionally().finally(() => window.location.reload());
       } else if (idle >= INACTIVITY_LIMIT_MS - 60 * 1000 && !inactivityWarnedRef.current) {
         inactivityWarnedRef.current = true;
         showToast('Tu sesión se cerrará en 1 minuto por inactividad. Toca la pantalla para continuar.', 'info');
@@ -1168,12 +1211,79 @@ export default function App() {
         showToast(`⚠ ${message}`, 'error');
         return;
       }
+      // Con la sesión caída ya se muestra el recuadro para reingresar.
+      if (sessionLostRef.current) return;
       if (now - lastSyncToastRef.current < 10000) return;
       lastSyncToastRef.current = now;
-      showToast(`⚠ ${message} Revisa tu conexión y recarga la página.`, 'error');
+      showToast(`⚠ ${message}`, 'error');
     });
     return () => setSyncErrorHandler(null);
   }, [showToast]);
+
+  // Blindaje: reintento automático de guardado. Si un guardado falla, la app
+  // vuelve a intentarlo sola (a los 15 s, 30 s, 45 s… hasta 2 min entre
+  // intentos) sin esperar a que el usuario haga otro cambio. Solo reenvía lo
+  // que quedó pendiente; lo ya guardado no se vuelve a subir.
+  useEffect(() => {
+    if (!isSupabaseConfigured || saveFailStreak === 0 || !isOnline || sessionLost) return;
+    if (saveFailStreak > 12) return; // tras ~15 min fallando se deja de insistir (queda el aviso rojo)
+    const delay = Math.min(15000 * saveFailStreak, 120000);
+    const t = window.setTimeout(() => setResyncTick((n) => n + 1), delay);
+    return () => window.clearTimeout(t);
+  }, [saveFailStreak, isOnline, sessionLost]);
+
+  // Blindaje: al volver a la app tras tenerla en segundo plano (tablet
+  // bloqueada, otra aplicación), se confirma la sesión y se reenvía lo
+  // pendiente, para no trabajar sobre una sesión que ya venció.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || !authUserIdRef.current) return;
+      void getSessionUserId().then(() => {
+        if (!sessionLostRef.current) setResyncTick((t) => t + 1);
+      });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
+  // Blindaje: aviso de espacio en la base de datos (solo administradores).
+  // Usa la función estado_espacio() de supabase/fase4_blindaje.sql; si aún no
+  // se ha ejecutado ese archivo, simplemente no se muestra nada.
+  const [spaceAlert, setSpaceAlert] = useState<{ mb: number; pct: number; alerta: string } | null>(null);
+  const [spaceAlertDismissed, setSpaceAlertDismissed] = useState(false);
+  const isAdminUser = !!currentUser?.isAdmin;
+  useEffect(() => {
+    if (!isSupabaseConfigured || !isRemoteReady || !isAdminUser) return;
+    let active = true;
+    const check = () =>
+      void fetchDatabaseSpace().then((r) => {
+        if (active && r) setSpaceAlert(r.alerta && r.alerta !== 'OK' ? r : null);
+      });
+    check();
+    const timer = window.setInterval(check, 6 * 60 * 60 * 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [isRemoteReady, isAdminUser]);
+
+  // Recuadro para reingresar la contraseña cuando la sesión se cayó sola.
+  const [reloginPassword, setReloginPassword] = useState('');
+  const [reloginError, setReloginError] = useState('');
+  const [reloginBusy, setReloginBusy] = useState(false);
+  const handleRelogin = async () => {
+    if (!currentUser || !reloginPassword || reloginBusy) return;
+    setReloginBusy(true);
+    setReloginError('');
+    const err = await signIn(currentUser.username, reloginPassword);
+    setReloginBusy(false);
+    if (err) {
+      setReloginError(err);
+      return;
+    }
+    setReloginPassword('');
+  };
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -3859,6 +3969,80 @@ export default function App() {
         <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[80] max-w-[92vw] px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold shadow-xl flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
           Sin conexión: los cambios se guardarán cuando vuelva la señal. No cierres la app.
+        </div>
+      )}
+      {isSupabaseConfigured && spaceAlert && !spaceAlertDismissed && (
+        <div
+          className={`fixed bottom-3 right-3 z-[80] max-w-[92vw] w-[460px] px-4 py-3 rounded-xl text-white text-sm shadow-xl flex items-start gap-3 ${
+            spaceAlert.pct >= 90 ? 'bg-rose-600' : 'bg-amber-500'
+          }`}
+        >
+          <div className="flex-1">
+            <p className="font-bold">Espacio de la base de datos: {spaceAlert.mb} MB ({spaceAlert.pct}% del límite)</p>
+            <p className="text-white/90 text-xs mt-0.5">
+              {spaceAlert.alerta}. Descarga un respaldo y revisa el archivo supabase/diagnostico_espacio_y_seguridad.sql
+              o considera el plan Pro para evitar que la app deje de guardar.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSpaceAlertDismissed(true)}
+            className="shrink-0 px-2 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-xs font-bold"
+          >
+            Entendido
+          </button>
+        </div>
+      )}
+
+      {isSupabaseConfigured && sessionLost && currentUser && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <form
+            className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleRelogin();
+            }}
+          >
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Tu sesión venció</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                No se perdió nada de lo que tienes en pantalla. Ingresa tu contraseña para continuar; los cambios
+                pendientes se guardarán automáticamente.
+              </p>
+            </div>
+            <div className="text-sm">
+              <span className="text-slate-500">Usuario: </span>
+              <span className="font-semibold text-slate-800">{currentUser.username}</span>
+            </div>
+            <input
+              type="password"
+              autoFocus
+              autoComplete="current-password"
+              value={reloginPassword}
+              onChange={(e) => setReloginPassword(e.target.value)}
+              placeholder="Contraseña"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {reloginError && <p className="text-sm text-rose-600 font-medium">{reloginError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={!reloginPassword || reloginBusy}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-lg py-2 text-sm"
+              >
+                {reloginBusy ? 'Verificando…' : 'Continuar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void signOutIntentionally().finally(() => window.location.reload());
+                }}
+                className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg py-2 text-sm"
+              >
+                Salir
+              </button>
+            </div>
+          </form>
         </div>
       )}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
