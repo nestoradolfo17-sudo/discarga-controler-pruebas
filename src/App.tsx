@@ -1624,6 +1624,10 @@ export default function App() {
 
     // 2. Rutas en Tránsito en la jornada
     const transitoCount = scoped.filter((r) => r.estado === 'En Tránsito').length;
+    // Recargas (2° viaje) en tránsito: se muestran aparte de "Tránsito" en el tablero.
+    const isRecargaRoute = (r: Route) =>
+      Boolean(r.esRecarga || r.tipoAsignacion === 'Recarga' || r.asignacion?.tipoAsignacion === 'Recarga');
+    const recargasTransitoCount = scoped.filter((r) => r.estado === 'En Tránsito' && isRecargaRoute(r)).length;
 
     // 3. Rutas Abiertas / Con Devolución en la jornada
     const abiertasCount = scoped.filter((r) => r.estado === 'Abierta').length;
@@ -1691,6 +1695,7 @@ export default function App() {
     return {
       pendientes: pendientesCount,
       transito: transitoCount,
+      recargasTransito: recargasTransitoCount,
       abiertas: abiertasCount,
       liquidadas: liqHoy.length,
       liquidadasTotal: liqScoped.length,
@@ -3431,7 +3436,8 @@ export default function App() {
               <StatsCards
                 compact
           pendientes={stats.pendientes}
-          transito={stats.transito}
+          transito={stats.transito - stats.recargasTransito}
+          recargas={stats.recargasTransito}
           abiertas={stats.abiertas}
           liquidadas={stats.liquidadas}
           liquidadasTotal={stats.liquidadasTotal}
