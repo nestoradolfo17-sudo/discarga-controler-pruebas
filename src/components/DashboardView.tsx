@@ -51,6 +51,10 @@ interface DashboardViewProps {
   staff: Staff[];
   stats: DashboardStats;
   selectedAgency: string;
+  // Historial cargado parcialmente (para el filtro de fechas del dashboard ejecutivo).
+  historyLimitedDays?: number;
+  onLoadFullHistory?: () => void;
+  isLoadingFullHistory?: boolean;
 }
 
 interface Segment {
@@ -729,6 +733,9 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
           staff={props.staff}
           stats={props.stats}
           selectedAgency={props.selectedAgency}
+          historyLimitedDays={props.historyLimitedDays}
+          onLoadFullHistory={props.onLoadFullHistory}
+          isLoadingFullHistory={props.isLoadingFullHistory}
         />
       ) : (
         <DashboardClassic {...props} />
