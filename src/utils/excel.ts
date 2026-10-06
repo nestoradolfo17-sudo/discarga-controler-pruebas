@@ -718,15 +718,20 @@ export async function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
     "Estado",
     "Tipo de Asignación",
     "Camión (Placa)",
+    "Código Piloto",
     "Piloto (Nombre)",
     "Puesto Piloto",
     "DPI Piloto",
+    "Código Auxiliar 1",
     "Auxiliar 1 (APP)",
     "DPI Auxiliar 1",
+    "Código Auxiliar 2",
     "Auxiliar 2 (APP)",
     "DPI Auxiliar 2",
+    "Código Auxiliar 3",
     "Auxiliar 3 (APP)",
     "DPI Auxiliar 3",
+    "Código Auxiliar 4",
     "Auxiliar 4 (APP)",
     "DPI Auxiliar 4",
     "Hora Salida",
@@ -754,6 +759,23 @@ export async function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
     const h3Obj = asig?.auxiliar3 ? staffList.find(s => s.nombre === asig.auxiliar3) : undefined;
     const h4Obj = asig?.auxiliar4 ? staffList.find(s => s.nombre === asig.auxiliar4) : undefined;
 
+    // Código corto de cada persona asignada: primero por su id guardado en la
+    // asignación y, si no existe, por su nombre (prefiriendo la misma agencia).
+    const findStaff = (name?: string | null, id?: string | null) => {
+      if (id) {
+        const byId = staffList.find(s => s.id === id);
+        if (byId) return byId;
+      }
+      if (!name) return undefined;
+      return staffList.find(s => s.nombre === name && s.agencia === r.agencia) || staffList.find(s => s.nombre === name);
+    };
+    const codigoDe = (name?: string | null, id?: string | null) => {
+      if (!name) return "-";
+      const st = findStaff(name, id);
+      return st ? (st.codigoCorto || st.codigo || "-") : "-";
+    };
+    const auxIds = (asig as { auxiliarIds?: (string | null)[] } | null | undefined)?.auxiliarIds || [];
+
     const pilotoNombre = asig?.conductor || "Sin Asignar";
     const pilotoPuesto = driverObj ? (driverObj.puesto || "VPP") : (asig?.conductor ? "VPP" : "-");
     const pilotoDpi = driverObj ? (driverObj.dpi || "-") : "-";
@@ -768,15 +790,20 @@ export async function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
       r.estado || "Pendiente",
       tipoAsignacion,
       asig?.camionPlaca || "Sin Asignar",
+      codigoDe(asig?.conductor, (asig as { conductorId?: string } | null | undefined)?.conductorId),
       pilotoNombre,
       pilotoPuesto,
       pilotoDpi,
+      codigoDe(asig?.auxiliar1, auxIds[0]),
       asig?.auxiliar1 || "-",
       h1Obj ? (h1Obj.dpi || "-") : "-",
+      codigoDe(asig?.auxiliar2, auxIds[1]),
       asig?.auxiliar2 || "-",
       h2Obj ? (h2Obj.dpi || "-") : "-",
+      codigoDe(asig?.auxiliar3, auxIds[2]),
       asig?.auxiliar3 || "-",
       h3Obj ? (h3Obj.dpi || "-") : "-",
+      codigoDe(asig?.auxiliar4, auxIds[3]),
       asig?.auxiliar4 || "-",
       h4Obj ? (h4Obj.dpi || "-") : "-",
       asig?.horaSalida || "-",
