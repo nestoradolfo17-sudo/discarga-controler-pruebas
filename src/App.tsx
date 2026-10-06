@@ -32,7 +32,7 @@ import {
   SyncableTable,
 } from './services/sync';
 import { TRUCK_REASON_REMUNERA, STAFF_REASON_REMUNERA } from './data/unavailableReasons';
-import { exportRoutesToExcel } from './utils/excel';
+import { exportRoutesToExcel, exportRutasPrioridadesToExcel } from './utils/excel';
 import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate, parseFlexibleDate } from './utils/date';
 import { getRouteKey, routeMatchesKey, isSameSplitGroup } from './utils/routeKey';
 import { esJornadaFutura } from './utils/jornada';
@@ -3420,6 +3420,13 @@ export default function App() {
     });
   };
 
+  // Botón "Rutas Prioridades": Excel con No. Ruta, Camión, Piloto y Segmento
+  // de las rutas visibles en el Tablero (con los filtros aplicados).
+  const handleExportRutasPrioridades = async () => {
+    const ok = await exportRutasPrioridadesToExcel(filteredActiveRoutes);
+    showToast(ok ? 'Excel de Rutas Prioridades descargado' : 'No hay rutas en el tablero para exportar', ok ? 'success' : 'error');
+  };
+
   const handleExportActiveRoutesExcel = async () => {
     if (activeTab === 'liquidated') {
       const success = await exportRoutesToExcel(allLiquidatedRoutes, staff);
@@ -3668,6 +3675,7 @@ export default function App() {
             // (con sus filtros); en Camiones/Personal no aplica.
             activeTab === 'board' || activeTab === 'dashboard' ? handleExportActiveRoutesExcel : undefined
           }
+          onExportPrioridades={activeTab === 'board' ? handleExportRutasPrioridades : undefined}
           onOpenUnassignedResourcesModal={
             // "Fin de Asignación" solo en el Tablero de Rutas (cierre del proceso de asignación).
             activeTab === 'board' ? () => setIsUnassignedResourcesModalOpen(true) : undefined
@@ -3740,6 +3748,9 @@ export default function App() {
                 className="flex-1 min-w-[160px] max-w-xs min-h-[44px] px-3 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <div className="ml-auto flex items-center gap-2">
+                <Button variant="secondary" icon={ACTION_ICONS.exportar} onClick={handleExportRutasPrioridades} title="Excel con No. Ruta, Camión, Piloto y Segmento">
+                  Rutas Prioridades
+                </Button>
                 <Button
                   variant={pendingReasonsCount > 0 ? 'success' : 'secondary'}
                   icon={ACTION_ICONS.finAsignacion}
