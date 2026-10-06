@@ -13,6 +13,8 @@ interface TabNavProps {
   // Solo se muestra donde exporta lo que se ve (Tablero / Dashboard). En Rutas
   // Liquidadas la exportación vive en la propia vista (respeta sus filtros).
   onExportExcel?: () => void;
+  // "Rutas Prioridades": Excel con No. Ruta, Camión, Piloto y Segmento (solo Tablero).
+  onExportPrioridades?: () => void;
   // Ya no se dibuja aquí: pasó al menú del usuario en la barra superior.
   onResetDemo?: () => void;
   // Corrección de seguridad: el botón "Demo" reemplaza TODO el contenido de
@@ -72,6 +74,7 @@ export const TabNav: React.FC<TabNavProps> = ({
   searchQuery,
   onSearchChange,
   onExportExcel,
+  onExportPrioridades,
   onResetDemo,
   allowResetDemo = true,
   onOpenUnassignedResourcesModal,
@@ -242,6 +245,16 @@ export const TabNav: React.FC<TabNavProps> = ({
             showLabel
             onClick={onExportExcel}
             className="text-emerald-700"
+          />
+        )}
+        {onExportPrioridades && (
+          <IconButton
+            variant="secondary"
+            icon={ACTION_ICONS.exportar}
+            label="Rutas Prioridades"
+            showLabel
+            onClick={onExportPrioridades}
+            className="text-indigo-700"
           />
         )}
         {onOpenUnassignedResourcesModal && (
