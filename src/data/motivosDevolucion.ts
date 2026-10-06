@@ -21,6 +21,14 @@ export const MOTIVO_DEVOLUCION_OPTIONS: MotivoDevolucionOption[] = [
   { reason: 'Cliente Rechaza Pedido', icon: '🚫', style: 'danger' },
 ];
 
+// Motivos adicionales disponibles SOLO en la modalidad "Ruta Abierta" del
+// formulario de Liquidación (no aparecen en el cierre definitivo).
+export const MOTIVOS_RUTA_ABIERTA: MotivoDevolucionOption[] = [
+  { reason: 'Pedido mal Digitado', icon: '⌨️', style: 'default' },
+  { reason: 'No Hizo Pedido', icon: '🙅', style: 'default' },
+  { reason: 'Paso Bloqueado', icon: '🚧', style: 'warning' },
+];
+
 // Motivo especial de Revisita: se mantiene separado del catálogo genérico
 // porque, además de agregarse a la selección, cambia automáticamente la
 // Modalidad de Cierre a "Ruta Abierta" en el formulario de Liquidación.
@@ -31,4 +39,5 @@ export const MOTIVO_REVISITA: MotivoDevolucionReason = 'No dio tiempo de entrega
 export const ALL_MOTIVO_DEVOLUCION_REASONS: MotivoDevolucionReason[] = [
   MOTIVO_REVISITA,
   ...MOTIVO_DEVOLUCION_OPTIONS.map((o) => o.reason),
+  ...MOTIVOS_RUTA_ABIERTA.map((o) => o.reason),
 ];
