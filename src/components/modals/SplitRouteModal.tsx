@@ -155,6 +155,8 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
         tripNumber: ti.tripNumber,
         totalTrips: numTrips,
         agencia: route.agencia,
+        // El segmento de la ruta de origen se mantiene en cada viaje.
+        segmento: route.segmento,
         mercado: route.mercado || 'Mercado Abierto',
         fecha: formatDateToGuatemala(route.fecha),
         viaje: route.viaje || '01:00',
