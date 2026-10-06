@@ -5,6 +5,27 @@ import { BatchStaffModal } from './modals/BatchStaffModal';
 import { BatchTruckModal } from './modals/BatchTruckModal';
 import { DeleteAuthModal } from './modals/DeleteAuthModal';
 import { downloadStaffExcelTemplate, downloadTruckExcelTemplate } from '../utils/excel';
+import { formatDateToGuatemala } from '../utils/date';
+
+// --- Filtro por disponibilidad (solo vista: no modifica ningún dato) ---
+// Usa el mismo criterio que la ventana de Asignación: un motivo de no
+// asignación solo cuenta si se registró HOY; personal en BAJA no se asigna.
+type DisponibilidadFiltro = 'todos' | 'disponibles' | 'transito' | 'no_disponibles';
+const motivoVigenteHoy = (motivo?: string | null, fecha?: string | null, hoy?: string): boolean => {
+  if (!motivo) return false;
+  if (!fecha) return true;
+  return String(fecha).slice(0, 10) === hoy;
+};
+const disponibilidadDe = (
+  r: { estado: ResourceStatus; motivoNoAsignado?: string | null; motivoNoAsignadoFecha?: string | null; estatus?: StaffEstatus },
+  hoy: string
+): Exclude<DisponibilidadFiltro, 'todos'> => {
+  if (r.estado === 'En Ruta') return 'transito';
+  if (r.estado === 'Disponible' && r.estatus !== 'BAJA' && !motivoVigenteHoy(r.motivoNoAsignado, r.motivoNoAsignadoFecha, hoy)) {
+    return 'disponibles';
+  }
+  return 'no_disponibles';
+};
 
 interface ResourcesViewProps {
   mode: 'trucks' | 'staff';
@@ -75,18 +96,62 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
       .toLowerCase();
   const words = norm(resSearch).split(/\s+/).filter(Boolean);
   const matches = (text: string) => words.every((w) => text.includes(w));
+  const [dispFiltro, setDispFiltro] = useState<DisponibilidadFiltro>('todos');
+  const hoyStr = formatDateToGuatemala(new Date());
+  const truckDisp = trucks.map((t) => disponibilidadDe(t as any, hoyStr));
+  const staffDisp = staff.map((st) => disponibilidadDe(st as any, hoyStr));
+  const countDisp = (list: string[]) => ({
+    todos: list.length,
+    disponibles: list.filter((d) => d === 'disponibles').length,
+    transito: list.filter((d) => d === 'transito').length,
+    no_disponibles: list.filter((d) => d === 'no_disponibles').length,
+  });
+  const truckCounts = countDisp(truckDisp);
+  const staffCounts = countDisp(staffDisp);
+  const trucksByDisp = dispFiltro === 'todos' ? trucks : trucks.filter((_, i) => truckDisp[i] === dispFiltro);
+  const staffByDisp = dispFiltro === 'todos' ? staff : staff.filter((_, i) => staffDisp[i] === dispFiltro);
   const filteredTrucks = words.length
-    ? trucks.filter((t) => matches(norm(`${t.placa} ${t.idCamion || ''} ${t.id} ${t.proveedor || ''} ${t.agencia || ''} ${t.capacidad}`)))
-    : trucks;
+    ? trucksByDisp.filter((t) => matches(norm(`${t.placa} ${t.idCamion || ''} ${t.id} ${t.proveedor || ''} ${t.agencia || ''} ${t.capacidad}`)))
+    : trucksByDisp;
   const filteredStaff = words.length
-    ? staff.filter((st) =>
+    ? staffByDisp.filter((st) =>
         matches(norm(`${st.nombre} ${st.dpi || ''} ${String(st.dpi || '').replace(/\s+/g, '')} ${st.codigo || ''} ${st.codigoCorto || ''} ${st.puesto || ''} ${st.agencia || ''}`))
       )
-    : staff;
+    : staffByDisp;
   const shownTrucks = filteredTrucks.slice(0, limit);
   const shownStaff = filteredStaff.slice(0, limit);
+  const renderDispFilter = (counts: Record<DisponibilidadFiltro, number>, transitoLabel: string) => {
+    const opts: { key: DisponibilidadFiltro; label: string; on: string }[] = [
+      { key: 'todos', label: 'Todos', on: 'bg-slate-900 text-white border-slate-900' },
+      { key: 'disponibles', label: 'Disponibles para asignar', on: 'bg-emerald-600 text-white border-emerald-600' },
+      { key: 'transito', label: transitoLabel, on: 'bg-blue-600 text-white border-blue-600' },
+      { key: 'no_disponibles', label: 'No disponibles / Baja', on: 'bg-rose-600 text-white border-rose-600' },
+    ];
+    return (
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar por disponibilidad">
+        {opts.map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            id={`filtro-disp-${o.key}`}
+            aria-pressed={dispFiltro === o.key}
+            onClick={() => {
+              setDispFiltro(o.key);
+              setLimit(PAGE);
+            }}
+            className={`min-h-[40px] px-3 rounded-xl text-xs sm:text-sm font-semibold border transition cursor-pointer ${
+              dispFiltro === o.key ? o.on : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            {o.label} ({counts[o.key]})
+          </button>
+        ))}
+      </div>
+    );
+  };
   const renderListBar = (total: number, shown: number, placeholder: string) => (
     <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50/60">
+      {renderDispFilter(mode === 'trucks' ? truckCounts : staffCounts, 'En tránsito (en ruta)')}
       <input
         type="search"
         value={resSearch}
