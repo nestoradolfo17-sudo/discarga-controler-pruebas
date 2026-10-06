@@ -29,7 +29,8 @@ import {
   FileDown,
   Navigation,
   Users,
-  ClipboardCheck
+  ClipboardCheck,
+  Repeat,
 } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
@@ -371,7 +372,8 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   const [section, setSection] = useState<SummarySection>('detalle');
   const showSection = (k: SummarySection) => section === 'todo' || section === k;
   useEffect(() => {
-    if (mode === 'fin' && section === 'recursos') setSection('detalle');
+    // Fin de Día (cierre): solo "Liquidación por segmento y motivo", "Totales" y "Todo".
+    if (mode === 'fin' && (section === 'recursos' || section === 'detalle' || section === 'segmento')) setSection('liqsegmot');
     if (mode === 'inicio' && section === 'liqsegmot') setSection('detalle');
   }, [mode, section]);
   const [inicioFilter, setInicioFilter] = useState<InicioFilter>('todas');
@@ -432,7 +434,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
       case 'pendientes':
         return filteredMetrics.filter((m) => !m.isFloor && m.estado === 'Pendiente');
       case 'transito':
-        return filteredMetrics.filter((m) => !m.isFloor && m.estado === 'En Tránsito');
+        return filteredMetrics.filter((m) => !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga);
       case 'en_tiempo':
         return filteredMetrics.filter((m) => !m.estaAtrasado);
       case 'atrasadas':
@@ -450,7 +452,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   // KPIs Inicio de Día
   const inicioTotalRutas = filteredMetrics.length;
   const inicioPendientesCount = filteredMetrics.filter((m) => !m.isFloor && m.estado === 'Pendiente').length;
-  const inicioTransitoCount = filteredMetrics.filter((m) => !m.isFloor && m.estado === 'En Tránsito').length;
+  const inicioTransitoCount = filteredMetrics.filter((m) => !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga).length;
   const inicioEnTiempoCount = filteredMetrics.filter((m) => !m.estaAtrasado).length;
   const inicioAtrasadasCount = filteredMetrics.filter((m) => m.estaAtrasado).length;
   const inicioTotalCajasPlan = filteredMetrics.reduce((acc, m) => acc + m.cajasFisicasPlan, 0);
@@ -523,7 +525,9 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   // ==============================================================
   const summaryTotals = useMemo(() => {
     // 1. Total Rutas en Tránsito (efectivamente despachadas a reparto hacia clientes)
-    const enTransito = filteredMetrics.filter((m) => !m.isFloor && m.estado === 'En Tránsito');
+    // Las recargas (2° viaje) en tránsito se cuentan aparte, no como "Tránsito".
+    const enTransito = filteredMetrics.filter((m) => !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga);
+    const recTransito = filteredMetrics.filter((m) => !m.isFloor && m.estado === 'En Tránsito' && m.isRecarga);
     const enTransitoLiquidadas = enTransito.filter((m) => m.isLiquidada);
     const enTransitoPendientes = enTransito.filter((m) => !m.isLiquidada);
 
@@ -581,6 +585,16 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         totalPlan: planReparto.length,
         cajasPlan: planReparto.reduce((acc, m) => acc + m.cajasFisicasPlan, 0),
         paradasPlan: planReparto.reduce((acc, m) => acc + m.paradasPlan, 0),
+      },
+      recargasTransito: {
+        totalPlan: recTransito.length,
+        cajasPlan: recTransito.reduce((acc, m) => acc + m.cajasFisicasPlan, 0),
+        paradasPlan: recTransito.reduce((acc, m) => acc + m.paradasPlan, 0),
+        finLiquidadas: 0,
+        finPendientes: recTransito.length,
+        finCajasEntregadas: 0,
+        finCajasDevueltas: 0,
+        finParadasRealizadas: 0,
       },
       enTransito: {
         totalPlan: enTransito.length,
@@ -741,6 +755,56 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     return { grupos, total, motivos };
   }, [filteredMetrics]);
 
+  // Detalle de cierre por segmento (para enviar como reporte de cierre del día):
+  // todas las rutas del segmento (liquidadas y no), con sus excepciones.
+  const cierrePorSegmento = useMemo(() => {
+    const segKey = (m: RouteSummaryMetric) => ((m.segmento || '').trim() && m.segmento !== '-' ? m.segmento.trim().toUpperCase() : 'SIN SEGMENTO');
+    const fmtMotivos = (m: RouteSummaryMetric) => {
+      const l = m.route.liquidacion;
+      const L = l?.motivosSeleccionados && l.motivosSeleccionados.length ? l.motivosSeleccionados.map(String) : String(l?.motivoDevolucion || m.route.motivoDevolucion || '').split(',').map((x) => x.trim()).filter(Boolean);
+      return L.join(', ') || 'Sin motivo registrado';
+    };
+    const estadoLabel = (m: RouteSummaryMetric) =>
+      m.route.esBolson || m.route.tipoAsignacion === 'Ruta Bolsón' ? 'Bolsón (rechazo)' : m.isFloor ? 'A piso' : m.estado === 'En Tránsito' ? (m.isRecarga ? 'Recarga en tránsito' : 'En tránsito') : m.estado === 'Abierta' ? 'Abierta (por reasignar)' : 'Pendiente de asignar';
+    const map = new Map<string, RouteSummaryMetric[]>();
+    filteredMetrics.forEach((m) => {
+      const k = segKey(m);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(m);
+    });
+    return Array.from(map.entries())
+      .map(([segmento, L]) => {
+        const liq = L.filter((m) => m.isLiquidada);
+        const noLiq = L.filter((m) => !m.isLiquidada);
+        const cjEnt = liq.reduce((a, m) => a + m.cajasFisicasEntregadas, 0);
+        const cjDev = liq.reduce((a, m) => a + m.cajasFisicasDevueltas, 0);
+        const cajas = liq.filter((m) => m.route.liquidacion?.cajaAbierta && !m.route.liquidacion?.cajaAbiertaResuelta);
+        return {
+          segmento,
+          plan: L.length,
+          liq: liq.length,
+          noLiq: noLiq.length,
+          cumpl: L.length ? (liq.length / L.length) * 100 : 0,
+          cjPlan: L.reduce((a, m) => a + m.cajasFisicasPlan, 0),
+          cjEnt,
+          cjDev,
+          cjPendiente: noLiq.reduce((a, m) => a + m.cajasFisicasPlan, 0),
+          efect: cjEnt + cjDev > 0 ? (cjEnt / (cjEnt + cjDev)) * 100 : 100,
+          paradasOk: liq.reduce((a, m) => a + m.guiasExitosas, 0),
+          paradasRech: liq.reduce((a, m) => a + m.guiasRechazadas, 0),
+          atrasadas: L.filter((m) => m.estaAtrasado).length,
+          devoluciones: liq
+            .filter((m) => m.cajasFisicasDevueltas > 0 || m.guiasRechazadas > 0)
+            .sort((a, b) => b.cajasFisicasDevueltas - a.cajasFisicasDevueltas)
+            .map((m) => ({ id: m.id, agencia: m.agencia, cjDev: m.cajasFisicasDevueltas, rech: m.guiasRechazadas, motivo: fmtMotivos(m) })),
+          pendientes: noLiq.map((m) => ({ id: m.id, agencia: m.agencia, estado: estadoLabel(m), cj: m.cajasFisicasPlan, horas: m.horasTexto })),
+          cajasAbiertas: cajas.map((m) => ({ id: m.id, agencia: m.agencia, motivo: String(m.route.liquidacion?.motivoCajaAbierta || '-'), monto: m.route.liquidacion?.montoDiferenciaCaja })),
+          montoCajas: cajas.reduce((a, m) => a + Number(m.route.liquidacion?.montoDiferenciaCaja || 0), 0),
+        };
+      })
+      .sort((a, b) => (a.segmento === 'SIN SEGMENTO' ? 1 : b.segmento === 'SIN SEGMENTO' ? -1 : b.cjPlan - a.cjPlan));
+  }, [filteredMetrics]);
+
   // Camiones y personal disponibles que NO salieron a ruta hoy, con su motivo (Fin de Asignación)
   const unassignedTrucks = useMemo(
     () => (trucks || []).filter((t) => Boolean(t.motivoNoAsignado)),
@@ -792,6 +856,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     summaryTotals,
     segmentos: segmentStats,
     liqSegMotivo: mode === 'fin' ? liqBySegMotivo : undefined,
+    cierreSegmentos: mode === 'fin' ? cierrePorSegmento : undefined,
     routesList: mode === 'inicio' ? inicioFilteredList : finFilteredList,
     unassignedTrucks,
     unassignedStaff,
@@ -1609,9 +1674,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
             className="sticky top-0 z-20 -mx-4 sm:-mx-5 -mt-4 sm:-mt-5 px-4 sm:px-5 py-2 bg-white/95 backdrop-blur border-b border-slate-200 flex flex-wrap gap-2 print:hidden"
           >
             {([
-              { k: 'detalle', label: 'Detalle por ruta' },
-              { k: 'segmento', label: 'Por segmento' },
-              ...(mode === 'fin' ? [{ k: 'liqsegmot', label: 'Liquidación por segmento y motivo' }] : []),
+              ...(mode === 'inicio'
+                ? [
+                    { k: 'detalle', label: 'Detalle por ruta' },
+                    { k: 'segmento', label: 'Por segmento' },
+                  ]
+                : [{ k: 'liqsegmot', label: 'Liquidación por segmento y motivo' }]),
               { k: 'totales', label: 'Totales' },
               ...(mode === 'inicio' ? [{ k: 'recursos', label: 'Recursos no asignados' }] : []),
               { k: 'todo', label: 'Todo' },
@@ -1772,112 +1840,215 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
           {/* ============================================================== */}
           {/* CIERRE DE DÍA: LIQUIDACIÓN POR SEGMENTO Y MOTIVO               */}
+          {/* Reporte para enviar como cierre del día: resumen general,      */}
+          {/* motivos y un bloque detallado por cada segmento.              */}
           {/* ============================================================== */}
           {mode === 'fin' && showSection('liqsegmot') && (() => {
-            const { grupos, total, motivos } = liqBySegMotivo;
+            const { total, motivos } = liqBySegMotivo;
             const n1 = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 1 });
+            const q = (v: number) => 'Q ' + v.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const pDev = (r: { cjDev: number; cjEnt: number }) => (r.cjEnt + r.cjDev > 0 ? ((r.cjDev / (r.cjEnt + r.cjDev)) * 100).toFixed(1) + '%' : '0.0%');
             const th = 'px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600 text-right whitespace-nowrap';
-            const td = 'px-3 py-2 text-right tabular-nums whitespace-nowrap';
+            const thl = th.replace('text-right', 'text-left');
+            const td = 'px-3 py-1.5 text-right tabular-nums whitespace-nowrap';
             const maxDev = Math.max(1, ...motivos.map((m) => m.cjDev));
+            const segs = cierrePorSegmento;
+            const T = segs.reduce(
+              (a, g) => ({ plan: a.plan + g.plan, liq: a.liq + g.liq, cjPlan: a.cjPlan + g.cjPlan, cjEnt: a.cjEnt + g.cjEnt, cjDev: a.cjDev + g.cjDev, cjPend: a.cjPend + g.cjPendiente, cajas: a.cajas + g.cajasAbiertas.length, monto: a.monto + g.montoCajas }),
+              { plan: 0, liq: 0, cjPlan: 0, cjEnt: 0, cjDev: 0, cjPend: 0, cajas: 0, monto: 0 }
+            );
+            const Chip = ({ l, v, tone = 'slate' }: { l: string; v: string; tone?: 'slate' | 'green' | 'red' | 'amber' }) => (
+              <div className={`rounded-lg border px-2.5 py-1.5 ${tone === 'green' ? 'border-emerald-200 bg-emerald-50' : tone === 'red' ? 'border-rose-200 bg-rose-50' : tone === 'amber' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{l}</div>
+                <div className="text-sm font-black text-slate-900 tabular-nums">{v}</div>
+              </div>
+            );
             return (
-              <div className="bg-white rounded-xl border border-slate-300 shadow-sm overflow-hidden print:border print:border-slate-400 print:shadow-none print:rounded-lg print:break-inside-avoid">
-                <div className="px-4 py-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 print:bg-slate-100 print:text-slate-900 print:border-slate-300">
-                  <div className="flex items-center space-x-2.5">
-                    <div className="p-1.5 rounded-lg bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 print:bg-slate-200 print:border-slate-300 print:text-slate-700">
-                      <ClipboardCheck className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-100 print:text-slate-900">
-                        Liquidación de rutas por segmento y motivo
-                      </h3>
-                      <p className="text-[11px] text-slate-300 print:text-slate-600 font-medium">
-                        Solo rutas liquidadas del cierre. Una ruta con varios motivos aparece en cada uno; sus cajas devueltas se reparten entre ellos.
-                      </p>
+              <div className="space-y-4">
+                {/* Encabezado + resumen general del cierre */}
+                <div className="bg-white rounded-xl border border-slate-300 shadow-sm overflow-hidden print:shadow-none print:break-inside-avoid">
+                  <div className="px-4 py-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white flex flex-wrap items-center justify-between gap-2 print:bg-slate-100 print:text-slate-900">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="p-1.5 rounded-lg bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 print:bg-slate-200 print:text-slate-700">
+                        <ClipboardCheck className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-100 print:text-slate-900">
+                          Cierre del día · Liquidación por segmento y motivo
+                        </h3>
+                        <p className="text-[11px] text-slate-300 print:text-slate-600 font-medium">
+                          {fechaHoy} · Agencia: {filterAgency === 'TODAS' ? 'Todas' : filterAgency} · Una ruta con varios motivos aparece en cada uno; sus cajas devueltas se reparten entre ellos.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <span className="px-2.5 py-1 rounded-lg bg-slate-800 print:bg-slate-200 text-indigo-200 print:text-slate-800 border border-slate-700 print:border-slate-300 font-bold text-xs">
-                    {total.rutas} rutas liquidadas · {n1(total.cjDev)} CJ devueltas
-                  </span>
+                  <div className="p-3 sm:p-4 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+                    <Chip l="Rutas plan" v={`${T.plan}`} />
+                    <Chip l="Liquidadas" v={`${T.liq}`} tone="green" />
+                    <Chip l="Sin liquidar" v={`${T.plan - T.liq}`} tone={T.plan - T.liq ? 'amber' : 'slate'} />
+                    <Chip l="Cumplimiento" v={T.plan ? `${((T.liq / T.plan) * 100).toFixed(1)}%` : '—'} />
+                    <Chip l="CJ entregadas" v={n1(T.cjEnt)} tone="green" />
+                    <Chip l="CJ devueltas" v={`${n1(T.cjDev)} (${pDev({ cjEnt: T.cjEnt, cjDev: T.cjDev })})`} tone={T.cjDev ? 'red' : 'slate'} />
+                    <Chip l="CJ por liquidar" v={n1(T.cjPend)} tone={T.cjPend ? 'amber' : 'slate'} />
+                    <Chip l="Cajas abiertas" v={`${T.cajas}${T.monto ? ' · ' + q(T.monto) : ''}`} tone={T.cajas ? 'amber' : 'slate'} />
+                  </div>
+
+                  {/* Resumen por motivo */}
+                  {motivos.length > 0 && (
+                    <div className="px-3 sm:px-4 pb-4 space-y-2">
+                      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Motivos de liquidación (todas las rutas liquidadas)</div>
+                      {motivos.map((m) => (
+                        <div key={m.motivo} className="flex items-center gap-3 text-xs" title={`${m.motivo}: ${m.rutas} ruta(s) · ${n1(m.cjDev)} CJ devueltas`}>
+                          <span className="w-48 sm:w-72 truncate text-slate-700 font-medium">{m.motivo}</span>
+                          <span className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden print:hidden">
+                            <span className="block h-full rounded-full" style={{ width: `${(m.cjDev / maxDev) * 100}%`, backgroundColor: m.cjDev > 0 ? '#ec835a' : '#0ca30c', minWidth: m.cjDev > 0 ? 4 : 0 }} />
+                          </span>
+                          <span className="w-16 text-right font-bold tabular-nums">{m.rutas} rutas</span>
+                          <span className="w-24 text-right font-bold tabular-nums">{n1(m.cjDev)} CJ dev.</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Resumen por motivo */}
-                {motivos.length > 0 && (
-                  <div className="p-3 sm:p-4 border-b border-slate-200 space-y-2 print:hidden">
-                    <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Resumen por motivo (todas las rutas liquidadas)</div>
-                    {motivos.map((m) => (
-                      <div key={m.motivo} className="flex items-center gap-3 text-xs" title={`${m.motivo}: ${m.rutas} ruta(s) · ${n1(m.cjDev)} CJ devueltas`}>
-                        <span className="w-48 sm:w-64 truncate text-slate-700 font-medium">{m.motivo}</span>
-                        <span className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden">
-                          <span className="block h-full rounded-full" style={{ width: `${(m.cjDev / maxDev) * 100}%`, backgroundColor: m.cjDev > 0 ? '#ec835a' : '#0ca30c', minWidth: m.cjDev > 0 ? 4 : 0 }} />
+                {/* Bloque detallado por segmento */}
+                {segs.map((g) => {
+                  const grupo = liqBySegMotivo.grupos.find((x) => x.segmento === g.segmento);
+                  return (
+                    <div key={g.segmento} className="bg-white rounded-xl border border-slate-300 shadow-sm overflow-hidden print:shadow-none print:break-inside-avoid">
+                      <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-300 flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-sm font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-slate-500" /> Segmento {g.segmento}
+                        </h4>
+                        <span className="text-xs font-bold text-slate-700">
+                          {g.liq}/{g.plan} rutas liquidadas · cumplimiento {g.cumpl.toFixed(1)}% · efectividad {g.efect.toFixed(1)}%
                         </span>
-                        <span className="w-16 text-right font-bold tabular-nums">{m.rutas} rutas</span>
-                        <span className="w-24 text-right font-bold tabular-nums">{n1(m.cjDev)} CJ dev.</span>
                       </div>
-                    ))}
-                  </div>
+                      <div className="p-3 sm:p-4 space-y-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+                          <Chip l="Rutas plan" v={`${g.plan}`} />
+                          <Chip l="Liquidadas" v={`${g.liq}`} tone="green" />
+                          <Chip l="Sin liquidar" v={`${g.noLiq}`} tone={g.noLiq ? 'amber' : 'slate'} />
+                          <Chip l="CJ plan" v={n1(g.cjPlan)} />
+                          <Chip l="CJ entregadas" v={n1(g.cjEnt)} tone="green" />
+                          <Chip l="CJ devueltas" v={n1(g.cjDev)} tone={g.cjDev ? 'red' : 'slate'} />
+                          <Chip l="Paradas ok / rech." v={`${g.paradasOk} / ${g.paradasRech}`} />
+                          <Chip l="Cajas abiertas" v={`${g.cajasAbiertas.length}${g.montoCajas ? ' · ' + q(g.montoCajas) : ''}`} tone={g.cajasAbiertas.length ? 'amber' : 'slate'} />
+                        </div>
+
+                        {grupo && grupo.rows.length > 0 && (
+                          <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                            <table className="w-full text-xs">
+                              <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                  <th className={thl}>Motivo</th>
+                                  <th className={th}>Rutas</th>
+                                  <th className={th}>CJ plan</th>
+                                  <th className={th}>CJ entregadas</th>
+                                  <th className={th}>CJ devueltas</th>
+                                  <th className={th}>% Devolución</th>
+                                  <th className={th}>Caja abierta</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {grupo.rows.map((r) => (
+                                  <tr key={r.motivo} className="border-t border-slate-100">
+                                    <td className="px-3 py-1.5 text-slate-800">{r.motivo}</td>
+                                    <td className={td}>{r.rutas}</td>
+                                    <td className={td}>{n1(r.cjPlan)}</td>
+                                    <td className={td + ' text-emerald-700'}>{n1(r.cjEnt)}</td>
+                                    <td className={td + (r.cjDev > 0 ? ' text-rose-600 font-bold' : '')}>{n1(r.cjDev)}</td>
+                                    <td className={td}>{pDev(r)}</td>
+                                    <td className={td}>{r.cajaAbierta || '—'}</td>
+                                  </tr>
+                                ))}
+                                <tr className="bg-slate-50 font-bold border-t border-slate-300">
+                                  <td className="px-3 py-1.5">Subtotal {g.segmento}</td>
+                                  <td className={td}>{grupo.sub.rutas}</td>
+                                  <td className={td}>{n1(grupo.sub.cjPlan)}</td>
+                                  <td className={td}>{n1(grupo.sub.cjEnt)}</td>
+                                  <td className={td}>{n1(grupo.sub.cjDev)}</td>
+                                  <td className={td}>{pDev(grupo.sub)}</td>
+                                  <td className={td}>{grupo.sub.cajaAbierta || '—'}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs">
+                          <div className="rounded-lg border border-rose-200 bg-rose-50/40 p-2.5">
+                            <div className="font-bold text-rose-900 mb-1">Rutas con devolución ({g.devoluciones.length})</div>
+                            {g.devoluciones.length ? (
+                              <ul className="space-y-1">
+                                {g.devoluciones.map((d) => (
+                                  <li key={d.id} className="flex flex-wrap gap-x-2">
+                                    <b className="font-mono">#{d.id}</b>
+                                    <span className="text-slate-600">{d.agencia}</span>
+                                    <span className="text-rose-700 font-bold">{n1(d.cjDev)} CJ{d.rech ? ` · ${d.rech} parada(s)` : ''}</span>
+                                    <span className="text-slate-600 w-full">{d.motivo}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="text-slate-500">Sin devoluciones.</div>
+                            )}
+                          </div>
+                          <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-2.5">
+                            <div className="font-bold text-amber-900 mb-1">Rutas sin liquidar ({g.pendientes.length})</div>
+                            {g.pendientes.length ? (
+                              <ul className="space-y-1">
+                                {g.pendientes.map((d) => (
+                                  <li key={d.id} className="flex flex-wrap gap-x-2">
+                                    <b className="font-mono">#{d.id}</b>
+                                    <span className="text-slate-600">{d.agencia}</span>
+                                    <span className="font-semibold text-amber-800">{d.estado}</span>
+                                    <span className="text-slate-600">{n1(d.cj)} CJ · {d.horas}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="text-slate-500">Todas liquidadas. ✔</div>
+                            )}
+                          </div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                            <div className="font-bold text-slate-800 mb-1">Cajas abiertas ({g.cajasAbiertas.length})</div>
+                            {g.cajasAbiertas.length ? (
+                              <ul className="space-y-1">
+                                {g.cajasAbiertas.map((d) => (
+                                  <li key={d.id} className="flex flex-wrap gap-x-2">
+                                    <b className="font-mono">#{d.id}</b>
+                                    <span className="text-slate-600">{d.agencia}</span>
+                                    <span className="font-semibold">{d.motivo}</span>
+                                    {typeof d.monto === 'number' && <span className="font-bold text-amber-800">{q(d.monto)}</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="text-slate-500">Sin cajas abiertas.</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {segs.length === 0 && (
+                  <div className="bg-white rounded-xl border border-slate-200 p-6 text-center text-sm text-slate-500">Sin rutas con los filtros actuales.</div>
                 )}
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-100 border-b border-slate-300">
-                      <tr>
-                        <th className={th.replace('text-right', 'text-left')}>Segmento</th>
-                        <th className={th.replace('text-right', 'text-left')}>Motivo</th>
-                        <th className={th}>Rutas</th>
-                        <th className={th}>CJ plan</th>
-                        <th className={th}>CJ entregadas</th>
-                        <th className={th}>CJ devueltas</th>
-                        <th className={th}>% Devolución</th>
-                        <th className={th}>Caja abierta</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {grupos.map((g) => (
-                        <React.Fragment key={g.segmento}>
-                          {g.rows.map((r, i) => (
-                            <tr key={g.segmento + r.motivo} className="border-t border-slate-200 hover:bg-slate-50">
-                              <td className="px-3 py-2 font-bold text-slate-800 whitespace-nowrap">{i === 0 ? g.segmento : ''}</td>
-                              <td className="px-3 py-2 text-slate-700">{r.motivo}</td>
-                              <td className={td}>{r.rutas}</td>
-                              <td className={td}>{n1(r.cjPlan)}</td>
-                              <td className={td + ' text-emerald-700'}>{n1(r.cjEnt)}</td>
-                              <td className={td + (r.cjDev > 0 ? ' text-rose-600 font-bold' : '')}>{n1(r.cjDev)}</td>
-                              <td className={td}>{pDev(r)}</td>
-                              <td className={td + (r.cajaAbierta ? ' text-amber-700 font-bold' : '')}>{r.cajaAbierta || '—'}</td>
-                            </tr>
-                          ))}
-                          <tr className="bg-slate-50 font-bold text-slate-900 border-t border-slate-300">
-                            <td className="px-3 py-2" />
-                            <td className="px-3 py-2">Subtotal {g.segmento}</td>
-                            <td className={td}>{g.sub.rutas}</td>
-                            <td className={td}>{n1(g.sub.cjPlan)}</td>
-                            <td className={td}>{n1(g.sub.cjEnt)}</td>
-                            <td className={td}>{n1(g.sub.cjDev)}</td>
-                            <td className={td}>{pDev(g.sub)}</td>
-                            <td className={td}>{g.sub.cajaAbierta || '—'}</td>
-                          </tr>
-                        </React.Fragment>
-                      ))}
-                      {grupos.length > 0 ? (
-                        <tr className="bg-indigo-50 font-black text-slate-900 border-t-2 border-indigo-300">
-                          <td className="px-3 py-2">TOTAL</td>
-                          <td className="px-3 py-2" />
-                          <td className={td}>{total.rutas}</td>
-                          <td className={td}>{n1(total.cjPlan)}</td>
-                          <td className={td}>{n1(total.cjEnt)}</td>
-                          <td className={td}>{n1(total.cjDev)}</td>
-                          <td className={td}>{pDev(total)}</td>
-                          <td className={td}>{total.cajaAbierta || '—'}</td>
-                        </tr>
-                      ) : (
-                        <tr>
-                          <td colSpan={8} className="px-3 py-6 text-center text-slate-500">Aún no hay rutas liquidadas con los filtros actuales.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                {/* Total general */}
+                {segs.length > 0 && (
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-900 flex flex-wrap gap-x-5 gap-y-1">
+                    <span>TOTAL DEL CIERRE</span>
+                    <span>{total.rutas} liquidadas de {T.plan}</span>
+                    <span>CJ plan {n1(T.cjPlan)}</span>
+                    <span className="text-emerald-700">CJ entregadas {n1(T.cjEnt)}</span>
+                    <span className="text-rose-700">CJ devueltas {n1(T.cjDev)} ({pDev({ cjEnt: T.cjEnt, cjDev: T.cjDev })})</span>
+                    <span className="text-amber-800">CJ por liquidar {n1(T.cjPend)}</span>
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -2059,6 +2230,109 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     </td>
                   </tr>
 
+                  {summaryTotals.recargasTransito.totalPlan > 0 && (
+                  <>
+                  {/* FILA 1b: RECARGAS (2° VIAJE) EN TRÁNSITO */}
+                  <tr className="hover:bg-purple-50/50 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center space-x-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 border border-purple-200">
+                          <Repeat className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900 text-xs">Total Recargas en Tránsito</p>
+                          <p className="text-[11px] text-slate-500 font-normal">
+                            Rutas despachadas como Recarga (2° viaje), aún en ruta
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Rutas: Inicio o Plan */}
+                    <td className="px-3.5 py-3 text-center">
+                      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-black bg-blue-100 text-blue-800 border border-blue-200 shadow-2xs">
+                        {summaryTotals.recargasTransito.totalPlan}
+                      </span>
+                    </td>
+
+                    {/* % en Inicio / Al Cierre en Fin */}
+                    <td className="px-3.5 py-3 text-center">
+                      {mode === 'inicio' ? (
+                        <span className="text-xs font-bold text-slate-700">
+                          {summaryTotals.totalRutasPlan > 0
+                            ? ((summaryTotals.recargasTransito.totalPlan / summaryTotals.totalRutasPlan) * 100).toFixed(1)
+                            : '0.0'}%
+                        </span>
+                      ) : (
+                        <div className="inline-flex flex-col items-center">
+                          <div className="flex items-center space-x-1.5">
+                            <span className="px-2 py-0.5 rounded-md text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              {summaryTotals.recargasTransito.finLiquidadas} liquidadas
+                            </span>
+                            {summaryTotals.recargasTransito.finPendientes > 0 && (
+                              <span className="px-2 py-0.5 rounded-md text-xs font-black bg-blue-100 text-blue-800 border border-blue-300">
+                                {summaryTotals.recargasTransito.finPendientes} en ruta
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Cajas Físicas */}
+                    <td className="px-3.5 py-3 text-right">
+                      {mode === 'inicio' ? (
+                        <div>
+                          <span className="text-xs font-black text-slate-900">
+                            {summaryTotals.recargasTransito.cajasPlan.toFixed(1)}
+                          </span>
+                          <span className="text-[10px] text-slate-500 ml-1">cajas</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="text-xs font-black text-emerald-800">
+                            {summaryTotals.recargasTransito.finCajasEntregadas.toFixed(1)} ent.
+                          </div>
+                          {summaryTotals.recargasTransito.finCajasDevueltas > 0 && (
+                            <div className="text-[10px] font-bold text-rose-600">
+                              ({summaryTotals.recargasTransito.finCajasDevueltas.toFixed(1)} dev.)
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Paradas */}
+                    <td className="px-3.5 py-3 text-center">
+                      <span className="text-xs font-bold text-slate-800">
+                        {mode === 'inicio'
+                          ? summaryTotals.recargasTransito.paradasPlan
+                          : summaryTotals.recargasTransito.finParadasRealizadas}
+                      </span>
+                    </td>
+
+                    {/* Estatus / Resultado */}
+                    <td className="px-3.5 py-3 text-center">
+                      {mode === 'inicio' ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                          En Tránsito (Despachadas)
+                        </span>
+                      ) : summaryTotals.recargasTransito.finPendientes === 0 ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                          100% Liquidadas
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-100 text-blue-800 border border-blue-300">
+                          <Clock className="w-3.5 h-3.5 mr-1" />
+                          {summaryTotals.recargasTransito.finPendientes} En Ruta Sin Liquidar
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+
+                  </>
+                  )}
                   {/* FILA 2: TOTAL DE RUTAS PENDIENTES DE SALIDA */}
                   <tr className="hover:bg-amber-50/40 transition-colors">
                     <td className="px-4 py-3">
