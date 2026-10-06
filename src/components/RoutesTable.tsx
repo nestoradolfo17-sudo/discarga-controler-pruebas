@@ -49,6 +49,7 @@ interface RoutesTableProps {
   onOpenNewRouteModal: () => void;
   onMoveToFloor?: (routeId: string, fecha: string, tomorrowDate: string, motivo?: string) => void;
   onRemoveBolson?: (routeId: string, fecha: string) => void;
+  onChangeSegment?: (routeId: string, fecha: string) => void;
   // routeIds aquí son claves compuestas ID+Fecha (ver getRouteKey), no solo el ID.
   onBulkMoveToFloor?: (routeIds: string[]) => void;
   onOpenDeleteModal?: (routeIds: string[]) => void;
@@ -85,6 +86,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   onOpenNewRouteModal,
   onMoveToFloor,
   onRemoveBolson,
+  onChangeSegment,
   onBulkMoveToFloor,
   onOpenDeleteModal,
 }) => {
@@ -647,6 +649,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                               )
                           : undefined,
                         onRemoveBolson: onRemoveBolson ? () => onRemoveBolson(route.id, routeKey) : undefined,
+                        onChangeSegment: onChangeSegment ? () => onChangeSegment(route.id, routeKey) : undefined,
                         onViewReceipt: () => onViewSettlementReceipt(route.id, routeKey),
                         onViewConsolidated:
                           allSettled && route.parentRouteId
