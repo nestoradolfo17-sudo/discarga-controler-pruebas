@@ -21,4 +21,7 @@ export const CAJA_ABIERTA_OPTIONS: CajaAbiertaOption[] = [
   { reason: 'Pago en línea pendiente', icon: '💳' },
   { reason: 'Diferencia de producto faltante en ruta (Bodega)', icon: '🏬' },
   { reason: 'Asalto', icon: '🚨' },
+  { reason: 'Pedido mal Digitado', icon: '⌨️' },
+  { reason: 'No Hizo Pedido', icon: '🙅' },
+  { reason: 'Paso Bloqueado', icon: '🚧' },
 ];
