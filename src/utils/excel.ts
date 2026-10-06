@@ -1403,3 +1403,33 @@ export function parseTrucksFromSheet(ws: XLSXTypes.WorkSheet, defaultAgencia?: s
 }
 
 
+
+/**
+ * "Rutas Prioridades": Excel sencillo con No. de Ruta, Camión asignado,
+ * Piloto asignado y Segmento de las rutas visibles en el Tablero (mismo orden
+ * y filtros que se ven en pantalla). Solo lectura: no modifica ninguna ruta.
+ */
+export async function exportRutasPrioridadesToExcel(routes: Route[]): Promise<boolean> {
+  if (!routes || routes.length === 0) return false;
+  const XLSX = await loadXLSX();
+  const header = ['No. Ruta', 'Camión Asignado', 'Piloto Asignado', 'Segmento'];
+  const rows = routes.map((r) => [
+    String(r.id ?? ''),
+    r.asignacion?.camionPlaca || '',
+    r.asignacion?.conductor || '',
+    r.segmento || '',
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws['!cols'] = header.map((h, i) => {
+    let maxLen = h.length;
+    rows.forEach((row) => {
+      if (String(row[i]).length > maxLen) maxLen = String(row[i]).length;
+    });
+    return { wch: Math.min(Math.max(maxLen + 3, 12), 40) };
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Rutas_Prioridades');
+  const todayStr = getGuatemalaDateForInput(new Date());
+  XLSX.writeFile(wb, `Rutas_Prioridades_${todayStr}.xlsx`);
+  return true;
+}
