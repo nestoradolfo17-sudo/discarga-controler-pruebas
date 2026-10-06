@@ -1414,12 +1414,12 @@ export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Tru
   const XLSX = await loadXLSX();
   // "Horario de Carga" y "No. de Prioridad de Carga" salen en blanco para
   // llenarlos en el Excel (la app aún no guarda esos datos).
-  // ID del camión: el "ID Camión" del catálogo de Camiones (si no tiene, el id interno).
+  // ID del camión: el "ID Camión" del catálogo de Camiones (si no está registrado, en blanco).
   const idCamionDe = (r: Route) => {
     const id = r.asignacion?.camionId;
     if (!id) return '';
     const t = trucks.find((x) => x.id === id);
-    return String(t?.idCamion || id);
+    return t?.idCamion ? String(t.idCamion) : '';
   };
   const header = ['No. Ruta', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Segmento', 'Horario de Carga', 'No. de Prioridad de Carga'];
   const rows = routes.map((r) => [
