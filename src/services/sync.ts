@@ -58,6 +58,99 @@ function reportSyncError(message: string, error: unknown): void {
   }
 }
 
+// --- Blindaje: diagnóstico del error y reintentos automáticos ---
+//
+// Antes cualquier fallo mostraba el mismo aviso genérico ("revisa tu conexión
+// y recarga la página"), aunque la causa real fuera otra (sesión vencida,
+// permiso de agencia, base de datos llena...). Ahora se identifica la causa
+// para mostrar un mensaje claro, y los fallos pasajeros (red intermitente,
+// servidor ocupado, sesión por renovar) se reintentan solos antes de avisar.
+// Reintentar es seguro: guardar (upsert) y borrar por clave dan el mismo
+// resultado aunque se repitan.
+export type SyncErrorKind = 'red' | 'sesion' | 'permiso' | 'espacio' | 'ocupado' | 'otro';
+
+export function describeSyncError(e: unknown): { kind: SyncErrorKind; reason: string } {
+  const err = (e || {}) as { message?: string; code?: string; details?: string; hint?: string; status?: number };
+  const code = String(err.code || '');
+  const text = `${err.message || ''} ${err.details || ''} ${err.hint || ''} ${e instanceof Error ? e.name : ''}`;
+  if (/failed to fetch|networkerror|network request failed|load failed|fetch failed|typeerror/i.test(text)) {
+    return { kind: 'red', reason: 'No hay comunicación con el servidor (internet inestable o sin señal).' };
+  }
+  if (code === 'PGRST301' || code === 'PGRST303' || err.status === 401 || /jwt|token.*expir|not authenticated|invalid claim/i.test(text)) {
+    return { kind: 'sesion', reason: 'Tu sesión venció o no es válida.' };
+  }
+  if (code === '42501' || err.status === 403 || /row-level security|permission denied|violates row-level/i.test(text)) {
+    return { kind: 'permiso', reason: 'Tu usuario no tiene permiso para este cambio (agencia o acción no autorizada). Consulta con el administrador.' };
+  }
+  if (code === '53100' || code === '25006' || /disk|no space|read-only transaction|read only/i.test(text)) {
+    return { kind: 'espacio', reason: 'La base de datos está llena o en modo solo lectura. Avisa al administrador de inmediato.' };
+  }
+  if (code === '57014' || code === '53300' || code === 'PGRST000' || code === 'PGRST002' || (err.status ?? 0) >= 500 || /timeout|timed out|too many connections|service unavailable|bad gateway/i.test(text)) {
+    return { kind: 'ocupado', reason: 'El servidor tardó demasiado o está ocupado.' };
+  }
+  return { kind: 'otro', reason: err.message ? `Detalle: ${err.message}` : 'Error desconocido.' };
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const RETRY_DELAYS_MS = [1500, 4000, 8000];
+
+/**
+ * Ejecuta `fn` y, si falla por una causa pasajera, la reintenta (hasta 3
+ * veces, con espera creciente). Si la sesión venció, intenta renovarla una
+ * vez antes de reintentar. Los errores de permiso o de espacio no se
+ * reintentan: no se arreglan solos.
+ */
+async function withRetry<R>(fn: () => Promise<R>): Promise<R> {
+  let refreshedSession = false;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const { kind } = describeSyncError(e);
+      const canRetry = attempt < RETRY_DELAYS_MS.length;
+      if (kind === 'sesion' && !refreshedSession && supabase) {
+        refreshedSession = true;
+        try {
+          await supabase.auth.refreshSession();
+        } catch {
+          /* si no se puede renovar, el reintento fallará y se avisará */
+        }
+        continue;
+      }
+      if (!canRetry || !(kind === 'red' || kind === 'ocupado')) throw e;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) throw e;
+      await sleep(RETRY_DELAYS_MS[attempt]);
+    }
+  }
+}
+
+const TABLE_LABELS: Record<SyncableTable, string> = {
+  app_routes: 'Rutas',
+  app_historical_routes: 'Rutas liquidadas',
+  app_trucks: 'Camiones',
+  app_staff: 'Personal',
+  app_users: 'Usuarios',
+};
+const tableLabel = (t: SyncableTable) => `"${TABLE_LABELS[t] || t}"`;
+
+/**
+ * Estado del espacio de la base de datos (función estado_espacio() creada por
+ * supabase/fase4_blindaje.sql). Devuelve null si la función aún no existe o
+ * no se pudo leer: en ese caso la app simplemente no muestra el aviso.
+ */
+export async function fetchDatabaseSpace(): Promise<{ mb: number; pct: number; alerta: string } | null> {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.rpc('estado_espacio');
+    if (error) return null;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    return { mb: Number(row.mb_usados), pct: Number(row.pct_limite_free), alerta: String(row.alerta || 'OK') };
+  } catch {
+    return null;
+  }
+}
+
 // Tamaño de página para leer y de lote para escribir.
 //
 // Corrección crítica: Supabase (PostgREST) devuelve como MÁXIMO 1000 filas
@@ -88,21 +181,26 @@ export async function fetchSharedCollection<T>(
     const all: SyncedRow<T>[] = [];
     // Lectura paginada (ver PAGE_SIZE arriba). Se ordena por "id" para que
     // las páginas sean estables y no se salte ni se repita ninguna fila.
+    const since = opts?.sinceDays
+      ? new Date(Date.now() - opts.sinceDays * 24 * 60 * 60 * 1000).toISOString()
+      : null;
     for (let from = 0; ; from += PAGE_SIZE) {
-      let query = supabase.from(table).select('id, data');
-      if (opts?.sinceDays) {
-        const since = new Date(Date.now() - opts.sinceDays * 24 * 60 * 60 * 1000).toISOString();
-        query = query.gte('updated_at', since);
-      }
-      const { data, error } = await query.order('id', { ascending: true }).range(from, from + PAGE_SIZE - 1);
-      if (error) throw error;
+      const pageFrom = from;
+      // La consulta se arma dentro del reintento: cada intento es una solicitud nueva.
+      const { data } = await withRetry(async () => {
+        let query = supabase!.from(table).select('id, data');
+        if (since) query = query.gte('updated_at', since);
+        const res = await query.order('id', { ascending: true }).range(pageFrom, pageFrom + PAGE_SIZE - 1);
+        if (res.error) throw res.error;
+        return res;
+      });
       const rows = (data || []) as { id: string; data: T }[];
       rows.forEach((row) => all.push({ key: row.id, data: row.data }));
       if (rows.length < PAGE_SIZE) break;
     }
     return all;
   } catch (e) {
-    reportSyncError(`No se pudo leer "${table}" de la base de datos compartida.`, e);
+    reportSyncError(`No se pudo leer ${tableLabel(table)}. ${describeSyncError(e).reason}`, e);
     return null;
   }
 }
@@ -161,10 +259,11 @@ export async function pushSharedCollection<T>(
     }));
     // En lotes, para no mandar solicitudes gigantes (ver UPSERT_BATCH_SIZE).
     for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
-      const { error } = await supabase
-        .from(table)
-        .upsert(rows.slice(i, i + UPSERT_BATCH_SIZE), { onConflict: 'id' });
-      if (error) throw error;
+      const batch = rows.slice(i, i + UPSERT_BATCH_SIZE);
+      await withRetry(async () => {
+        const { error } = await supabase!.from(table).upsert(batch, { onConflict: 'id' });
+        if (error) throw error;
+      });
     }
     return true;
   } catch (e) {
@@ -177,7 +276,12 @@ export async function pushSharedCollection<T>(
         e
       );
     } else {
-      reportSyncError(`No se pudieron guardar cambios en "${table}" (base de datos compartida).`, e);
+      const { kind, reason } = describeSyncError(e);
+      const retryNote =
+        kind === 'red' || kind === 'ocupado' || kind === 'sesion' || kind === 'otro'
+          ? ' La app lo volverá a intentar sola.'
+          : '';
+      reportSyncError(`No se guardaron cambios de ${tableLabel(table)}. ${reason}${retryNote}`, e);
     }
     return false;
   }
@@ -194,8 +298,11 @@ export async function fetchSharedRowsByKeys<T>(
 ): Promise<Map<string, T> | null> {
   if (!supabase || keys.length === 0) return new Map();
   try {
-    const { data, error } = await supabase.from(table).select('id, data').in('id', keys);
-    if (error) throw error;
+    const { data } = await withRetry(async () => {
+      const res = await supabase!.from(table).select('id, data').in('id', keys);
+      if (res.error) throw res.error;
+      return res;
+    });
     const map = new Map<string, T>();
     (data || []).forEach((row: { id: string; data: T }) => map.set(row.id, row.data));
     return map;
@@ -222,14 +329,14 @@ export async function deleteSharedRecords(table: SyncableTable, keys: string[]):
   if (!supabase || keys.length === 0) return;
   try {
     for (let i = 0; i < keys.length; i += UPSERT_BATCH_SIZE) {
-      const { error } = await supabase
-        .from(table)
-        .delete()
-        .in('id', keys.slice(i, i + UPSERT_BATCH_SIZE));
-      if (error) throw error;
+      const batch = keys.slice(i, i + UPSERT_BATCH_SIZE);
+      await withRetry(async () => {
+        const { error } = await supabase!.from(table).delete().in('id', batch);
+        if (error) throw error;
+      });
     }
   } catch (e) {
-    reportSyncError(`No se pudieron eliminar registros de "${table}" (base de datos compartida).`, e);
+    reportSyncError(`No se pudieron eliminar registros de ${tableLabel(table)}. ${describeSyncError(e).reason}`, e);
   }
 }
 
@@ -279,7 +386,7 @@ export function subscribeToSharedCollection<T>(
     .subscribe((status) => {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         reportSyncError(
-          `Se perdió la conexión en tiempo real con "${table}". Recarga la página si no ves los cambios de otros usuarios.`,
+          `Se interrumpió la actualización en vivo de ${tableLabel(table)}. Se reconecta sola; si en 2 minutos no ves los cambios de otros usuarios, recarga la página.`,
           status
         );
       }
