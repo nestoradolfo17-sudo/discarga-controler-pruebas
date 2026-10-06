@@ -97,6 +97,18 @@ export interface RouteSummaryMetric {
   motivoPiso?: string;
 }
 
+// --- Selector de fecha del reporte (Inicio / Fin de Día) ---
+// Convierte entre el formato de la app (DD/MM/AAAA) y el del calendario (AAAA-MM-DD).
+const toInputDate = (ddmmyyyy: string): string => {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(ddmmyyyy || '');
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+};
+const fromInputDate = (yyyymmdd: string): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(yyyymmdd || '');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+};
+const fmtDay = (v: unknown): string | null => (v ? formatDateToGuatemala(v) || null : null);
+
 // Obtiene la fecha base de referencia para una ruta
 function getRouteBaseDate(r: Route): Date | null {
   if (r.fechaOriginalRuta) {
@@ -382,29 +394,54 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [downloadFeedback, setDownloadFeedback] = useState<string | null>(null);
 
+  // Fecha del reporte: por defecto la jornada operativa actual; se puede elegir
+  // cualquier otra fecha para ver y descargar el Inicio / Fin de Día de ese día.
+  const fechaJornada = fechaHoy || formatDateToGuatemala(new Date());
+  const fechaRealHoy = formatDateToGuatemala(new Date());
+  const [fechaReporte, setFechaReporte] = useState<string>(fechaJornada);
+  const esJornadaActual = fechaReporte === fechaJornada;
+
   useEffect(() => {
     if (isOpen) {
       setMode(initialMode || 'inicio');
       setFilterAgency(selectedAgency || 'TODAS');
+      setFechaReporte(fechaHoy || formatDateToGuatemala(new Date()));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialMode, selectedAgency]);
 
-  // Consolidar todas las rutas de la jornada (activas y liquidadas)
+  // Consolidar las rutas de la FECHA ELEGIDA (activas y liquidadas).
+  // - Jornada actual: todas las rutas activas del tablero (incluye rezagadas de
+  //   días anteriores, como siempre) + las liquidadas de la jornada.
+  // - Otra fecha: las rutas programadas / a piso / liquidadas en ese día.
   const allCurrentRoutes = useMemo(() => {
+    const fechasValidas = new Set<string>([fechaReporte]);
+    if (esJornadaActual) fechasValidas.add(fechaRealHoy);
+    const enFecha = (...vals: unknown[]) => vals.some((v) => {
+      const d = fmtDay(v);
+      return d !== null && fechasValidas.has(d);
+    });
+    const activaEnFecha = (r: Route) =>
+      esJornadaActual || enFecha(r.fecha, r.fechaOriginalRuta, r.fechaPiso, r.fechaCarga);
+    const liquidadaEnFecha = (r: Route) =>
+      enFecha(r.liquidacion?.fechaLiquidacion, r.fechaLiquidacion, r.fecha, r.fechaOriginalRuta);
+
     const map = new Map<string, Route>();
-    routes.forEach((r) => map.set(String(r.id), r));
+    routes.forEach((r) => {
+      if (r.estado === 'Liquidada' ? liquidadaEnFecha(r) : activaEnFecha(r)) map.set(String(r.id), r);
+    });
     allLiquidatedRoutes.forEach((r) => {
-      if (!map.has(String(r.id))) {
+      if (!map.has(String(r.id)) && liquidadaEnFecha(r)) {
         map.set(String(r.id), r);
       }
     });
     return Array.from(map.values());
-  }, [routes, allLiquidatedRoutes]);
+  }, [routes, allLiquidatedRoutes, fechaReporte, esJornadaActual, fechaRealHoy]);
 
   // Generar métricas estandarizadas para cada ruta
   const allRouteMetrics = useMemo(() => {
-    return allCurrentRoutes.map((r) => buildRouteSummaryMetric(r, fechaHoy));
-  }, [allCurrentRoutes, fechaHoy]);
+    return allCurrentRoutes.map((r) => buildRouteSummaryMetric(r, fechaReporte));
+  }, [allCurrentRoutes, fechaReporte]);
 
   // Filtrado general por Agencia y Búsqueda
   const filteredMetrics = useMemo(() => {
@@ -835,7 +872,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
   const getPdfPayload = () => ({
     mode,
-    fechaHoy: fechaHoy || formatDateToGuatemala(new Date()),
+    fechaHoy: fechaReporte,
     filterAgency,
     stats: {
       totalRutas: mode === 'inicio' ? inicioTotalRutas : finTotalPlanificadas,
@@ -896,7 +933,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
   const handlePrint = () => {
     const originalTitle = document.title;
-    const cleanFecha = (fechaHoy || formatDateToGuatemala(new Date())).replace(/\//g, '-');
+    const cleanFecha = fechaReporte.replace(/\//g, '-');
     const agencyLabel = filterAgency === 'TODAS' ? 'Todas_Agencias' : filterAgency.replace(/\s+/g, '_');
     const titlePrefix = mode === 'inicio' ? 'Reporte_Inicio_de_Dia_DISCARGA' : 'Reporte_Fin_de_Dia_DISCARGA';
 
@@ -983,7 +1020,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   {mode === 'inicio' ? '🌅 Lo Planificado (Antes de Liquidar)' : '🌙 Ejecución Real de lo Planificado'}
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700 print:bg-slate-100 print:text-slate-800 print:border-slate-300">
-                  {fechaHoy || formatDateToGuatemala(new Date())}
+                  {fechaReporte}
                 </span>
                 <span className="hidden print:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
                   Agencia: {filterAgency}
@@ -994,10 +1031,47 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   ? 'DISCARGA CONTROLER • Control de salida: No. Ruta, Fecha planificada, Fecha despachada, Horas transcurridas, Indicador de retraso, Cajas físicas, Paradas, Agencia y Segmento'
                   : 'DISCARGA CONTROLER • Cierre operativo: Comparativo de lo planificado vs ejecución real, efectividad de cajas entregadas, devoluciones y horas transcurridas'}
               </p>
+              {!esJornadaActual && (
+                <p id="avisoFechaReporte" className="mt-1 text-[11px] font-semibold text-amber-300 print:hidden">
+                  Mostrando el {fechaReporte}: rutas programadas, a piso o liquidadas ese día, con su estado actual.
+                  Los recursos sin asignar corresponden a hoy. Si faltan rutas de hace más de 45 días, carga el
+                  historial completo desde el Dashboard.
+                </p>
+              )}
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 print:hidden">
+            {/* SELECTOR DE FECHA DEL REPORTE (vista y PDF) */}
+            <div className="flex items-center gap-1.5 bg-slate-800 px-2 py-1 rounded-xl border border-slate-700">
+              <label htmlFor="inputFechaReporte" className="text-[11px] font-bold text-slate-300 whitespace-nowrap">
+                Fecha
+              </label>
+              <input
+                id="inputFechaReporte"
+                type="date"
+                value={toInputDate(fechaReporte)}
+                max={toInputDate(fechaRealHoy) || undefined}
+                onChange={(e) => {
+                  const v = fromInputDate(e.target.value);
+                  if (v) setFechaReporte(v);
+                }}
+                className="min-h-[34px] bg-slate-900 text-white text-xs sm:text-sm font-semibold rounded-lg px-2 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-400 [color-scheme:dark]"
+                title="Elige la fecha del reporte de Inicio / Fin de Día"
+              />
+              {!esJornadaActual && (
+                <button
+                  type="button"
+                  id="btnFechaReporteHoy"
+                  onClick={() => setFechaReporte(fechaJornada)}
+                  className="min-h-[34px] px-2 rounded-lg text-[11px] font-bold text-amber-200 hover:text-white hover:bg-slate-700"
+                  title="Volver a la jornada actual"
+                >
+                  Hoy
+                </button>
+              )}
+            </div>
+
             {/* BOTÓN SELECTOR DE MODO: INICIO DE DÍA vs FIN DE DÍA */}
             <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 shadow-inner">
               <button
@@ -1877,7 +1951,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                           Cierre del día · Liquidación por segmento y motivo
                         </h3>
                         <p className="text-[11px] text-slate-300 print:text-slate-600 font-medium">
-                          {fechaHoy} · Agencia: {filterAgency === 'TODAS' ? 'Todas' : filterAgency} · Una ruta con varios motivos aparece en cada uno; sus cajas devueltas se reparten entre ellos.
+                          {fechaReporte} · Agencia: {filterAgency === 'TODAS' ? 'Todas' : filterAgency} · Una ruta con varios motivos aparece en cada uno; sus cajas devueltas se reparten entre ellos.
                         </p>
                       </div>
                     </div>
@@ -3297,7 +3371,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               <span>Sistema de Asignación, Segmentación y Liquidación Operativa</span>
             </div>
             <div>
-              <span>Agencia: <strong className="text-slate-800">{filterAgency}</strong> • Fecha: <strong className="text-slate-800">{fechaHoy || formatDateToGuatemala(new Date())}</strong></span>
+              <span>Agencia: <strong className="text-slate-800">{filterAgency}</strong> • Fecha: <strong className="text-slate-800">{fechaReporte}</strong></span>
             </div>
           </div>
         </div>
