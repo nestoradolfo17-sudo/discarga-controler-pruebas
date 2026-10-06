@@ -55,6 +55,11 @@ export interface DailySummaryPdfData {
     totalCajasEntregadas: number;
     totalCajasDevueltas: number;
     totalParadasRealizadas: number;
+    recargasTransito?: {
+      totalPlan: number;
+      cajasPlan: number;
+      paradasPlan: number;
+    };
     enTransito: {
       totalPlan: number;
       cajasPlan: number;
@@ -141,6 +146,25 @@ export interface DailySummaryPdfData {
     grupos: Array<{ segmento: string; rows: LiqSegMotivoRow[]; sub: LiqSegMotivoRow }>;
     total: LiqSegMotivoRow;
   };
+  // Cierre de día: detalle por segmento con excepciones (solo Fin de Día).
+  cierreSegmentos?: Array<{
+    segmento: string;
+    plan: number;
+    liq: number;
+    noLiq: number;
+    cumpl: number;
+    cjPlan: number;
+    cjEnt: number;
+    cjDev: number;
+    cjPendiente: number;
+    efect: number;
+    paradasOk: number;
+    paradasRech: number;
+    devoluciones: Array<{ id: string; agencia: string; cjDev: number; rech: number; motivo: string }>;
+    pendientes: Array<{ id: string; agencia: string; estado: string; cj: number; horas: string }>;
+    cajasAbiertas: Array<{ id: string; agencia: string; motivo: string; monto?: number }>;
+    montoCajas: number;
+  }>;
   // Análisis por segmento (rutas y cajas CJ) — mismo cálculo que la pestaña "Por segmento" del modal.
   segmentos?: {
     rows: SegmentoPdfRow[];
@@ -356,6 +380,16 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
           `${summaryTotals.enTransito.paradasPlan}`,
           'Rutas en ruta activa hacia clientes',
         ],
+        ...(summaryTotals.recargasTransito && summaryTotals.recargasTransito.totalPlan > 0 ? [
+          [
+            'Total Recargas en Tránsito',
+            `${summaryTotals.recargasTransito.totalPlan}`,
+            calcPerc(summaryTotals.recargasTransito.totalPlan, summaryTotals.totalRutasPlan),
+            summaryTotals.recargasTransito.cajasPlan.toFixed(1),
+            `${summaryTotals.recargasTransito.paradasPlan}`,
+            'Despachadas como Recarga (2° viaje)',
+          ],
+        ] : []),
         ...(summaryTotals.pendientes ? [
           [
             'Total Rutas Pendientes de Salida',
@@ -419,6 +453,17 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
           summaryTotals.enTransito.finCajasDevueltas.toFixed(1),
           summaryTotals.enTransito.finPendientes === 0 ? 'Completadas al 100%' : `${summaryTotals.enTransito.finPendientes} aún en tránsito`,
         ],
+        ...(summaryTotals.recargasTransito && summaryTotals.recargasTransito.totalPlan > 0 ? [
+          [
+            'Total Recargas en Tránsito',
+            `${summaryTotals.recargasTransito.totalPlan}`,
+            '0',
+            `${summaryTotals.recargasTransito.totalPlan}`,
+            '0.0',
+            '0.0',
+            `${summaryTotals.recargasTransito.totalPlan} recarga(s) aún en tránsito`,
+          ],
+        ] : []),
         ...(summaryTotals.pendientes ? [
           [
             'Total Rutas Pendientes de Salida',
@@ -597,6 +642,46 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
     });
     // @ts-ignore
     currentY = ((doc as any).lastAutoTable?.finalY || currentY + 30) + 5;
+  }
+
+  // 3d. CIERRE: DETALLE POR SEGMENTO (excepciones para notificar)
+  if (!isInicio && data.cierreSegmentos && data.cierreSegmentos.length) {
+    const n1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('es-GT', { maximumFractionDigits: 1 });
+    const q = (v: number) => 'Q ' + v.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    data.cierreSegmentos.forEach((g) => {
+      if (currentY > doc.internal.pageSize.getHeight() - 45) { doc.addPage(); currentY = 15; }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`SEGMENTO ${g.segmento}`, margin, currentY + 3);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.text(
+        `${g.liq}/${g.plan} liquidadas (${g.cumpl.toFixed(1)}%) · CJ plan ${n1(g.cjPlan)} · entregadas ${n1(g.cjEnt)} · devueltas ${n1(g.cjDev)} · por liquidar ${n1(g.cjPendiente)} · efectividad ${g.efect.toFixed(1)}% · paradas ok/rech ${g.paradasOk}/${g.paradasRech} · cajas abiertas ${g.cajasAbiertas.length}${g.montoCajas ? ' (' + q(g.montoCajas) + ')' : ''}`,
+        margin,
+        currentY + 7.5,
+        { maxWidth: pageWidth - margin * 2 }
+      );
+      currentY += 10;
+      const body: string[][] = [
+        ...g.devoluciones.map((d) => ['Devolución', `#${d.id}`, d.agencia, `${n1(d.cjDev)} CJ${d.rech ? ` · ${d.rech} parada(s)` : ''} — ${d.motivo}`]),
+        ...g.pendientes.map((d) => ['Sin liquidar', `#${d.id}`, d.agencia, `${d.estado} · ${n1(d.cj)} CJ · ${d.horas}`]),
+        ...g.cajasAbiertas.map((d) => ['Caja abierta', `#${d.id}`, d.agencia, `${d.motivo}${typeof d.monto === 'number' ? ' · ' + q(d.monto) : ''}`]),
+      ];
+      if (!body.length) body.push(['Sin novedades', '-', '-', 'Todas las rutas liquidadas sin devolución ni caja abierta']);
+      autoTable(doc, {
+        startY: currentY,
+        head: [['NOVEDAD', 'RUTA', 'AGENCIA', 'DETALLE']],
+        body,
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 1.3, textColor: [30, 41, 59], lineColor: [203, 213, 225], lineWidth: 0.2 },
+        headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 26 }, 1: { cellWidth: 22 }, 2: { cellWidth: 34 } },
+        margin: { left: margin, right: margin },
+      });
+      // @ts-ignore
+      currentY = ((doc as any).lastAutoTable?.finalY || currentY + 20) + 5;
+    });
   }
 
   // 4. TABLA 2: TABLA DETALLADA DE RUTAS PLANIFICADAS
