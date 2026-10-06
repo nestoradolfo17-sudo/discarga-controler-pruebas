@@ -52,7 +52,11 @@ export type MotivoDevolucionReason =
   | 'Producto Dañado / Merma'
   | 'Dirección No Localizada'
   | 'Fuera de Horario / Retraso'
-  | 'Cliente Rechaza Pedido';
+  | 'Cliente Rechaza Pedido'
+  // Solo para Ruta Abierta (ver MOTIVOS_RUTA_ABIERTA en data/motivosDevolucion).
+  | 'Pedido mal Digitado'
+  | 'No Hizo Pedido'
+  | 'Paso Bloqueado';
 
 // Catálogo de motivos por los que la Caja (POS) de una ruta liquidada queda
 // pendiente de validar (nuevo estado "Caja Abierta" del módulo de Liquidación).
@@ -68,7 +72,10 @@ export type CajaAbiertaReason =
   | 'Producto pendiente de entregar'
   | 'Pago en línea pendiente'
   | 'Diferencia de producto faltante en ruta (Bodega)'
-  | 'Asalto';
+  | 'Asalto'
+  | 'Pedido mal Digitado'
+  | 'No Hizo Pedido'
+  | 'Paso Bloqueado';
 
 // Un cliente/punto de venta dentro de una ruta, tal como viene en el archivo
 // "Clientes N" que envía el cliente (operador logístico) junto con el resumen de
