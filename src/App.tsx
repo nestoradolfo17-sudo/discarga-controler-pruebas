@@ -41,6 +41,7 @@ import {
   signIn,
   signOut,
   verifyOwnPassword,
+  verifyAdminCredentials,
   fetchProfiles,
   subscribeToProfiles,
   adminCreateUser,
@@ -63,6 +64,7 @@ import { NewRouteModal } from './components/modals/NewRouteModal';
 import { NewTrasladoRouteModal } from './components/modals/NewTrasladoRouteModal';
 import { RouteTypeSelectModal } from './components/modals/RouteTypeSelectModal';
 import { SplitRouteModal } from './components/modals/SplitRouteModal';
+import { ChangeSegmentModal } from './components/modals/ChangeSegmentModal';
 import { RevertSplitModal } from './components/modals/RevertSplitModal';
 import { AssignModal } from './components/modals/AssignModal';
 import { LiquidateModal } from './components/modals/LiquidateModal';
@@ -1116,6 +1118,8 @@ export default function App() {
   const [isRouteTypeSelectModalOpen, setIsRouteTypeSelectModalOpen] = useState(false);
   const [isTrasladoRouteModalOpen, setIsTrasladoRouteModalOpen] = useState(false);
   const [splitRouteTarget, setSplitRouteTarget] = useState<Route | null>(null);
+  // Cambio de segmento (con autorización de administrador).
+  const [segmentTarget, setSegmentTarget] = useState<Route | null>(null);
   const [revertSplitTarget, setRevertSplitTarget] = useState<Route | null>(null);
   const [assignTarget, setAssignTarget] = useState<Route | null>(null);
   const [liquidateTarget, setLiquidateTarget] = useState<Route | null>(null);
@@ -1875,6 +1879,72 @@ export default function App() {
     setIsTrasladoRouteModalOpen(false);
     showToast(`Ruta ${created.id} creada en estado Pendiente`, 'success');
   };
+
+  // --- Cambio de segmento con contraseña de administrador ---
+  const segmentSplitGroup = (r: Route | null): Route[] =>
+    r && r.isSplitRoute && r.parentRouteId
+      ? routes.filter((x) => x.estado !== 'Liquidada' && isSameSplitGroup(x, String(r.parentRouteId), r))
+      : r
+      ? [r]
+      : [];
+
+  const handleVerifyAdminForSegment = async (
+    username: string,
+    password: string
+  ): Promise<{ ok: boolean; nombre?: string; error?: string }> => {
+    if (isSupabaseConfigured) return verifyAdminCredentials(username, password);
+    const u = users.find((x) => x.username.toLowerCase() === username.toLowerCase());
+    if (!u || u.password !== password) return { ok: false, error: 'Usuario o contraseña de administrador incorrectos.' };
+    if (!u.isAdmin || u.activo === false) return { ok: false, error: 'Ese usuario no es un administrador activo.' };
+    return { ok: true, nombre: u.nombre || u.username };
+  };
+
+  const handleConfirmSegmentChange = (segmento: string, applyToGroup: boolean, autorizadoPor: string) => {
+    const target = segmentTarget;
+    if (!target) return;
+    const keys = new Set(
+      (applyToGroup ? segmentSplitGroup(target) : [target]).map((r) => getRouteKey(r))
+    );
+    const ahora = formatDateTimeToGuatemala(new Date());
+    const por = currentUser?.nombre || currentUser?.username || '';
+    // Solo cambia "segmento" (y deja constancia en historialSegmento).
+    setRoutes((prev) =>
+      prev.map((r) =>
+        keys.has(getRouteKey(r))
+          ? {
+              ...r,
+              segmento,
+              historialSegmento: [
+                ...(r.historialSegmento || []),
+                { fecha: ahora, de: r.segmento || '', a: segmento, por, autorizadoPor },
+              ],
+            }
+          : r
+      )
+    );
+    setSegmentTarget(null);
+    showToast(
+      `Segmento cambiado a ${segmento} en ${keys.size} ruta(s). Autorizó: ${autorizadoPor}.`,
+      'success'
+    );
+  };
+
+  // Rutas partidas antes de esta corrección quedaron sin segmento: se completa
+  // con el segmento de la ruta de origen (solo se AGREGA el dato que faltaba).
+  useEffect(() => {
+    if (!isRemoteReady) return;
+    const faltan = routes.some(
+      (r) => r.isSplitRoute && !r.segmento && (r.originalRouteData as Route | undefined)?.segmento
+    );
+    if (!faltan) return;
+    setRoutes((prev) =>
+      prev.map((r) =>
+        r.isSplitRoute && !r.segmento && (r.originalRouteData as Route | undefined)?.segmento
+          ? { ...r, segmento: (r.originalRouteData as Route).segmento }
+          : r
+      )
+    );
+  }, [routes, isRemoteReady]);
 
   const handleConfirmSplit = (originalRoute: Route, childRoutes: Route[]) => {
     setRoutes((prev) => {
@@ -3706,6 +3776,10 @@ export default function App() {
             onOpenNewRouteModal={() => setIsRouteTypeSelectModalOpen(true)}
             onMoveToFloor={handleMoveToFloor}
             onRemoveBolson={handleRemoveBolson}
+            onChangeSegment={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
+              if (r) setSegmentTarget(r);
+            }}
             onBulkMoveToFloor={handleBulkMoveToFloor}
             onOpenDeleteModal={canDeleteData ? (ids) => setDeleteRoutesTargetIds(ids) : undefined}
           />
@@ -3844,6 +3918,14 @@ export default function App() {
         agencia={effectiveAgencyForCreation}
       />
 
+      <ChangeSegmentModal
+        route={segmentTarget}
+        splitCount={segmentSplitGroup(segmentTarget).length}
+        defaultAdminUser={currentUser?.isAdmin ? currentUser.username : ''}
+        onVerifyAdmin={handleVerifyAdminForSegment}
+        onConfirm={handleConfirmSegmentChange}
+        onClose={() => setSegmentTarget(null)}
+      />
       <SplitRouteModal
         isOpen={!!splitRouteTarget}
         onClose={() => setSplitRouteTarget(null)}
