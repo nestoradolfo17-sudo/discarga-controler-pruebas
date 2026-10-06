@@ -548,7 +548,19 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
 
                   {/* Segmento */}
                   <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-slate-700 text-xs font-medium whitespace-nowrap">
-                    {route.segmento || '-'}
+                    {onChangeSegment && route.estado !== 'Liquidada' ? (
+                      <button
+                        type="button"
+                        onClick={() => onChangeSegment(route.id, routeKey)}
+                        title="Cambiar segmento (requiere contraseña de administrador)"
+                        className="inline-flex items-center gap-1 min-h-[32px] px-2 rounded-lg border border-transparent hover:border-slate-300 hover:bg-slate-50 cursor-pointer text-slate-700"
+                      >
+                        {route.segmento || '-'}
+                        <span aria-hidden className="text-slate-400 text-[11px]">✎</span>
+                      </button>
+                    ) : (
+                      route.segmento || '-'
+                    )}
                   </td>
 
                   {/* Fecha */}
