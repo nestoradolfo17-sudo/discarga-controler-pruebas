@@ -199,6 +199,9 @@ export default function App() {
   const sessionLostRef = useRef(false);
   const intentionalSignOutRef = useRef(false);
   const authUserIdRef = useRef<string | null>(null);
+  // Solo se usa el recuadro de reingreso si la app ya estaba cargada y en uso;
+  // en cualquier otro momento (arranque, carga de perfil) se va al inicio normal.
+  const appInUseRef = useRef(false);
   // Cierre de sesión pedido por la app o el usuario (no es una caída de sesión).
   const signOutIntentionally = useCallback(() => {
     intentionalSignOutRef.current = true;
@@ -236,7 +239,7 @@ export default function App() {
     const unsubscribe = onAuthChange((id) => {
       if (!active) return;
       const prev = authUserIdRef.current;
-      if (!id && prev && !intentionalSignOutRef.current) {
+      if (!id && prev && !intentionalSignOutRef.current && appInUseRef.current) {
         // Caída de sesión no pedida: se conserva la pantalla y se pide reingresar.
         sessionLostRef.current = true;
         setSessionLost(true);
@@ -1219,6 +1222,18 @@ export default function App() {
     });
     return () => setSyncErrorHandler(null);
   }, [showToast]);
+
+  useEffect(() => {
+    appInUseRef.current = !!currentUser && isRemoteReady;
+    // Si con la sesión caída ya no hay perfil visible, se vuelve al inicio normal
+    // (nunca quedarse atascado entre el recuadro y la pantalla de ingreso).
+    if (sessionLost && !currentUser) {
+      sessionLostRef.current = false;
+      setSessionLost(false);
+      authUserIdRef.current = null;
+      setAuthUserId(null);
+    }
+  }, [currentUser, isRemoteReady, sessionLost]);
 
   // Blindaje: reintento automático de guardado. Si un guardado falla, la app
   // vuelve a intentarlo sola (a los 15 s, 30 s, 45 s… hasta 2 min entre
