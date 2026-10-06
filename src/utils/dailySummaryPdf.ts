@@ -55,10 +55,15 @@ export interface DailySummaryPdfData {
     totalCajasEntregadas: number;
     totalCajasDevueltas: number;
     totalParadasRealizadas: number;
+    // Inicio: recargas programadas · Fin: recargas realizadas (liquidadas + en ruta)
     recargasTransito?: {
       totalPlan: number;
       cajasPlan: number;
       paradasPlan: number;
+      finLiquidadas: number;
+      finPendientes: number;
+      finCajasEntregadas: number;
+      finCajasDevueltas: number;
     };
     enTransito: {
       totalPlan: number;
@@ -320,7 +325,9 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
   doc.setTextColor(100, 116, 139);
   doc.text(
     isInicio
-      ? `Hasta ${stats.maxHorasAtraso || 0}h atraso`
+      ? (summaryTotals
+          ? `24h: ${summaryTotals.rutas24h?.totalPlan ?? 0} · 72h: ${summaryTotals.rutas72h?.totalPlan ?? 0} · +72h: ${summaryTotals.rutasMayor72h?.totalPlan ?? 0}`
+          : `${stats.atrasadas} con 24 h o más`)
       : `${stats.cajasEntregadas || 0} ent • ${stats.cajasDevueltas || 0} dev`,
     kpi4X + 2.5,
     currentY + 13.8
@@ -382,12 +389,12 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
         ],
         ...(summaryTotals.recargasTransito && summaryTotals.recargasTransito.totalPlan > 0 ? [
           [
-            'Total Recargas en Tránsito',
+            'Total Recargas Programadas',
             `${summaryTotals.recargasTransito.totalPlan}`,
             calcPerc(summaryTotals.recargasTransito.totalPlan, summaryTotals.totalRutasPlan),
             summaryTotals.recargasTransito.cajasPlan.toFixed(1),
             `${summaryTotals.recargasTransito.paradasPlan}`,
-            'Despachadas como Recarga (2° viaje)',
+            'Programadas como Recarga (2° viaje)',
           ],
         ] : []),
         ...(summaryTotals.pendientes ? [
@@ -455,13 +462,15 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
         ],
         ...(summaryTotals.recargasTransito && summaryTotals.recargasTransito.totalPlan > 0 ? [
           [
-            'Total Recargas en Tránsito',
+            'Total Recargas Realizadas',
             `${summaryTotals.recargasTransito.totalPlan}`,
-            '0',
-            `${summaryTotals.recargasTransito.totalPlan}`,
-            '0.0',
-            '0.0',
-            `${summaryTotals.recargasTransito.totalPlan} recarga(s) aún en tránsito`,
+            `${summaryTotals.recargasTransito.finLiquidadas}`,
+            `${summaryTotals.recargasTransito.finPendientes}`,
+            summaryTotals.recargasTransito.finCajasEntregadas.toFixed(1),
+            summaryTotals.recargasTransito.finCajasDevueltas.toFixed(1),
+            summaryTotals.recargasTransito.finPendientes === 0
+              ? 'Completadas al 100%'
+              : `${summaryTotals.recargasTransito.finPendientes} recarga(s) aún en ruta`,
           ],
         ] : []),
         ...(summaryTotals.pendientes ? [
@@ -691,7 +700,6 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
           'NO. RUTA',
           'F. PLANIFICADA',
           'F. DESPACHADA',
-          'HORAS',
           'INDICADOR / RETRASO',
           'CAJAS',
           'PARADAS',
@@ -704,7 +712,7 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
           'NO. RUTA',
           'F. PLANIFICADA',
           'F. DESPACHADA',
-          'HORAS',
+          'ANTIGÜEDAD',
           'INDICADOR',
           'CAJAS PLAN',
           'CAJAS ENT.',
@@ -721,7 +729,6 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
         r.id,
         r.fechaPlanificadaStr,
         r.fechaDespachadaStr,
-        r.horasTexto,
         `${r.estaAtrasado ? 'CON RETRASO' : 'EN TIEMPO'} - ${r.indicadorDetalle}`,
         `${r.cajasFisicasPlan}`,
         `${r.paradasPlan}`,
@@ -771,7 +778,7 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
       1: { halign: 'center' },
       2: { halign: 'center' },
       3: { halign: 'center' },
-      4: { halign: 'left' },
+      [isInicio ? 3 : 4]: { halign: 'left' },
       5: { halign: 'center' },
       6: { halign: 'center' },
       7: { halign: 'center' },
@@ -782,7 +789,7 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
       // Colorear ligeramente si está atrasado en la columna de indicador
       if (hookData.section === 'body') {
         const rowData = routesList[hookData.row.index];
-        if (rowData && rowData.estaAtrasado && hookData.column.index === 4) {
+        if (rowData && rowData.estaAtrasado && hookData.column.index === (isInicio ? 3 : 4)) {
           hookData.cell.styles.textColor = [185, 28, 28]; // Rojo
           hookData.cell.styles.fontStyle = 'bold';
         }
