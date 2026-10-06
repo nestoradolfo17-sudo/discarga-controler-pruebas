@@ -1,9 +1,11 @@
 import React from 'react';
-import { Clock, Navigation, AlertTriangle, CheckCircle2, Warehouse, Package, PackageCheck, PackageX, Percent, Lock } from 'lucide-react';
+import { Clock, Navigation, AlertTriangle, CheckCircle2, Warehouse, Package, PackageCheck, PackageX, Percent, Lock, Repeat } from 'lucide-react';
 
 interface StatsCardsProps {
   pendientes: number;
   transito: number;
+  // Recargas (2° viaje) en tránsito, mostradas aparte de "Tránsito".
+  recargas?: number;
   abiertas: number;
   liquidadas: number;
   pisoHoy: number;
@@ -20,6 +22,7 @@ interface StatsCardsProps {
 export const StatsCards: React.FC<StatsCardsProps> = ({
   pendientes,
   transito,
+  recargas,
   abiertas,
   liquidadas,
   pisoHoy,
@@ -42,7 +45,10 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       title: string;
     }[] = [
       { label: 'Pendientes', value: pendientes, icon: Clock, cls: 'bg-amber-50 border-amber-200 text-amber-700', tab: 'board', title: 'Rutas pendientes por asignar' },
-      { label: 'Tránsito', value: transito, icon: Navigation, cls: 'bg-blue-50 border-blue-200 text-blue-700', tab: 'board', title: 'Rutas en reparto' },
+      { label: 'Tránsito', value: transito, icon: Navigation, cls: 'bg-blue-50 border-blue-200 text-blue-700', tab: 'board', title: 'Rutas en reparto (primer viaje / revisita)' },
+      ...(recargas !== undefined
+        ? [{ label: 'Recargas', value: recargas, icon: Repeat, cls: 'bg-purple-50 border-purple-200 text-purple-700', tab: 'board' as const, title: 'Rutas despachadas como Recarga (2° viaje) en tránsito' }]
+        : []),
       { label: 'Abiertas', value: abiertas, icon: AlertTriangle, cls: 'bg-orange-50 border-orange-200 text-orange-700', tab: 'board', title: 'Abiertas / con devolución, por reasignar' },
       { label: 'A Piso', value: pisoHoy, icon: Warehouse, cls: 'bg-yellow-50 border-yellow-200 text-yellow-700', tab: 'board', title: fechaHoy ? `Rutas a piso · ${fechaHoy}` : 'Rutas a piso hoy' },
       { label: 'Liquidadas', value: liquidadas, icon: CheckCircle2, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700', tab: 'liquidated', title: liquidadasTotal !== undefined ? `${liquidadas} hoy · ${liquidadasTotal} en histórico` : 'Ver liquidadas' },
