@@ -50,6 +50,9 @@ interface RoutesTableProps {
   onMoveToFloor?: (routeId: string, fecha: string, tomorrowDate: string, motivo?: string) => void;
   onRemoveBolson?: (routeId: string, fecha: string) => void;
   onChangeSegment?: (routeId: string, fecha: string) => void;
+  // Informa la lista EXACTA que se ve en la tabla (con el orden elegido), para
+  // que el Excel de "Rutas Prioridades" salga igual al Tablero.
+  onVisibleRoutesChange?: (routes: Route[]) => void;
   // routeIds aquí son claves compuestas ID+Fecha (ver getRouteKey), no solo el ID.
   onBulkMoveToFloor?: (routeIds: string[]) => void;
   onOpenDeleteModal?: (routeIds: string[]) => void;
@@ -87,6 +90,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   onMoveToFloor,
   onRemoveBolson,
   onChangeSegment,
+  onVisibleRoutesChange,
   onBulkMoveToFloor,
   onOpenDeleteModal,
 }) => {
@@ -214,6 +218,10 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
       return sortOrder === 'asc' ? comparison : -comparison;
     });
   }, [routes, sortKey, sortOrder]);
+
+  React.useEffect(() => {
+    onVisibleRoutesChange?.(sortedRoutes);
+  }, [sortedRoutes, onVisibleRoutesChange]);
 
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
