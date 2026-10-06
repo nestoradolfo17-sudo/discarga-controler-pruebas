@@ -3488,6 +3488,9 @@ export default function App() {
             staff={visibleStaff}
             stats={stats}
             selectedAgency={selectedAgency}
+            historyLimitedDays={historyLimited ? HISTORY_INITIAL_DAYS : undefined}
+            onLoadFullHistory={loadFullHistory}
+            isLoadingFullHistory={isLoadingFullHistory}
           />
         )}
 
