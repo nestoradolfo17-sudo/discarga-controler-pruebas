@@ -88,6 +88,9 @@ export interface RouteSummaryMetric {
   guiasRechazadas: number;
   // Metadatos de ejecución
   isLiquidada: boolean;
+  // Está ACTIVA en el Tablero de Rutas (no liquidada). Pendientes, Tránsito,
+  // Recargas y A piso se cuentan SOLO con estas rutas, nunca con el histórico.
+  activoTablero: boolean;
   isFloor: boolean;
   isRecarga: boolean;
   isRezagadaAnterior: boolean;
@@ -355,6 +358,7 @@ function buildRouteSummaryMetric(r: Route, fechaHoyStr?: string): RouteSummaryMe
     isLiquidada,
     isFloor,
     isRecarga,
+    activoTablero: false,
     isRezagadaAnterior: isRezagada,
     estado: r.estado,
     horaSalida: r.asignacion?.horaSalida,
@@ -410,10 +414,10 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialMode, selectedAgency]);
 
-  // Consolidar las rutas de la FECHA ELEGIDA (activas y liquidadas).
-  // - Jornada actual: todas las rutas activas del tablero (incluye rezagadas de
-  //   días anteriores, como siempre) + las liquidadas de la jornada.
-  // - Otra fecha: las rutas programadas / a piso / liquidadas en ese día.
+  // Consolidar las rutas del reporte:
+  // - Rutas ACTIVAS: siempre todo lo que está hoy en el Tablero de Rutas
+  //   (pendientes, en tránsito, recargas, a piso, abiertas), sin importar la fecha.
+  // - Rutas LIQUIDADAS: solo las liquidadas (o programadas) en la fecha elegida.
   const allCurrentRoutes = useMemo(() => {
     const fechasValidas = new Set<string>([fechaReporte]);
     if (esJornadaActual) fechasValidas.add(fechaRealHoy);
@@ -421,14 +425,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
       const d = fmtDay(v);
       return d !== null && fechasValidas.has(d);
     });
-    const activaEnFecha = (r: Route) =>
-      esJornadaActual || enFecha(r.fecha, r.fechaOriginalRuta, r.fechaPiso, r.fechaCarga);
     const liquidadaEnFecha = (r: Route) =>
       enFecha(r.liquidacion?.fechaLiquidacion, r.fechaLiquidacion, r.fecha, r.fechaOriginalRuta);
 
     const map = new Map<string, Route>();
     routes.forEach((r) => {
-      if (r.estado === 'Liquidada' ? liquidadaEnFecha(r) : activaEnFecha(r)) map.set(String(r.id), r);
+      if (r.estado !== 'Liquidada' || liquidadaEnFecha(r)) map.set(String(r.id), r);
     });
     allLiquidatedRoutes.forEach((r) => {
       if (!map.has(String(r.id)) && liquidadaEnFecha(r)) {
@@ -438,10 +440,25 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     return Array.from(map.values());
   }, [routes, allLiquidatedRoutes, fechaReporte, esJornadaActual, fechaRealHoy]);
 
+  // Rutas activas del tablero (para no confundirlas con registros liquidados).
+  const activeRouteSet = useMemo(
+    () => new Set<Route>(routes.filter((r) => r.estado !== 'Liquidada')),
+    [routes]
+  );
+
   // Generar métricas estandarizadas para cada ruta
   const allRouteMetrics = useMemo(() => {
-    return allCurrentRoutes.map((r) => buildRouteSummaryMetric(r, fechaReporte));
-  }, [allCurrentRoutes, fechaReporte]);
+    return allCurrentRoutes.map((r) => {
+      const m = buildRouteSummaryMetric(r, fechaReporte);
+      if (activeRouteSet.has(r)) {
+        // Activa en el tablero: aunque traiga datos de un viaje anterior ya
+        // liquidado (p. ej. una recarga), hoy cuenta como ruta activa.
+        m.activoTablero = true;
+        m.isLiquidada = false;
+      }
+      return m;
+    });
+  }, [allCurrentRoutes, fechaReporte, activeRouteSet]);
 
   // Filtrado general por Agencia y Búsqueda
   const filteredMetrics = useMemo(() => {
@@ -469,17 +486,17 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   const inicioFilteredList = useMemo(() => {
     switch (inicioFilter) {
       case 'pendientes':
-        return filteredMetrics.filter((m) => !m.isFloor && m.estado === 'Pendiente');
+        return filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'Pendiente');
       case 'transito':
-        return filteredMetrics.filter((m) => !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga);
+        return filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga);
       case 'en_tiempo':
         return filteredMetrics.filter((m) => !m.estaAtrasado);
       case 'atrasadas':
         return filteredMetrics.filter((m) => m.estaAtrasado);
       case 'piso':
-        return filteredMetrics.filter((m) => m.isFloor);
+        return filteredMetrics.filter((m) => m.activoTablero && m.isFloor);
       case 'recargas':
-        return filteredMetrics.filter((m) => m.isRecarga);
+        return filteredMetrics.filter((m) => m.activoTablero && m.isRecarga && !m.isFloor);
       case 'todas':
       default:
         return filteredMetrics;
@@ -488,14 +505,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
   // KPIs Inicio de Día
   const inicioTotalRutas = filteredMetrics.length;
-  const inicioPendientesCount = filteredMetrics.filter((m) => !m.isFloor && m.estado === 'Pendiente').length;
-  const inicioTransitoCount = filteredMetrics.filter((m) => !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga).length;
+  const inicioPendientesCount = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'Pendiente').length;
+  const inicioTransitoCount = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga).length;
   const inicioEnTiempoCount = filteredMetrics.filter((m) => !m.estaAtrasado).length;
   const inicioAtrasadasCount = filteredMetrics.filter((m) => m.estaAtrasado).length;
   const inicioTotalCajasPlan = filteredMetrics.reduce((acc, m) => acc + m.cajasFisicasPlan, 0);
   const inicioTotalParadasPlan = filteredMetrics.reduce((acc, m) => acc + m.paradasPlan, 0);
-  const inicioPisoCount = filteredMetrics.filter((m) => m.isFloor).length;
-  const inicioRecargasCount = filteredMetrics.filter((m) => m.isRecarga).length;
+  const inicioPisoCount = filteredMetrics.filter((m) => m.activoTablero && m.isFloor).length;
+  const inicioRecargasCount = filteredMetrics.filter((m) => m.activoTablero && m.isRecarga && !m.isFloor).length;
   const inicioMaxHorasAtraso = useMemo(() => {
     const atrasadas = filteredMetrics.filter((m) => m.estaAtrasado);
     if (atrasadas.length === 0) return 0;
@@ -517,7 +534,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
       case 'pendientes':
         return filteredMetrics.filter((m) => !m.isLiquidada && !m.isFloor);
       case 'piso':
-        return filteredMetrics.filter((m) => m.isFloor);
+        return filteredMetrics.filter((m) => m.activoTablero && m.isFloor);
       case 'todas':
       default:
         return filteredMetrics;
@@ -554,7 +571,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   );
   const finEnTiempoCount = filteredMetrics.filter((m) => !m.estaAtrasado).length;
   const finAtrasadasCount = filteredMetrics.filter((m) => m.estaAtrasado).length;
-  const finPisoCount = filteredMetrics.filter((m) => m.isFloor && !m.isLiquidada).length;
+  const finPisoCount = filteredMetrics.filter((m) => m.activoTablero && m.isFloor).length;
 
   // ==============================================================
   // TABLA RESUMEN DE TOTALES: EN TRÁNSITO, EN PISO, 24H, 72H, > 72H
@@ -563,14 +580,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   const summaryTotals = useMemo(() => {
     // 1. Total Rutas en Tránsito (efectivamente despachadas a reparto hacia clientes)
     // Las recargas (2° viaje) en tránsito se cuentan aparte, no como "Tránsito".
-    const enTransito = filteredMetrics.filter((m) => !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga);
-    const recTransito = filteredMetrics.filter((m) => !m.isFloor && m.estado === 'En Tránsito' && m.isRecarga);
+    const enTransito = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga);
+    const recTransito = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito' && m.isRecarga);
     const enTransitoLiquidadas = enTransito.filter((m) => m.isLiquidada);
     const enTransitoPendientes = enTransito.filter((m) => !m.isLiquidada);
 
     // 2. Total Rutas Pendientes de Salida (programadas por asignar / despachar a clientes)
     const pendientes = filteredMetrics.filter(
-      (m) => !m.isFloor && (m.estado === 'Pendiente' || (m.estado !== 'En Tránsito' && !m.isLiquidada))
+      (m) => m.activoTablero && !m.isFloor && m.estado !== 'En Tránsito'
     );
     const pendientesLiquidadas = pendientes.filter((m) => m.isLiquidada);
     const pendientesPendientes = pendientes.filter((m) => !m.isLiquidada);
@@ -579,7 +596,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     const planReparto = filteredMetrics.filter((m) => !m.isFloor);
 
     // 3. Total Rutas en Piso (retenidas en bodega)
-    const enPiso = filteredMetrics.filter((m) => m.isFloor);
+    const enPiso = filteredMetrics.filter((m) => m.activoTablero && m.isFloor);
     const enPisoQuedan = enPiso.filter((m) => !m.isLiquidada);
     const enPisoLiquidadas = enPiso.filter((m) => m.isLiquidada);
 
@@ -715,9 +732,9 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         rutas: L.length,
         cjPlan: sum(L, (m) => m.cajasFisicasPlan),
         paradas: sum(L, (m) => m.paradasPlan),
-        pendientes: L.filter((m) => !m.isFloor && m.estado === 'Pendiente').length,
-        transito: L.filter((m) => !m.isFloor && m.estado === 'En Tránsito').length,
-        piso: L.filter((m) => m.isFloor && !m.isLiquidada).length,
+        pendientes: L.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'Pendiente').length,
+        transito: L.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito').length,
+        piso: L.filter((m) => m.activoTablero && m.isFloor).length,
         atrasadas: L.filter((m) => m.estaAtrasado).length,
         liquidadas: liq.length,
         noLiquidadas: L.length - liq.length,
@@ -1033,9 +1050,9 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               </p>
               {!esJornadaActual && (
                 <p id="avisoFechaReporte" className="mt-1 text-[11px] font-semibold text-amber-300 print:hidden">
-                  Mostrando el {fechaReporte}: rutas programadas, a piso o liquidadas ese día, con su estado actual.
-                  Los recursos sin asignar corresponden a hoy. Si faltan rutas de hace más de 45 días, carga el
-                  historial completo desde el Dashboard.
+                  Liquidadas del {fechaReporte}. Pendientes, tránsito, recargas y a piso siempre son las rutas
+                  activas del Tablero de Rutas. Si faltan liquidadas de hace más de 45 días, carga el historial
+                  completo desde el Dashboard.
                 </p>
               )}
             </div>
