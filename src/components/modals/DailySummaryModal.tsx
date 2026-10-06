@@ -37,7 +37,7 @@ import { ACTION_ICONS } from '../ui/actionIcons';
 import { generateDailySummaryPdf } from '../../utils/dailySummaryPdf';
 
 export type DailySummaryMode = 'inicio' | 'fin';
-export type InicioFilter = 'todas' | 'pendientes' | 'transito' | 'en_tiempo' | 'atrasadas' | 'piso' | 'recargas';
+export type InicioFilter = 'todas' | 'pendientes' | 'transito' | 'en_tiempo' | 'atrasadas' | 'piso' | 'recargas' | 'bolson';
 export type FinFilter = 'todas' | 'liquidadas' | 'en_tiempo' | 'atrasadas' | 'pendientes' | 'piso';
 
 interface DailySummaryModalProps {
@@ -92,6 +92,8 @@ export interface RouteSummaryMetric {
   // Recargas y A piso se cuentan SOLO con estas rutas, nunca con el histórico.
   activoTablero: boolean;
   isFloor: boolean;
+  // Ruta Bolsón: enviada a rechazo, sin asignación ni salida (no es "pendiente de asignar").
+  isBolson: boolean;
   isRecarga: boolean;
   isRezagadaAnterior: boolean;
   estado: string;
@@ -188,13 +190,18 @@ function buildRouteSummaryMetric(r: Route, fechaHoyStr?: string): RouteSummaryMe
     0
   );
 
+  const isBolson = Boolean(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
+
   // 2. FECHA DESPACHADA
   let isDespachada = false;
   let fechaDespachadaStr = 'Sin despachar';
   let fechaDespachadaDate: Date | null = null;
   let despachoLabel = 'Pendiente';
 
-  if (isFloor) {
+  if (isBolson && r.estado !== 'Liquidada') {
+    fechaDespachadaStr = 'Ruta Bolsón (sin asignación ni salida)';
+    despachoLabel = 'Ruta Bolsón';
+  } else if (isFloor) {
     fechaDespachadaStr = 'En Bodega (A Piso)';
     despachoLabel = 'A Piso';
   } else if (
@@ -322,6 +329,7 @@ function buildRouteSummaryMetric(r: Route, fechaHoyStr?: string): RouteSummaryMe
     isFloor,
     isRecarga,
     activoTablero: false,
+    isBolson,
     isRezagadaAnterior: isRezagada,
     estado: r.estado,
     horaSalida: r.asignacion?.horaSalida,
@@ -469,7 +477,9 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   const inicioFilteredList = useMemo(() => {
     switch (inicioFilter) {
       case 'pendientes':
-        return filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'Pendiente');
+        return filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && !m.isBolson && m.estado === 'Pendiente');
+      case 'bolson':
+        return filteredMetrics.filter((m) => m.activoTablero && m.isBolson);
       case 'transito':
         return filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga);
       case 'en_tiempo':
@@ -488,7 +498,8 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
   // KPIs Inicio de Día
   const inicioTotalRutas = filteredMetrics.length;
-  const inicioPendientesCount = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'Pendiente').length;
+  const inicioPendientesCount = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && !m.isBolson && m.estado === 'Pendiente').length;
+  const inicioBolsonCount = filteredMetrics.filter((m) => m.activoTablero && m.isBolson).length;
   const inicioTransitoCount = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga).length;
   const inicioEnTiempoCount = filteredMetrics.filter((m) => !m.estaAtrasado).length;
   const inicioAtrasadasCount = filteredMetrics.filter((m) => m.estaAtrasado).length;
@@ -575,8 +586,10 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
     // 2. Total Rutas Pendientes de Salida (programadas por asignar / despachar a clientes)
     const pendientes = filteredMetrics.filter(
-      (m) => m.activoTablero && !m.isFloor && m.estado !== 'En Tránsito'
+      (m) => m.activoTablero && !m.isFloor && !m.isBolson && m.estado !== 'En Tránsito'
     );
+    // Rutas Bolsón: enviadas a rechazo, sin asignación ni salida.
+    const bolsonList = filteredMetrics.filter((m) => m.activoTablero && m.isBolson);
     const pendientesLiquidadas = pendientes.filter((m) => m.isLiquidada);
     const pendientesPendientes = pendientes.filter((m) => !m.isLiquidada);
 
@@ -627,6 +640,11 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         totalPlan: planReparto.length,
         cajasPlan: planReparto.reduce((acc, m) => acc + m.cajasFisicasPlan, 0),
         paradasPlan: planReparto.reduce((acc, m) => acc + m.paradasPlan, 0),
+      },
+      bolson: {
+        totalPlan: bolsonList.length,
+        cajasPlan: bolsonList.reduce((acc, m) => acc + m.cajasFisicasPlan, 0),
+        paradasPlan: bolsonList.reduce((acc, m) => acc + m.paradasPlan, 0),
       },
       recargasTransito: {
         totalPlan: recTransito.length,
@@ -720,7 +738,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         rutas: L.length,
         cjPlan: sum(L, (m) => m.cajasFisicasPlan),
         paradas: sum(L, (m) => m.paradasPlan),
-        pendientes: L.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'Pendiente').length,
+        pendientes: L.filter((m) => m.activoTablero && !m.isFloor && !m.isBolson && m.estado === 'Pendiente').length,
         transito: L.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito').length,
         piso: L.filter((m) => m.activoTablero && m.isFloor).length,
         atrasadas: L.filter((m) => m.estaAtrasado).length,
@@ -1197,6 +1215,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </p>
                 <div className="mt-1.5 pt-1 border-t border-blue-100 flex items-center justify-between text-[10px] font-bold">
                   <span className="text-amber-800">{inicioPendientesCount} pendientes</span>
+                  {inicioBolsonCount > 0 && (
+                    <>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-rose-800">{inicioBolsonCount} bolsón</span>
+                    </>
+                  )}
                   <span className="text-slate-300">•</span>
                   <span className="text-blue-800">{inicioTransitoCount} en tránsito</span>
                   <span className="text-slate-300">•</span>
@@ -1572,6 +1596,21 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   <Clock className="w-3.5 h-3.5 mr-1" />
                   Pendientes ({inicioPendientesCount})
                 </button>
+                {inicioBolsonCount > 0 && (
+                  <button
+                    id="btnFiltroBolson"
+                    onClick={() => setInicioFilter('bolson')}
+                    title="Rutas Bolsón: enviadas a rechazo, sin asignación ni salida"
+                    className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
+                      inicioFilter === 'bolson'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-rose-800'
+                    }`}
+                  >
+                    <Package className="w-3.5 h-3.5 mr-1" />
+                    Ruta Bolsón ({inicioBolsonCount})
+                  </button>
+                )}
                 <button
                   onClick={() => setInicioFilter('transito')}
                   className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
@@ -2517,6 +2556,49 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     </td>
                   </tr>
 
+                  {summaryTotals.bolson.totalPlan > 0 && (
+                  /* FILA 2b: RUTAS BOLSÓN (sin asignación ni salida) */
+                  <tr className="hover:bg-rose-50/40 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center space-x-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-800 flex items-center justify-center shrink-0 border border-rose-200">
+                          <Package className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900 text-xs">Total Rutas Bolsón</p>
+                          <p className="text-[11px] text-slate-500 font-normal">
+                            Enviadas a rechazo: sin asignación ni salida (no son pendientes de asignar)
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3.5 py-3 text-center">
+                      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-black bg-rose-100 text-rose-900 border border-rose-300 shadow-2xs">
+                        {summaryTotals.bolson.totalPlan}
+                      </span>
+                    </td>
+                    <td className="px-3.5 py-3 text-center">
+                      <span className="text-xs font-bold text-slate-700">
+                        {summaryTotals.totalRutasPlan > 0
+                          ? ((summaryTotals.bolson.totalPlan / summaryTotals.totalRutasPlan) * 100).toFixed(1)
+                          : '0.0'}%
+                      </span>
+                    </td>
+                    <td className="px-3.5 py-3 text-right">
+                      <span className="text-xs font-black text-slate-900">{summaryTotals.bolson.cajasPlan.toFixed(1)}</span>
+                      <span className="text-[10px] text-slate-500 ml-1">cajas</span>
+                    </td>
+                    <td className="px-3.5 py-3 text-center">
+                      <span className="text-xs font-bold text-slate-800">{summaryTotals.bolson.paradasPlan}</span>
+                    </td>
+                    <td className="px-3.5 py-3 text-center">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-300">
+                        Sin asignación ni salida
+                      </span>
+                    </td>
+                  </tr>
+                  )}
+
                   {/* FILA 3: TOTAL DE RUTAS EN PISO */}
                   <tr className="hover:bg-amber-50/50 transition-colors">
                     <td className="px-4 py-3">
@@ -3212,7 +3294,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
                           {/* 3. FECHA DESPACHADA */}
                           <td className="px-3.5 py-3 text-center whitespace-nowrap">
-                            {item.isDespachada ? (
+                            {item.isBolson && !item.isLiquidada ? (
+                              <span className="font-bold text-rose-800 inline-flex items-center bg-rose-50 px-2 py-0.5 rounded text-xs border border-rose-200">
+                                <Package className="w-3 h-3 mr-1 text-rose-600" />
+                                Ruta Bolsón · sin asignación ni salida
+                              </span>
+                            ) : item.isDespachada ? (
                               <span className="font-semibold text-slate-800 inline-flex items-center bg-slate-100 px-2 py-0.5 rounded text-xs border border-slate-200">
                                 <TruckIcon className="w-3 h-3 mr-1 text-slate-500" />
                                 {item.fechaDespachadaStr}
