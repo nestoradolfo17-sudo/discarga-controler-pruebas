@@ -1409,15 +1409,27 @@ export function parseTrucksFromSheet(ws: XLSXTypes.WorkSheet, defaultAgencia?: s
  * Piloto asignado y Segmento de las rutas visibles en el Tablero (mismo orden
  * y filtros que se ven en pantalla). Solo lectura: no modifica ninguna ruta.
  */
-export async function exportRutasPrioridadesToExcel(routes: Route[]): Promise<boolean> {
+export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Truck[] = []): Promise<boolean> {
   if (!routes || routes.length === 0) return false;
   const XLSX = await loadXLSX();
-  const header = ['No. Ruta', 'Camión Asignado', 'Piloto Asignado', 'Segmento'];
+  // "Horario de Carga" y "No. de Prioridad de Carga" salen en blanco para
+  // llenarlos en el Excel (la app aún no guarda esos datos).
+  // ID del camión: el "ID Camión" del catálogo de Camiones (si no tiene, el id interno).
+  const idCamionDe = (r: Route) => {
+    const id = r.asignacion?.camionId;
+    if (!id) return '';
+    const t = trucks.find((x) => x.id === id);
+    return String(t?.idCamion || id);
+  };
+  const header = ['No. Ruta', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Segmento', 'Horario de Carga', 'No. de Prioridad de Carga'];
   const rows = routes.map((r) => [
     String(r.id ?? ''),
+    idCamionDe(r),
     r.asignacion?.camionPlaca || '',
     r.asignacion?.conductor || '',
     r.segmento || '',
+    '',
+    '',
   ]);
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
   ws['!cols'] = header.map((h, i) => {
