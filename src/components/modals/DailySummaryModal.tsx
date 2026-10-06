@@ -367,11 +367,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   // Secciones (análisis de botones, punto 16): en tablet se ve una sección a
   // la vez para no desplazarse por todo el reporte. Solo se dibuja la sección
   // abierta; al imprimir se muestran todas (ver handlePrint).
-  type SummarySection = 'todo' | 'totales' | 'recursos' | 'detalle' | 'segmento';
+  type SummarySection = 'todo' | 'totales' | 'recursos' | 'detalle' | 'segmento' | 'liqsegmot';
   const [section, setSection] = useState<SummarySection>('detalle');
   const showSection = (k: SummarySection) => section === 'todo' || section === k;
   useEffect(() => {
     if (mode === 'fin' && section === 'recursos') setSection('detalle');
+    if (mode === 'inicio' && section === 'liqsegmot') setSection('detalle');
   }, [mode, section]);
   const [inicioFilter, setInicioFilter] = useState<InicioFilter>('todas');
   const [finFilter, setFinFilter] = useState<FinFilter>('todas');
@@ -683,6 +684,63 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     return { rows, total: build('TOTAL', filteredMetrics) };
   }, [filteredMetrics]);
 
+  // ==============================================================
+  // CIERRE DE DÍA: LIQUIDACIÓN DE RUTAS POR SEGMENTO Y MOTIVO
+  // Solo rutas liquidadas. Una ruta con varios motivos cuenta en cada uno y sus
+  // cajas devueltas se reparten en partes iguales entre esos motivos.
+  // ==============================================================
+  const liqBySegMotivo = useMemo(() => {
+    type Row = { motivo: string; rutas: number; cjPlan: number; cjEnt: number; cjDev: number; cajaAbierta: number };
+    const SIN_DEV = 'Entrega completa (sin devolución)';
+    const segs = new Map<string, Map<string, Row>>();
+    const liq = filteredMetrics.filter((m) => m.isLiquidada);
+    liq.forEach((m) => {
+      const seg = (m.segmento || '').trim() && m.segmento !== '-' ? m.segmento.trim().toUpperCase() : 'SIN SEGMENTO';
+      const l = m.route.liquidacion;
+      const hayDev = m.cajasFisicasDevueltas > 0 || Number(l?.guiasRechazadas || 0) > 0;
+      let motivos: string[] = hayDev
+        ? (l?.motivosSeleccionados && l.motivosSeleccionados.length
+            ? l.motivosSeleccionados.map(String)
+            : String(l?.motivoDevolucion || m.route.motivoDevolucion || '').split(',').map((x) => x.trim()).filter(Boolean))
+        : [SIN_DEV];
+      if (!motivos.length) motivos = ['Devolución sin motivo registrado'];
+      const share = 1 / motivos.length;
+      if (!segs.has(seg)) segs.set(seg, new Map());
+      const g = segs.get(seg)!;
+      motivos.forEach((mo) => {
+        const r = g.get(mo) || { motivo: mo, rutas: 0, cjPlan: 0, cjEnt: 0, cjDev: 0, cajaAbierta: 0 };
+        r.rutas += 1;
+        r.cjPlan += m.cajasFisicasPlan * share;
+        r.cjEnt += m.cajasFisicasEntregadas * share;
+        r.cjDev += m.cajasFisicasDevueltas * share;
+        if (l?.cajaAbierta && !l?.cajaAbiertaResuelta) r.cajaAbierta += 1;
+        g.set(mo, r);
+      });
+    });
+    const sumRows = (rows: Row[], motivo: string): Row =>
+      rows.reduce((a, r) => ({ ...a, cjPlan: a.cjPlan + r.cjPlan, cjEnt: a.cjEnt + r.cjEnt, cjDev: a.cjDev + r.cjDev }), { motivo, rutas: 0, cjPlan: 0, cjEnt: 0, cjDev: 0, cajaAbierta: 0 });
+    const grupos = Array.from(segs.entries()).map(([segmento, g]) => {
+      const rows = Array.from(g.values()).sort((a, b) => (a.motivo === SIN_DEV ? -1 : b.motivo === SIN_DEV ? 1 : b.cjDev - a.cjDev || b.rutas - a.rutas));
+      const segLiq = liq.filter((m) => ((m.segmento || '').trim() && m.segmento !== '-' ? m.segmento.trim().toUpperCase() : 'SIN SEGMENTO') === segmento);
+      const sub = sumRows(rows, 'Subtotal ' + segmento);
+      sub.rutas = segLiq.length; // rutas únicas del segmento
+      sub.cajaAbierta = segLiq.filter((m) => m.route.liquidacion?.cajaAbierta && !m.route.liquidacion?.cajaAbiertaResuelta).length;
+      return { segmento, rows, sub };
+    }).sort((a, b) => (a.segmento === 'SIN SEGMENTO' ? 1 : b.segmento === 'SIN SEGMENTO' ? -1 : b.sub.cjPlan - a.sub.cjPlan));
+    const total = sumRows(grupos.map((g) => g.sub), 'TOTAL');
+    total.rutas = liq.length;
+    total.cajaAbierta = grupos.reduce((a, g) => a + g.sub.cajaAbierta, 0);
+    // Totales por motivo (todas las rutas liquidadas)
+    const porMotivo = new Map<string, Row>();
+    grupos.forEach((g) => g.rows.forEach((r) => {
+      const x = porMotivo.get(r.motivo) || { motivo: r.motivo, rutas: 0, cjPlan: 0, cjEnt: 0, cjDev: 0, cajaAbierta: 0 };
+      x.rutas += r.rutas; x.cjPlan += r.cjPlan; x.cjEnt += r.cjEnt; x.cjDev += r.cjDev; x.cajaAbierta += r.cajaAbierta;
+      porMotivo.set(r.motivo, x);
+    }));
+    const motivos = Array.from(porMotivo.values()).sort((a, b) => (a.motivo === SIN_DEV ? -1 : b.motivo === SIN_DEV ? 1 : b.cjDev - a.cjDev));
+    return { grupos, total, motivos };
+  }, [filteredMetrics]);
+
   // Camiones y personal disponibles que NO salieron a ruta hoy, con su motivo (Fin de Asignación)
   const unassignedTrucks = useMemo(
     () => (trucks || []).filter((t) => Boolean(t.motivoNoAsignado)),
@@ -733,6 +791,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     },
     summaryTotals,
     segmentos: segmentStats,
+    liqSegMotivo: mode === 'fin' ? liqBySegMotivo : undefined,
     routesList: mode === 'inicio' ? inicioFilteredList : finFilteredList,
     unassignedTrucks,
     unassignedStaff,
@@ -1552,6 +1611,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
             {([
               { k: 'detalle', label: 'Detalle por ruta' },
               { k: 'segmento', label: 'Por segmento' },
+              ...(mode === 'fin' ? [{ k: 'liqsegmot', label: 'Liquidación por segmento y motivo' }] : []),
               { k: 'totales', label: 'Totales' },
               ...(mode === 'inicio' ? [{ k: 'recursos', label: 'Recursos no asignados' }] : []),
               { k: 'todo', label: 'Todo' },
@@ -1703,6 +1763,118 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                           </tr>
                         );
                       })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ============================================================== */}
+          {/* CIERRE DE DÍA: LIQUIDACIÓN POR SEGMENTO Y MOTIVO               */}
+          {/* ============================================================== */}
+          {mode === 'fin' && showSection('liqsegmot') && (() => {
+            const { grupos, total, motivos } = liqBySegMotivo;
+            const n1 = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 1 });
+            const pDev = (r: { cjDev: number; cjEnt: number }) => (r.cjEnt + r.cjDev > 0 ? ((r.cjDev / (r.cjEnt + r.cjDev)) * 100).toFixed(1) + '%' : '0.0%');
+            const th = 'px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600 text-right whitespace-nowrap';
+            const td = 'px-3 py-2 text-right tabular-nums whitespace-nowrap';
+            const maxDev = Math.max(1, ...motivos.map((m) => m.cjDev));
+            return (
+              <div className="bg-white rounded-xl border border-slate-300 shadow-sm overflow-hidden print:border print:border-slate-400 print:shadow-none print:rounded-lg print:break-inside-avoid">
+                <div className="px-4 py-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 print:bg-slate-100 print:text-slate-900 print:border-slate-300">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="p-1.5 rounded-lg bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 print:bg-slate-200 print:border-slate-300 print:text-slate-700">
+                      <ClipboardCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-100 print:text-slate-900">
+                        Liquidación de rutas por segmento y motivo
+                      </h3>
+                      <p className="text-[11px] text-slate-300 print:text-slate-600 font-medium">
+                        Solo rutas liquidadas del cierre. Una ruta con varios motivos aparece en cada uno; sus cajas devueltas se reparten entre ellos.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-lg bg-slate-800 print:bg-slate-200 text-indigo-200 print:text-slate-800 border border-slate-700 print:border-slate-300 font-bold text-xs">
+                    {total.rutas} rutas liquidadas · {n1(total.cjDev)} CJ devueltas
+                  </span>
+                </div>
+
+                {/* Resumen por motivo */}
+                {motivos.length > 0 && (
+                  <div className="p-3 sm:p-4 border-b border-slate-200 space-y-2 print:hidden">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Resumen por motivo (todas las rutas liquidadas)</div>
+                    {motivos.map((m) => (
+                      <div key={m.motivo} className="flex items-center gap-3 text-xs" title={`${m.motivo}: ${m.rutas} ruta(s) · ${n1(m.cjDev)} CJ devueltas`}>
+                        <span className="w-48 sm:w-64 truncate text-slate-700 font-medium">{m.motivo}</span>
+                        <span className="flex-1 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                          <span className="block h-full rounded-full" style={{ width: `${(m.cjDev / maxDev) * 100}%`, backgroundColor: m.cjDev > 0 ? '#ec835a' : '#0ca30c', minWidth: m.cjDev > 0 ? 4 : 0 }} />
+                        </span>
+                        <span className="w-16 text-right font-bold tabular-nums">{m.rutas} rutas</span>
+                        <span className="w-24 text-right font-bold tabular-nums">{n1(m.cjDev)} CJ dev.</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-100 border-b border-slate-300">
+                      <tr>
+                        <th className={th.replace('text-right', 'text-left')}>Segmento</th>
+                        <th className={th.replace('text-right', 'text-left')}>Motivo</th>
+                        <th className={th}>Rutas</th>
+                        <th className={th}>CJ plan</th>
+                        <th className={th}>CJ entregadas</th>
+                        <th className={th}>CJ devueltas</th>
+                        <th className={th}>% Devolución</th>
+                        <th className={th}>Caja abierta</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grupos.map((g) => (
+                        <React.Fragment key={g.segmento}>
+                          {g.rows.map((r, i) => (
+                            <tr key={g.segmento + r.motivo} className="border-t border-slate-200 hover:bg-slate-50">
+                              <td className="px-3 py-2 font-bold text-slate-800 whitespace-nowrap">{i === 0 ? g.segmento : ''}</td>
+                              <td className="px-3 py-2 text-slate-700">{r.motivo}</td>
+                              <td className={td}>{r.rutas}</td>
+                              <td className={td}>{n1(r.cjPlan)}</td>
+                              <td className={td + ' text-emerald-700'}>{n1(r.cjEnt)}</td>
+                              <td className={td + (r.cjDev > 0 ? ' text-rose-600 font-bold' : '')}>{n1(r.cjDev)}</td>
+                              <td className={td}>{pDev(r)}</td>
+                              <td className={td + (r.cajaAbierta ? ' text-amber-700 font-bold' : '')}>{r.cajaAbierta || '—'}</td>
+                            </tr>
+                          ))}
+                          <tr className="bg-slate-50 font-bold text-slate-900 border-t border-slate-300">
+                            <td className="px-3 py-2" />
+                            <td className="px-3 py-2">Subtotal {g.segmento}</td>
+                            <td className={td}>{g.sub.rutas}</td>
+                            <td className={td}>{n1(g.sub.cjPlan)}</td>
+                            <td className={td}>{n1(g.sub.cjEnt)}</td>
+                            <td className={td}>{n1(g.sub.cjDev)}</td>
+                            <td className={td}>{pDev(g.sub)}</td>
+                            <td className={td}>{g.sub.cajaAbierta || '—'}</td>
+                          </tr>
+                        </React.Fragment>
+                      ))}
+                      {grupos.length > 0 ? (
+                        <tr className="bg-indigo-50 font-black text-slate-900 border-t-2 border-indigo-300">
+                          <td className="px-3 py-2">TOTAL</td>
+                          <td className="px-3 py-2" />
+                          <td className={td}>{total.rutas}</td>
+                          <td className={td}>{n1(total.cjPlan)}</td>
+                          <td className={td}>{n1(total.cjEnt)}</td>
+                          <td className={td}>{n1(total.cjDev)}</td>
+                          <td className={td}>{pDev(total)}</td>
+                          <td className={td}>{total.cajaAbierta || '—'}</td>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <td colSpan={8} className="px-3 py-6 text-center text-slate-500">Aún no hay rutas liquidadas con los filtros actuales.</td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
