@@ -29,6 +29,8 @@ const C_TRACK = '#e8eef5';
 
 interface DashboardStats {
   pendientes: number;
+  // Rutas Bolsón activas (no cuentan como pendientes de asignar).
+  bolson?: number;
   transito: number;
   abiertas: number;
   liquidadas: number;
@@ -269,7 +271,8 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
     const noLiq = dayRoutes.filter((r) => !r.liquidacion && r.estado !== 'Liquidada');
     return {
       ...statsHoy,
-      pendientes: noLiq.filter((r) => r.estado === 'Pendiente' && !isPiso(r)).length,
+      pendientes: noLiq.filter((r) => r.estado === 'Pendiente' && !isPiso(r) && !isBolson(r)).length,
+      bolson: noLiq.filter(isBolson).length,
       transito: noLiq.filter((r) => r.estado === 'En Tránsito').length,
       abiertas: noLiq.filter((r) => r.estado === 'Abierta').length,
       pisoHoy: noLiq.filter((r) => r.estado === 'Pendiente' && isPiso(r)).length,
@@ -280,7 +283,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   }, [isHoy, statsHoy, dayRoutes, liqPeriodo]);
 
   // ---------- KPIs principales ----------
-  const totalPlan = stats.pendientes + stats.transito + stats.abiertas + stats.liquidadas + stats.pisoHoy;
+  const totalPlan = stats.pendientes + (stats.bolson || 0) + stats.transito + stats.abiertas + stats.liquidadas + stats.pisoHoy;
   const cumplimiento = totalPlan > 0 ? stats.liquidadas / totalPlan : 0;
   const cjEnt = liqPeriodo.reduce((a, r) => a + Number(r.liquidacion?.cajasEntregadas || 0), 0);
   const cjDev = liqPeriodo.reduce((a, r) => a + Number(r.liquidacion?.cajasDevueltas || 0), 0);
