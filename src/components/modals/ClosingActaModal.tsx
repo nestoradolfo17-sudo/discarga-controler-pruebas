@@ -22,6 +22,9 @@ interface ClosingActaModalProps {
   agencies: string[];
   // Fecha operativa del día (misma que usa el Dashboard / Resumen Diario)
   fechaHoy: string;
+  // Si es true, el acta usa SOLO la fecha recibida (filtro de fecha del Tablero):
+  // rutas con esa fecha de ruta (hoy incluye rezagadas activas) y liquidadas ese día.
+  fechaEstricta?: boolean;
   // Nombre a mostrar como "Quien Liquida": el usuario que tiene la sesión abierta
   quienLiquida: string;
 }
@@ -88,6 +91,7 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
   selectedAgency,
   agencies,
   fechaHoy,
+  fechaEstricta = false,
   quienLiquida,
 }) => {
   const [filterAgency, setFilterAgency] = useState<string>(selectedAgency || 'TODAS');
@@ -103,6 +107,33 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
 
   // Consolidar rutas activas + liquidadas de la jornada actual, sin duplicar por ID
   const todayRows = useMemo(() => {
+    if (fechaEstricta) {
+      const dn = (v: unknown) => {
+        const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v ? formatDateToGuatemala(v) || '' : '');
+        return m ? Number(m[3]) * 10000 + Number(m[2]) * 100 + Number(m[1]) : null;
+      };
+      const sel = dn(activeFechaHoy);
+      const esHoy = activeFechaHoy === todayDateStr;
+      const base = (r: Route) => dn(r.fechaOriginalRuta || r.fecha);
+      const activaOk = (r: Route) => {
+        const b = base(r);
+        if (b === null || sel === null) return esHoy;
+        return esHoy ? b <= sel : b === sel;
+      };
+      const liqOk = (r: Route) =>
+        dn(r.liquidacion?.fechaLiquidacion || r.fechaLiquidacion) === sel || base(r) === sel;
+      const isLiq = (r: Route) => r.estado === 'Liquidada';
+      const m2 = new Map<string, Route>();
+      routes.forEach((r) => {
+        if (isLiq(r) ? liqOk(r) : activaOk(r)) m2.set(String(r.id), r);
+      });
+      allLiquidatedRoutes.forEach((r) => {
+        if (!m2.has(String(r.id)) && liqOk(r)) m2.set(String(r.id), r);
+      });
+      return Array.from(m2.values())
+        .map(buildActaRow)
+        .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+    }
     const map = new Map<string, Route>();
     routes.forEach((r) => map.set(String(r.id), r));
     allLiquidatedRoutes.forEach((r) => {
@@ -126,7 +157,7 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
       })
       .map(buildActaRow)
       .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-  }, [routes, allLiquidatedRoutes, activeFechaHoy, todayDateStr]);
+  }, [routes, allLiquidatedRoutes, activeFechaHoy, todayDateStr, fechaEstricta]);
 
   const filteredRows = useMemo(
     () => todayRows.filter((r) => filterAgency === 'TODAS' || r.agencia === filterAgency),
