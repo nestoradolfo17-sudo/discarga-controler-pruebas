@@ -191,6 +191,7 @@ function buildRouteSummaryMetric(r: Route, fechaHoyStr?: string): RouteSummaryMe
   );
 
   const isBolson = Boolean(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
+  const isSelfService = Boolean(r.esSelfService || r.tipoAsignacion === 'Self Service');
 
   // 2. FECHA DESPACHADA
   let isDespachada = false;
@@ -201,6 +202,9 @@ function buildRouteSummaryMetric(r: Route, fechaHoyStr?: string): RouteSummaryMe
   if (isBolson && r.estado !== 'Liquidada') {
     fechaDespachadaStr = 'Ruta Bolsón (sin asignación ni salida)';
     despachoLabel = 'Ruta Bolsón';
+  } else if (isSelfService && r.estado !== 'Liquidada') {
+    fechaDespachadaStr = 'Self Service (sin tripulación)';
+    despachoLabel = 'Self Service';
   } else if (isFloor) {
     fechaDespachadaStr = 'En Bodega (A Piso)';
     despachoLabel = 'A Piso';
@@ -496,7 +500,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   const inicioFilteredList = useMemo(() => {
     switch (inicioFilter) {
       case 'pendientes':
-        return filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && !m.isBolson && m.estado === 'Pendiente');
+        return filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && !m.isBolson && !m.route.esSelfService && m.route.tipoAsignacion !== 'Self Service' && m.estado === 'Pendiente');
       case 'bolson':
         return filteredMetrics.filter((m) => m.activoTablero && m.isBolson);
       case 'transito':
@@ -517,7 +521,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
   // KPIs Inicio de Día
   const inicioTotalRutas = filteredMetrics.length;
-  const inicioPendientesCount = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && !m.isBolson && m.estado === 'Pendiente').length;
+  const inicioPendientesCount = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && !m.isBolson && !m.route.esSelfService && m.route.tipoAsignacion !== 'Self Service' && m.estado === 'Pendiente').length;
   const inicioBolsonCount = filteredMetrics.filter((m) => m.activoTablero && m.isBolson).length;
   const inicioTransitoCount = filteredMetrics.filter((m) => m.activoTablero && !m.isFloor && m.estado === 'En Tránsito' && !m.isRecarga).length;
   const inicioEnTiempoCount = filteredMetrics.filter((m) => !m.estaAtrasado).length;
@@ -605,7 +609,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
     // 2. Total Rutas Pendientes de Salida (programadas por asignar / despachar a clientes)
     const pendientes = filteredMetrics.filter(
-      (m) => m.activoTablero && !m.isFloor && !m.isBolson && m.estado !== 'En Tránsito'
+      (m) => m.activoTablero && !m.isFloor && !m.isBolson && !m.route.esSelfService && m.route.tipoAsignacion !== 'Self Service' && m.estado !== 'En Tránsito'
     );
     // Rutas Bolsón: enviadas a rechazo, sin asignación ni salida.
     const bolsonList = filteredMetrics.filter((m) => m.activoTablero && m.isBolson);
@@ -844,7 +848,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
       return L.join(', ') || 'Sin motivo registrado';
     };
     const estadoLabel = (m: RouteSummaryMetric) =>
-      m.route.esBolson || m.route.tipoAsignacion === 'Ruta Bolsón' ? 'Bolsón (rechazo)' : m.isFloor ? 'A piso' : m.estado === 'En Tránsito' ? (m.isRecarga ? 'Recarga en tránsito' : 'En tránsito') : m.estado === 'Abierta' ? 'Abierta (por reasignar)' : 'Pendiente de asignar';
+      m.route.esBolson || m.route.tipoAsignacion === 'Ruta Bolsón' ? 'Bolsón (rechazo)' : m.route.esSelfService || m.route.tipoAsignacion === 'Self Service' ? 'Self Service (por liquidar)' : m.isFloor ? 'A piso' : m.estado === 'En Tránsito' ? (m.isRecarga ? 'Recarga en tránsito' : 'En tránsito') : m.estado === 'Abierta' ? 'Abierta (por reasignar)' : 'Pendiente de asignar';
     const map = new Map<string, RouteSummaryMetric[]>();
     filteredMetrics.forEach((m) => {
       const k = segKey(m);
