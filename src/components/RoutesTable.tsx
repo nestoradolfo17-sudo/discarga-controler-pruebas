@@ -656,7 +656,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                       detailTone={route.asignacion ? 'assigned' : isAbierta ? 'released' : 'none'}
                       detailTitle={
                         route.asignacion
-                          ? `Ver detalle: Camión ${route.asignacion.camionPlaca} · Piloto ${route.asignacion.conductor}`
+                          ? `Ver detalle: Camión ${route.asignacion.camionPlaca} · Piloto ${route.asignacion.conductor || 'pendiente'}`
                           : isAbierta
                           ? 'Ver detalle de ruta liberada'
                           : 'Ver detalle (sin asignar)'
@@ -790,7 +790,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                     {route.asignacion ? (
                       <div className="text-[11px] leading-tight text-left inline-block">
                         <div className="font-bold text-slate-800">{route.asignacion.camionPlaca}</div>
-                        <div className="text-slate-500">{route.asignacion.conductor}</div>
+                        <div className="text-slate-500">{route.asignacion.conductor || <span className="italic text-amber-600">Sin piloto (solo camión)</span>}</div>
                       </div>
                     ) : isAbierta ? (
                       <span className="text-[11px] font-semibold text-emerald-700">Liberada</span>
