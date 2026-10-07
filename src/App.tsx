@@ -3559,7 +3559,7 @@ export default function App() {
       vistos.add(k);
       return true;
     });
-    const ok = await exportRutasPrioridadesToExcel(lista, trucks);
+    const ok = await exportRutasPrioridadesToExcel(lista, trucks, boardFecha || undefined);
     showToast(ok ? 'Excel de Rutas Prioridades descargado' : 'No hay rutas en el tablero para exportar', ok ? 'success' : 'error');
   };
 
@@ -3573,7 +3573,7 @@ export default function App() {
       }
       return;
     }
-    const success = await exportRoutesToExcel(filteredActiveRoutes, staff);
+    const success = await exportRoutesToExcel(filteredActiveRoutes, staff, boardFecha || undefined);
     if (success) {
       showToast('Reporte Excel descargado con desglose de tripulación', 'success');
     } else {
@@ -4232,7 +4232,9 @@ export default function App() {
         allLiquidatedRoutes={allLiquidatedRoutes}
         selectedAgency={selectedAgency}
         agencies={agencies}
-        fechaHoy={stats.fechaHoy}
+        // Acta de Cierre con la fecha del filtro del Tablero (o hoy).
+        fechaHoy={boardFecha || formatDateToGuatemala(new Date())}
+        fechaEstricta
         quienLiquida={currentUser?.nombre || currentUser?.username || 'Operador de Agencia'}
       />
 
@@ -4254,7 +4256,8 @@ export default function App() {
         onSetTruckReason={handleSetTruckReason}
         onSetStaffReason={handleSetStaffReason}
         summaryRoutes={routes.filter((r) => canViewAgency(r.agencia))}
-        fechaOperacion={stats.fechaHoy}
+        // Resumen de Fin de Asignación con la fecha del filtro del Tablero (o hoy).
+        fechaOperacion={boardFecha || formatDateToGuatemala(new Date())}
         agencies={boardAgencies}
         selectedAgency={selectedAgency}
       />
