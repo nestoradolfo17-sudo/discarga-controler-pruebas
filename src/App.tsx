@@ -58,6 +58,8 @@ import { TabNav, ActiveTab } from './components/TabNav';
 import { RoutesTable } from './components/RoutesTable';
 import { ResourcesView } from './components/ResourcesView';
 import { BatchImportView, BatchImportTarget } from './components/BatchImportView';
+import { ContingenciaImportView } from './components/ContingenciaImportView';
+import { buildContingenciaPlan, ContParsed, ContPlan } from './utils/contingencia';
 import { AGENCIA_LOCATION_OPTIONS } from './data/agencies';
 import { ClientesImportView } from './components/ClientesImportView';
 import { LiquidatedBoardView, LiquidatedKpis } from './components/LiquidatedBoardView';
@@ -3169,6 +3171,67 @@ export default function App() {
     );
   };
 
+  // --- Carga de Contingencia (solo administradores) ---
+  // Revisión previa: arma el plan con el estado actual sin guardar nada.
+  const handlePreviewContingencia = (parsed: ContParsed): ContPlan =>
+    buildContingenciaPlan({
+      routes,
+      historicalRoutes,
+      trucks,
+      staff,
+      parsed,
+      usuario: currentUser?.nombre || currentUser?.username || 'admin',
+    });
+
+  // Aplicar: vuelve a armar el plan con el estado MÁS reciente (por si otro
+  // usuario cambió algo mientras se revisaba) y guarda solo lo que cambia.
+  const handleApplyContingencia = (parsed: ContParsed): ContPlan => {
+    if (!currentUser?.isAdmin) {
+      showToast('Solo un administrador puede aplicar la carga de contingencia.', 'error');
+      return handlePreviewContingencia({ ...parsed, asignaciones: [], liquidaciones: [] });
+    }
+    const plan = handlePreviewContingencia(parsed);
+    if (plan.routeUpdates.length === 0) {
+      showToast('No hay filas válidas para aplicar.', 'error');
+      return plan;
+    }
+    const byBefore = new Map(plan.routeUpdates.filter((u) => u.beforeKey).map((u) => [u.beforeKey as string, u.route]));
+    const nuevas = plan.routeUpdates.filter((u) => !u.beforeKey).map((u) => u.route);
+    setRoutes((prev) => {
+      const next = prev.map((r) => byBefore.get(getRouteKey(r)) || r);
+      const keys = new Set(next.map(getRouteKey));
+      return [...nuevas.filter((r) => !keys.has(getRouteKey(r))), ...next];
+    });
+    if (plan.changedHistorical.length) {
+      setHistoricalRoutes((prev) => {
+        const map = new Map(plan.changedHistorical.map((r) => [getRouteKey(r), r]));
+        const next = prev.map((hr) => {
+          const k = getRouteKey(hr);
+          const upd = map.get(k);
+          if (upd) map.delete(k);
+          return upd || hr;
+        });
+        return [...Array.from(map.values()), ...next];
+      });
+    }
+    if (plan.changedTrucks.length) {
+      const m = new Map(plan.changedTrucks.map((t) => [t.id, t]));
+      setTrucks((prev) => prev.map((t) => m.get(t.id) || t));
+    }
+    if (plan.changedStaff.length) {
+      const m = new Map(plan.changedStaff.map((x) => [x.id, x]));
+      setStaff((prev) => prev.map((x) => m.get(x.id) || x));
+    }
+    const { creadas, asignaciones, liquidaciones, errores } = plan.resumen;
+    showToast(
+      `Contingencia aplicada: ${creadas} ruta(s) creada(s), ${asignaciones} asignación(es), ${liquidaciones} liquidación(es).${
+        errores ? ` ${errores} fila(s) con error no se aplicaron.` : ''
+      }`,
+      errores ? 'info' : 'success'
+    );
+    return plan;
+  };
+
   const handleCommitBatchRoutes = (importedRoutes: Route[], target: BatchImportTarget) => {
     // Seguridad: la agencia destino debe estar entre las permitidas al usuario.
     if (!importAgencyOptions.includes(target.agencia)) {
@@ -4156,6 +4219,13 @@ export default function App() {
               onCommitClientesRuta={handleImportClientesPorRuta}
               onShowToast={showToast}
             />
+            {currentUser.isAdmin && (
+              <ContingenciaImportView
+                onPreview={handlePreviewContingencia}
+                onApply={handleApplyContingencia}
+                onShowToast={showToast}
+              />
+            )}
           </div>
         )}
 
