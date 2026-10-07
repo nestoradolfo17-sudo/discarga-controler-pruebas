@@ -8,7 +8,6 @@ import {
   parseFlexibleDate,
 } from '../utils/date';
 import {
-  Clock,
   AlertCircle,
   AlertTriangle,
   Flame,
@@ -261,49 +260,6 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
     );
   }
 
-  const renderElapsedBadge = (route: Route) => {
-    if (route.estado === 'Liquidada') {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] md:text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
-          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-          <span>Liquidada</span>
-        </span>
-      );
-    }
-
-    const hours = getRouteElapsedHours(route);
-
-    if (hours >= 72) {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] md:text-xs font-bold bg-rose-100 text-rose-900 border border-rose-300 shadow-2xs animate-pulse whitespace-nowrap">
-          <Flame className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-          <span>{hours}h sin liq.</span>
-        </span>
-      );
-    } else if (hours >= 48) {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] md:text-xs font-bold bg-orange-100 text-orange-900 border border-orange-300 whitespace-nowrap">
-          <AlertCircle className="w-3.5 h-3.5 text-orange-600 shrink-0" />
-          <span>{hours}h sin liq.</span>
-        </span>
-      );
-    } else if (hours >= 24) {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] md:text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-          <span>{hours}h sin liq.</span>
-        </span>
-      );
-    }
-
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] md:text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
-        <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-        <span>{hours}h sin liq.</span>
-      </span>
-    );
-  };
-
   const renderSortHeader = (key: SortKey, label: string, extraClass: string = '') => {
     const isActive = sortKey === key;
     return (
@@ -317,7 +273,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
         // desplazarse. Cada celda necesita también su propio fondo sólido
         // (bg-slate-50) porque, al pegarse de forma independiente, sin esto se
         // vería el contenido de las filas pasando "por debajo" y transparentándose.
-        className={`px-2 md:px-2.5 lg:px-3 py-1 select-none transition-colors hover:bg-slate-100 group sticky top-0 z-20 bg-slate-50 ${extraClass}`}
+        className={`px-2 2xl:px-3 py-1 select-none transition-colors hover:bg-slate-100 group sticky top-0 z-20 bg-slate-50 ${extraClass}`}
         title={`Ordenar por ${label} (${
           isActive
             ? sortOrder === 'asc'
@@ -464,10 +420,9 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
               {renderSortHeader('segmento', 'Segmento')}
               {renderSortHeader('fecha', 'Fecha')}
               {renderSortHeader('carga', 'Carga')}
-              <th scope="col" className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-center whitespace-nowrap sticky top-0 z-20 bg-slate-50">Acciones</th>
-              {renderSortHeader('horas', 'Horas sin Liq.', 'whitespace-nowrap')}
+              <th scope="col" className="px-2 2xl:px-3 py-2 md:py-2.5 text-center whitespace-nowrap sticky top-0 z-20 bg-slate-50">Acciones</th>
+              {renderSortHeader('asignacion', 'Camión y Tripulación')}
               {renderSortHeader('estado', 'Estado')}
-              {renderSortHeader('asignacion', 'Camión y Tripulación', 'text-center whitespace-nowrap')}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-normal">
@@ -526,12 +481,12 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   </td>
 
                   {/* ID Ruta without # */}
-                  <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 font-mono">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 font-mono">
                     <div className="font-bold text-slate-900 text-xs md:text-sm whitespace-nowrap">{route.id}</div>
                     {route.tipoAsignacion === 'Recarga' || route.esRecarga ? (
                       <span className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-0.2 rounded text-[10px] md:text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-300 whitespace-nowrap">
                         <Repeat className="w-2.5 h-2.5 text-purple-700" />
-                        Recarga {(route.historialDespachos?.length || 0) > 1 ? `#${(route.historialDespachos?.length || 0) + 1}` : '(2° Viaje)'}
+                        Recarga{(route.historialDespachos?.length || 0) > 1 ? ` #${(route.historialDespachos?.length || 0) + 1}` : ''}
                       </span>
                     ) : (route.tipoAsignacion === 'Revisita' || route.esReasignacion || (route.historialDespachos && route.historialDespachos.length > 0)) ? (
                       <span className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-0.2 rounded text-[10px] md:text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
@@ -557,18 +512,18 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   </td>
 
                   {/* Agencia */}
-                  <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 font-semibold text-blue-700 text-xs whitespace-nowrap">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 font-semibold text-blue-700 text-xs whitespace-nowrap">
                     {route.agencia || '-'}
                   </td>
 
                   {/* Segmento */}
-                  <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-slate-700 text-xs font-medium whitespace-nowrap">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 text-slate-700 text-xs font-medium">
                     {onChangeSegment && route.estado !== 'Liquidada' ? (
                       <button
                         type="button"
                         onClick={() => onChangeSegment(route.id, routeKey)}
                         title="Cambiar segmento (requiere contraseña de administrador)"
-                        className="inline-flex items-center gap-1 min-h-[32px] px-2 rounded-lg border border-transparent hover:border-slate-300 hover:bg-slate-50 cursor-pointer text-slate-700"
+                        className="inline-flex items-center gap-1 min-h-[32px] max-w-[120px] text-left leading-tight px-2 rounded-lg border border-transparent hover:border-slate-300 hover:bg-slate-50 cursor-pointer text-slate-700"
                       >
                         {route.segmento || '-'}
                         <span aria-hidden className="text-slate-400 text-[11px]">✎</span>
@@ -579,25 +534,25 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   </td>
 
                   {/* Fecha */}
-                  <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-slate-700 text-xs whitespace-nowrap">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 text-slate-700 text-xs whitespace-nowrap">
                     <div className="font-medium text-slate-800">
                       <span className="text-[10px] text-slate-400 block uppercase font-medium">Ruta:</span>
                       {formatDateToGuatemala(route.fechaOriginalRuta || route.fecha || route.fechaCarga) || '-'}
                     </div>
                     {route.aPiso && route.fechaReprogramada && (
-                      <div className="text-[10px] md:text-[11px] text-amber-700 font-mono mt-0.5" title="Ruta a piso reprogramada">
+                      <div className="text-[10px] md:text-[11px] text-amber-700 tabular-nums mt-0.5" title="Ruta a piso reprogramada">
                         <span className="text-slate-400">Piso: </span>
                         {route.fechaReprogramada}
                       </div>
                     )}
                     {(route.fechaAsignacion || route.asignacion?.fechaAsignacion) && (
-                      <div className="text-[10px] md:text-[11px] text-blue-700 font-mono mt-0.5" title="Fecha en que fue asignada">
+                      <div className="text-[10px] md:text-[11px] text-blue-700 tabular-nums mt-0.5" title="Fecha en que fue asignada">
                         <span className="text-slate-400">Asig: </span>
                         {route.fechaAsignacion || route.asignacion?.fechaAsignacion}
                       </div>
                     )}
                     {(route.fechaLiquidacion || route.liquidacion?.fechaLiquidacion) && (
-                      <div className="text-[10px] md:text-[11px] text-emerald-700 font-mono mt-0.5" title="Fecha en que fue liquidada">
+                      <div className="text-[10px] md:text-[11px] text-emerald-700 tabular-nums mt-0.5" title="Fecha en que fue liquidada">
                         <span className="text-slate-400">Liq: </span>
                         {formatDateTimeToGuatemala(route.fechaLiquidacion || route.liquidacion?.fechaLiquidacion)}
                       </div>
@@ -605,7 +560,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   </td>
 
                   {/* Carga & Operación (Posición 5) */}
-                  <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5">
                     <div className="space-y-0.5">
                       <div className="font-bold text-slate-800 text-xs flex items-center whitespace-nowrap">
                         {route.paradas} paradas
@@ -645,7 +600,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
 
                   {/* Acciones: acción principal directa según el estado + detalle
                       + "⋯" (ver RouteRowActions.tsx, configuración única). */}
-                  <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-center whitespace-nowrap">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 text-center whitespace-nowrap">
                     <RouteRowActions
                       route={route}
                       isMenuOpen={activeDropdownId === routeKey}
@@ -688,20 +643,52 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                     />
                   </td>
 
-                  {/* Horas sin Liquidar (El resto al lado derecho) */}
-                  <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 whitespace-nowrap">
-                    {renderElapsedBadge(route)}
+                  {/* Camión y Tripulación: resumen visible sin necesidad de clic.
+                      El botón para ver el detalle completo (auxiliares, etc.) se
+                      movió junto a "Acciones"; esta columna ahora solo informa
+                      de un vistazo y se puede seguir ordenando igual que antes. */}
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 text-left whitespace-nowrap">
+                    {route.asignacion ? (
+                      <div className="text-[11px] leading-tight text-left">
+                        {(() => {
+                          // ID del camión grande; si el camión no tiene "ID Camión"
+                          // cargado, se muestra la placa en grande (nunca el código interno).
+                          const tk = trucks.find((t) => t.id === route.asignacion?.camionId);
+                          const idTk = tk?.idCamion ? String(tk.idCamion) : '';
+                          return (
+                            <>
+                              <div className="font-black text-slate-900 text-[15px] leading-none mb-0.5 whitespace-nowrap" style={{ fontSize: 15 }}>
+                                {idTk ? `ID ${idTk}` : route.asignacion.camionPlaca}
+                              </div>
+                              <div className="text-[10px] text-slate-500" style={{ fontSize: 10 }}>
+                                {idTk ? `Placa ${route.asignacion.camionPlaca}` : 'Sin ID de camión'}
+                              </div>
+                            </>
+                          );
+                        })()}
+                        <div className="text-[10px] text-slate-500 max-w-[150px] truncate" style={{ fontSize: 10 }} title={route.asignacion.conductor || undefined}>{route.asignacion.conductor || <span className="italic text-amber-600">Sin piloto (solo camión)</span>}</div>
+                      </div>
+                    ) : isAbierta ? (
+                      <span className="text-[11px] font-semibold text-emerald-700">Liberada</span>
+                    ) : route.esSelfService || route.tipoAsignacion === 'Self Service' ? (
+                      <span className="text-[11px] text-teal-700">Cliente recoge</span>
+                    ) : route.esBolson || route.tipoAsignacion === 'Ruta Bolsón' ? (
+                      <span className="text-[11px] text-rose-700">No sale</span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">Sin asignar</span>
+                    )}
                   </td>
 
                   {/* Estado */}
-                  <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 whitespace-nowrap">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 whitespace-nowrap">
                     {route.estado === 'Pendiente' && (
                       <div className="space-y-0.5">
                         {route.esSelfService || route.tipoAsignacion === 'Self Service' ? (
                           <div title={route.notaSelfService || 'Self Service: sin camión ni tripulación, por liquidar'}>
                             <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-teal-100 text-teal-900 border border-teal-300">
-                              <Package className="w-3 h-3 mr-1 text-teal-700" /> Self Service · por liquidar
+                              <Package className="w-3 h-3 mr-1 text-teal-700" /> Self Service
                             </span>
+                            <div className="text-[10px] font-bold text-teal-800 mt-0.5">Por liquidar</div>
                             {route.notaSelfService && (
                               <div className="text-[10px] font-semibold text-teal-800 mt-0.5 max-w-[180px] truncate">{route.notaSelfService}</div>
                             )}
@@ -709,8 +696,9 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                         ) : route.esBolson || route.tipoAsignacion === 'Ruta Bolsón' ? (
                           <div title={route.motivoBolson || 'Ruta enviada a rechazo: no sale, pendiente de liquidar'}>
                             <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-100 text-rose-900 border border-rose-300">
-                              <Warehouse className="w-3 h-3 mr-1 text-rose-700" /> Bolsón · por liquidar
+                              <Warehouse className="w-3 h-3 mr-1 text-rose-700" /> Bolsón
                             </span>
+                            <div className="text-[10px] font-bold text-rose-800 mt-0.5">Por liquidar</div>
                             {route.motivoBolson && (
                               <div className="text-[10px] font-semibold text-rose-800 mt-0.5 max-w-[180px] truncate">{route.motivoBolson}</div>
                             )}
@@ -782,33 +770,10 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                     )}
                   </td>
 
-                  {/* Camión y Tripulación: resumen visible sin necesidad de clic.
-                      El botón para ver el detalle completo (auxiliares, etc.) se
-                      movió junto a "Acciones"; esta columna ahora solo informa
-                      de un vistazo y se puede seguir ordenando igual que antes. */}
-                  <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-center whitespace-nowrap">
-                    {route.asignacion ? (
-                      <div className="text-[11px] leading-tight text-left inline-block">
-                        {(() => {
-                          const tk = trucks.find((t) => t.id === route.asignacion?.camionId);
-                          const idTk = tk?.idCamion || route.asignacion.camionId;
-                          return idTk ? (
-                            <div className="font-black text-slate-900 text-[15px] leading-none mb-0.5" style={{ fontSize: 15 }}>ID {idTk}</div>
-                          ) : null;
-                        })()}
-                        <div className="text-[10px] text-slate-500" style={{ fontSize: 10 }}>Placa {route.asignacion.camionPlaca}</div>
-                        <div className="text-[10px] text-slate-500" style={{ fontSize: 10 }}>{route.asignacion.conductor || <span className="italic text-amber-600">Sin piloto (solo camión)</span>}</div>
-                      </div>
-                    ) : isAbierta ? (
-                      <span className="text-[11px] font-semibold text-emerald-700">Liberada</span>
-                    ) : (
-                      <span className="text-[11px] text-slate-400">Sin asignar</span>
-                    )}
-                  </td>
                 </tr>
                 {expandedClientesKey === routeKey && route.clientesRuta && route.clientesRuta.length > 0 && (
                   <tr key={`${routeKey}-clientes`} className="bg-slate-50/70">
-                    <td colSpan={10} className="px-4 py-3">
+                    <td colSpan={9} className="px-4 py-3">
                       <ClientesRutaList clientes={route.clientesRuta} />
                     </td>
                   </tr>
