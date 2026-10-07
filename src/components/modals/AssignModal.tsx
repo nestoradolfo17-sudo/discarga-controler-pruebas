@@ -217,36 +217,16 @@ export const AssignModal: React.FC<AssignModalProps> = ({
         );
         setAllowPilotsAsHelpers(hasPilotHelper);
       } else {
-        // Corrección: antes se preseleccionaba el PRIMER camión y el PRIMER piloto
-        // "Disponible" de toda la lista (incluso de otra agencia). Ahora se
-        // precarga la tripulación MÁS FRECUENTE de esta misma ruta (mismo número
-        // y agencia en días anteriores), omitiendo a quien hoy esté en tránsito
-        // en otra ruta o marcado como no disponible. Si no hay historial, los
-        // campos quedan vacíos para elegirlos con el buscador.
-        const sug = suggestCrewForRoute(route, [...activeRoutes, ...historyRoutes], trucks, staff);
-        const busy = busyNamesAndTrucks(activeRoutes, getRouteKey(route), route);
-        // Motivos de no asignación: cuentan para el día de la ruta (hoy o la fecha futura).
-        const todayStr = esJornadaFutura(route.fecha) ? formatDateToGuatemala(route.fecha) : formatDateToGuatemala(new Date());
-        const unavailableToday = (name: string) => {
-          const st = staff.find((x) => x.nombre === name);
-          return !!st && isNotAvailableToday(st.motivoNoAsignado, st.motivoNoAsignadoFecha, todayStr);
-        };
-        const okTruck = sug?.truckId && !busy.trucks.has(sug.truckId) ? sug.truckId : '';
-        const okDriver =
-          sug?.driverName && !busy.people.has(sug.driverName) && !unavailableToday(sug.driverName)
-            ? sug.driverName
-            : '';
-        const okHelpers = (sug?.helpers || []).filter((h) => !busy.people.has(h) && !unavailableToday(h));
-        setTruckId(okTruck);
-        setDriverName(okDriver);
-        setHelper1(okHelpers[0] || '');
-        setHelper2(okHelpers[1] || '');
-        setHelper3(okHelpers[2] || '');
-        setHelper4(okHelpers[3] || '');
-        const hasPilotHelper = staff.some(
-          (x) => okHelpers.includes(x.nombre) && (x.puesto === 'VPP' || x.puesto === 'VPPB' || x.rol === 'Conductor')
-        );
-        setAllowPilotsAsHelpers(hasPilotHelper);
+        // La tripulación recomendada NO se precarga: los campos quedan vacíos y
+        // la sugerencia solo aparece en el panel "Tripulación más frecuente";
+        // se coloca únicamente al pulsar "Usar sugerencia".
+        setTruckId('');
+        setDriverName('');
+        setHelper1('');
+        setHelper2('');
+        setHelper3('');
+        setHelper4('');
+        setAllowPilotsAsHelpers(false);
       }
       setPickerOpen(null);
     }
@@ -407,10 +387,8 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       onShowToast('Debes seleccionar un camión por su placa', 'error');
       return;
     }
-    if (!driverName) {
-      onShowToast('Debes seleccionar un piloto titular', 'error');
-      return;
-    }
+    // Piloto y auxiliares son opcionales: se permite asignar solo el camión
+    // (p. ej. la noche anterior) y completar la tripulación después.
 
     // Un camión o persona ya asignado a otra ruta en tránsito solo se puede usar
     // si viene de "Optimización de Carga" (tripulación copiada de esa ruta).
@@ -1227,6 +1205,10 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                 Las unidades, pilotos y auxiliares que ya están asignados a otra ruta en tránsito no aparecen en los buscadores.
                 Para cargar dos rutas en un mismo camión usa <strong>Optimización de Carga</strong>.
               </p>
+              <p id="hintSoloCamion" className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 -mt-1">
+                Solo el <strong>camión</strong> es obligatorio. El piloto y los auxiliares son opcionales: puedes asignar solo la unidad
+                (por ejemplo la noche anterior) y completar la tripulación después con <strong>Modificar / Reasignar</strong>.
+              </p>
 
               {/* Camión y Piloto: botones grandes que abren el buscador táctil */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1276,7 +1258,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800 text-xs sm:text-sm flex items-center">
                       <User className="w-4 h-4 mr-1.5 text-indigo-600" />
-                      2. Piloto Titular (VPP / VPPB) *
+                      2. Piloto Titular (VPP / VPPB) <span className="ml-1 font-normal text-slate-400 text-[11px]">(opcional)</span>
                     </span>
                     {isRecarga && (
                       <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">Segundo Viaje</span>
