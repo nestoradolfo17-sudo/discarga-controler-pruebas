@@ -483,8 +483,8 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     }
     return {
       id: t.id,
-      title: `ID ${t.idCamion || t.id}`,
-      subtitle: `Placa ${t.placa} · Capacidad ${t.capacidad}${t.proveedor ? ` · ${t.proveedor}` : ''}`,
+      title: t.idCamion ? `ID ${t.idCamion}` : t.placa,
+      subtitle: `${t.idCamion ? `Placa ${t.placa}` : 'Sin ID de camión'} · Capacidad ${t.capacidad}${t.proveedor ? ` · ${t.proveedor}` : ''}`,
       searchText: `${t.placa} ${t.idCamion || ''} ${t.id} ${t.proveedor || ''} ${t.capacidad}`,
       status,
       statusLabel: label,
@@ -1180,9 +1180,9 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                     <div className="bg-white rounded-lg border border-violet-100 px-3 py-2">
                       <div className="text-[10px] font-bold uppercase text-violet-500">Camión</div>
                       <div className="font-bold text-slate-800 truncate">
-                        {sugTruck ? `ID ${sugTruck.idCamion || sugTruck.id}` : '—'}
+                        {sugTruck ? (sugTruck.idCamion ? `ID ${sugTruck.idCamion}` : sugTruck.placa) : '—'}
                         {sugTruck && <span className="font-medium text-slate-500"> · {suggestion.truckCount} de {suggestion.samples}</span>}
-                        {sugTruck && <span className="block text-[11px] font-semibold text-slate-600">Placa {sugTruck.placa}</span>}
+                        {sugTruck && sugTruck.idCamion && <span className="block text-[11px] font-semibold text-slate-600">Placa {sugTruck.placa}</span>}
                       </div>
                     </div>
                     <div className="bg-white rounded-lg border border-violet-100 px-3 py-2">
@@ -1233,9 +1233,11 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                     {selectedTruckObj ? (
                       <div className="min-w-0">
                         <div id="selTruckId" className="font-black text-slate-900 text-lg leading-tight truncate">
-                          ID {selectedTruckObj.idCamion || selectedTruckObj.id}
+                          {selectedTruckObj.idCamion ? `ID ${selectedTruckObj.idCamion}` : selectedTruckObj.placa}
                         </div>
-                        <div id="selTruckPlaca" className="text-sm font-bold text-blue-800 truncate">Placa {selectedTruckObj.placa}</div>
+                        <div id="selTruckPlaca" className="text-sm font-bold text-blue-800 truncate">
+                          {selectedTruckObj.idCamion ? `Placa ${selectedTruckObj.placa}` : 'Sin ID de camión'}
+                        </div>
                         <div className="text-xs text-slate-500 truncate">
                           Capacidad {selectedTruckObj.capacidad} · Carga ruta {route.cajasFisicas} cajas
                         </div>
@@ -1423,10 +1425,10 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   <div>
                     <span className="text-slate-400 text-xs block">Unidad / Camión:</span>
                     <span className="font-bold text-white text-sm truncate block mt-0.5">
-                      {selectedTruckObj ? `ID ${selectedTruckObj.idCamion || selectedTruckObj.id}` : '—'}
+                      {selectedTruckObj ? (selectedTruckObj.idCamion ? `ID ${selectedTruckObj.idCamion}` : selectedTruckObj.placa) : '—'}
                     </span>
                     <span className="text-slate-300 text-xs block">
-                      {selectedTruckObj ? `Placa ${selectedTruckObj.placa} (${selectedTruckObj.capacidad})` : ''}
+                      {selectedTruckObj ? `${selectedTruckObj.idCamion ? `Placa ${selectedTruckObj.placa} · ` : ''}Capacidad ${selectedTruckObj.capacidad}` : ''}
                     </span>
                   </div>
                   <div>
