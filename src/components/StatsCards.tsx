@@ -8,6 +8,8 @@ interface StatsCardsProps {
   recargas?: number;
   // Rutas Bolsón (sin asignación ni salida), aparte de "Pendientes".
   bolson?: number;
+  // Rutas Self Service (sin tripulación) por liquidar.
+  selfService?: number;
   abiertas: number;
   liquidadas: number;
   pisoHoy: number;
@@ -26,6 +28,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   transito,
   recargas,
   bolson,
+  selfService,
   abiertas,
   liquidadas,
   pisoHoy,
@@ -50,6 +53,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       { label: 'Pendientes', value: pendientes, icon: Clock, cls: 'bg-amber-50 border-amber-200 text-amber-700', tab: 'board', title: 'Rutas pendientes por asignar' },
       ...(bolson
         ? [{ label: 'Bolsón', value: bolson, icon: PackageX, cls: 'bg-rose-50 border-rose-200 text-rose-700', tab: 'board' as const, title: 'Rutas Bolsón: enviadas a rechazo, sin asignación ni salida' }]
+        : []),
+      ...(selfService
+        ? [{ label: 'Self Service', value: selfService, icon: Package, cls: 'bg-teal-50 border-teal-200 text-teal-700', tab: 'board' as const, title: 'Rutas Self Service (sin tripulación) por liquidar' }]
         : []),
       { label: 'Tránsito', value: transito, icon: Navigation, cls: 'bg-blue-50 border-blue-200 text-blue-700', tab: 'board', title: 'Rutas en reparto (primer viaje / revisita)' },
       ...(recargas !== undefined
