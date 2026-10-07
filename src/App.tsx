@@ -2325,7 +2325,9 @@ export default function App() {
     );
 
     setAssignTarget(null);
-    if (isRecarga) {
+    if (!assignment.driverName) {
+      showToast(`Ruta ${routeId} asignada solo con camión ${assignment.truckPlaca} (tripulación pendiente: complétala con Modificar/Reasignar).`, 'success');
+    } else if (isRecarga) {
       showToast(
         `Ruta ${routeId} asignada como RECARGA ${intentoNum > 1 ? `(Despacho #${intentoNum})` : '(Segundo Viaje)'} a la unidad ${assignment.truckPlaca} y tripulación.`,
         'success'
