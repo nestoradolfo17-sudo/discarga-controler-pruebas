@@ -35,6 +35,8 @@ interface LiquidatedBoardViewProps {
   // Abre el modal de "Liquidación Final" para cerrar el pendiente de validar
   // caja/boleta de una ruta que quedó en estado Caja Abierta.
   onOpenFinalizeCajaAbierta?: (route: Route) => void;
+  // Abonos diarios de una Caja Abierta.
+  onOpenAbonosCaja?: (route: Route) => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
   // Solo para administradores: eliminar varias rutas liquidadas a la vez
   // (abre la misma ventana de confirmación con contraseña del Tablero de Rutas).
@@ -53,6 +55,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
   onViewSettlementReceipt,
   onViewConsolidatedReceipt,
   onOpenFinalizeCajaAbierta,
+  onOpenAbonosCaja,
   onShowToast,
   onDeleteRoutes,
 }) => {
@@ -546,6 +549,18 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                             Diferencia: Q {liq.montoDiferenciaCaja.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         )}
+                        {liq.abonosCaja && liq.abonosCaja.length > 0 && (() => {
+                          const ab = liq.abonosCaja.reduce((a, x) => a + (Number(x.monto) || 0), 0);
+                          const tot = Number(liq.montoDiferenciaCaja) || 0;
+                          const f = (n: number) => n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                          return (
+                            <span className="block text-[10px] font-bold font-mono text-emerald-700">
+                              Abonado: Q {f(ab)}
+                              {tot > 0 && !liq.cajaAbiertaResuelta ? ` · Saldo: Q ${f(Math.max(0, tot - ab))}` : ''}
+                              {` (${liq.abonosCaja.length} abono${liq.abonosCaja.length === 1 ? '' : 's'})`}
+                            </span>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -750,6 +765,16 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                     {/* Acción principal por estado: si la caja quedó abierta, "Liquidación
                         final" (ámbar) va primero; el acta siempre disponible. */}
                     <div className="flex items-center justify-end gap-2 flex-wrap">
+                      {liq.cajaAbierta && onOpenAbonosCaja && (!liq.cajaAbiertaResuelta || (liq.abonosCaja && liq.abonosCaja.length > 0)) && (
+                        <Button
+                          variant={liq.cajaAbiertaResuelta ? 'secondary' : 'success'}
+                          size="sm"
+                          onClick={() => onOpenAbonosCaja(r)}
+                          title={liq.cajaAbiertaResuelta ? 'Ver historial de abonos' : 'Registrar abono diario a la Caja Abierta'}
+                        >
+                          {liq.cajaAbiertaResuelta ? 'Ver abonos' : 'Abonos'}
+                        </Button>
+                      )}
                       {liq.cajaAbierta && !liq.cajaAbiertaResuelta && onOpenFinalizeCajaAbierta && (
                         <Button
                           variant="warning"
