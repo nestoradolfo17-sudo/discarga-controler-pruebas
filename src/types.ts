@@ -336,6 +336,17 @@ export interface Route {
   // de esta función, o sin ese archivo disponible, simplemente no la traen y
   // todo sigue funcionando exactamente igual que hoy.
   clientesRuta?: RouteClientEntry[];
+  // Trazabilidad del plan de contingencia: cada fila de los formatos de Excel
+  // de contingencia (Asignación / Liquidación) que se aplicó a esta ruta.
+  registroContingencia?: ContingenciaLogEntry[];
+}
+
+export interface ContingenciaLogEntry {
+  tipo: 'Creación' | 'Asignación' | 'Liquidación';
+  archivo: string;
+  fila: number;
+  cargadoPor: string;
+  cargadoEl: string; // DD/MM/AAAA HH:mm (momento real en que se cargó)
 }
 
 export interface ToastMessage {
