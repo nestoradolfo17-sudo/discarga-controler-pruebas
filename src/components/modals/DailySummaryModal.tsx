@@ -371,9 +371,11 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
   // Fecha del reporte: por defecto la jornada operativa actual; se puede elegir
   // cualquier otra fecha para ver y descargar el Inicio / Fin de Día de ese día.
-  const fechaJornada = fechaHoy || formatDateToGuatemala(new Date());
+  // La jornada actual es HOY (fecha real). El reporte abre con la fecha que
+  // llega de la app (la elegida en el filtro de fecha del Tablero, o hoy).
   const fechaRealHoy = formatDateToGuatemala(new Date());
-  const [fechaReporte, setFechaReporte] = useState<string>(fechaJornada);
+  const fechaJornada = fechaRealHoy;
+  const [fechaReporte, setFechaReporte] = useState<string>(fechaHoy || fechaRealHoy);
   const esJornadaActual = fechaReporte === fechaJornada;
 
   useEffect(() => {
@@ -399,11 +401,28 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     return (r: Route) => enFecha(r.liquidacion?.fechaLiquidacion, r.fechaLiquidacion, r.fecha, r.fechaOriginalRuta);
   }, [fechaReporte, esJornadaActual, fechaRealHoy]);
 
+  // Rutas ACTIVAS del tablero que corresponden a la fecha del reporte:
+  // - Hoy: las de hoy + las de días anteriores que siguen activas (rezagadas).
+  //   Las cargadas para fechas futuras (p. ej. mañana) NO entran.
+  // - Otra fecha: solo las rutas con esa fecha de ruta.
+  const activaEnFecha = useMemo(() => {
+    const dn = (v: unknown) => {
+      const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fmtDay(v) || '');
+      return m ? Number(m[3]) * 10000 + Number(m[2]) * 100 + Number(m[1]) : null;
+    };
+    const sel = dn(fechaReporte);
+    return (r: Route) => {
+      const base = dn(r.fechaOriginalRuta || r.fecha);
+      if (base === null || sel === null) return esJornadaActual;
+      return esJornadaActual ? base <= sel : base === sel;
+    };
+  }, [fechaReporte, esJornadaActual]);
+
   const allCurrentRoutes = useMemo(() => {
 
     const map = new Map<string, Route>();
     routes.forEach((r) => {
-      if (r.estado !== 'Liquidada' || liquidadaEnFecha(r)) map.set(String(r.id), r);
+      if (r.estado !== 'Liquidada' ? activaEnFecha(r) : liquidadaEnFecha(r)) map.set(String(r.id), r);
     });
     allLiquidatedRoutes.forEach((r) => {
       if (!map.has(String(r.id)) && liquidadaEnFecha(r)) {
@@ -411,7 +430,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
       }
     });
     return Array.from(map.values());
-  }, [routes, allLiquidatedRoutes, liquidadaEnFecha]);
+  }, [routes, allLiquidatedRoutes, liquidadaEnFecha, activaEnFecha]);
 
   // Recargas (2° viaje) YA LIQUIDADAS en la fecha del reporte, contando cada
   // viaje por separado (para "Total Recargas Realizadas" de Fin de Día).
@@ -1056,9 +1075,8 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               </p>
               {!esJornadaActual && (
                 <p id="avisoFechaReporte" className="mt-1 text-[11px] font-semibold text-amber-300 print:hidden">
-                  Liquidadas del {fechaReporte}. Pendientes, tránsito, recargas y a piso siempre son las rutas
-                  activas del Tablero de Rutas. Si faltan liquidadas de hace más de 45 días, carga el historial
-                  completo desde el Dashboard.
+                  Reporte del {fechaReporte}: rutas del tablero con esa fecha de ruta y liquidadas ese día.
+                  Si faltan liquidadas de hace más de 45 días, carga el historial completo desde el Dashboard.
                 </p>
               )}
             </div>
@@ -1074,7 +1092,6 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 id="inputFechaReporte"
                 type="date"
                 value={toInputDate(fechaReporte)}
-                max={toInputDate(fechaRealHoy) || undefined}
                 onChange={(e) => {
                   const v = fromInputDate(e.target.value);
                   if (v) setFechaReporte(v);
