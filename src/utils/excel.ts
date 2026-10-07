@@ -704,7 +704,7 @@ export function getRouteAssignmentType(r: Route): string {
   return 'Primer Viaje';
 }
 
-export async function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
+export async function exportRoutesToExcel(routes: Route[], staffList: Staff[], fechaArchivo?: string) {
   const XLSX = await loadXLSX();
   if (!routes || routes.length === 0) return false;
 
@@ -840,7 +840,8 @@ export async function exportRoutesToExcel(routes: Route[], staffList: Staff[]) {
   XLSX.utils.book_append_sheet(wb, ws, "Control_Rutas");
 
   const todayStr = getGuatemalaDateForInput(new Date());
-  XLSX.writeFile(wb, `Reporte_Control_Rutas_${todayStr}.xlsx`);
+  // Si el Tablero tiene una fecha filtrada, el archivo lleva esa fecha.
+  XLSX.writeFile(wb, `Reporte_Control_Rutas_${fechaArchivo ? fechaArchivo.split('/').reverse().join('-') : todayStr}.xlsx`);
   return true;
 }
 
@@ -1409,7 +1410,7 @@ export function parseTrucksFromSheet(ws: XLSXTypes.WorkSheet, defaultAgencia?: s
  * Piloto asignado y Segmento de las rutas visibles en el Tablero (mismo orden
  * y filtros que se ven en pantalla). Solo lectura: no modifica ninguna ruta.
  */
-export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Truck[] = []): Promise<boolean> {
+export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Truck[] = [], fechaArchivo?: string): Promise<boolean> {
   if (!routes || routes.length === 0) return false;
   const XLSX = await loadXLSX();
   // "Horario de Carga" y "No. de Prioridad de Carga" salen en blanco para
@@ -1442,6 +1443,6 @@ export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Tru
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Rutas_Prioridades');
   const todayStr = getGuatemalaDateForInput(new Date());
-  XLSX.writeFile(wb, `Rutas_Prioridades_${todayStr}.xlsx`);
+  XLSX.writeFile(wb, `Rutas_Prioridades_${fechaArchivo ? fechaArchivo.split('/').reverse().join('-') : todayStr}.xlsx`);
   return true;
 }
