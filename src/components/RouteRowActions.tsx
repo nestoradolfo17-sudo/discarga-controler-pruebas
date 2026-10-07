@@ -37,6 +37,8 @@ export interface RowActionHandlers {
   onMoveToFloor?: () => void;
   // Ruta Bolsón: sacarla del bolsón (vuelve a quedar por asignar).
   onRemoveBolson?: () => void;
+  // Self Service: quitar la marca (vuelve a quedar por asignar).
+  onRemoveSelfService?: () => void;
   onViewReceipt: () => void;
   onViewConsolidated?: () => void;
   // Cambiar el segmento de la ruta (pide usuario y contraseña de administrador).
@@ -50,6 +52,7 @@ export function getRowActions(
 ): { primary: RowAction | null; more: RowAction[]; danger: RowAction[] } {
   const isPiso = !!(route.aPiso || route.tipoAsignacion === 'Ruta a Piso');
   const isBolson = !!(route.esBolson || route.tipoAsignacion === 'Ruta Bolsón');
+  const isSelfService = !!(route.esSelfService || route.tipoAsignacion === 'Self Service');
   const canSplit = !route.isSplitRoute && route.estado === 'Pendiente';
   const more: RowAction[] = [];
   let primary: RowAction | null = null;
@@ -62,6 +65,12 @@ export function getRowActions(
 
   switch (route.estado) {
     case 'Pendiente':
+      if (isSelfService) {
+        // Sin camión ni tripulación: se liquida directo con el formulario normal.
+        primary = { key: 'liquidar', label: 'Liquidar Self Service', hint: 'Registrar entrega y cierre (sin tripulación)', icon: ACTION_ICONS.liquidar, tone: 'success', run: h.onLiquidate };
+        if (h.onRemoveSelfService) more.push({ key: 'quitarSelfService', label: 'Quitar Self Service', hint: 'Vuelve a quedar por asignar', icon: ACTION_ICONS.revertir, tone: 'primary', run: h.onRemoveSelfService });
+        break;
+      }
       if (isBolson) {
         // No sale a ruta: se liquida directo como rechazo (sin camión ni tripulación).
         primary = { key: 'liquidar', label: 'Liquidar bolsón', hint: 'Cerrar como rechazo (no salió)', icon: ACTION_ICONS.liquidar, tone: 'success', run: h.onLiquidate };
