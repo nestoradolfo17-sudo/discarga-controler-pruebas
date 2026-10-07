@@ -204,12 +204,15 @@ export const RouteRowActions: React.FC<RouteRowActionsProps> = ({
           type="button"
           onClick={() => run(primary)}
           title={primary.hint ? `${primary.label}: ${primary.hint}` : primary.label}
-          className={`inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-3 text-xs sm:text-sm font-bold rounded-xl border shadow-2xs transition-all cursor-pointer active:scale-95 outline-none focus-visible:ring-4 ${PRIMARY_BTN[primary.tone]}`}
+          // Ancho fijo: todas las filas alinean sus botones en la misma columna
+          // (los textos largos, p. ej. "Liquidar Self Service", pasan a 2 líneas).
+          className={`inline-flex items-center justify-center gap-1.5 w-[132px] min-h-[44px] px-2 ${primary.label.length > 14 ? 'text-xs' : 'text-xs sm:text-sm'} font-bold leading-tight rounded-xl border shadow-2xs transition-all cursor-pointer active:scale-95 outline-none focus-visible:ring-4 ${PRIMARY_BTN[primary.tone]}`}
         >
           <PrimaryIcon className="w-4 h-4 shrink-0" />
-          <span>{primary.label}</span>
+          <span className="whitespace-normal text-center">{primary.label}</span>
         </button>
       )}
+      {!primary && <span aria-hidden="true" className="inline-block w-[132px]" />}
       <button
         type="button"
         onClick={onViewDetail}
