@@ -1548,6 +1548,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   <span className="text-xl font-black text-rose-600">{finAtrasadasCount}</span>
                   <span className="text-xs font-bold text-rose-600">atrasadas</span>
                 </div>
+                {/* Mismo desglose de atrasadas que Inicio de Día (días completos). */}
+                <p className="text-[11px] text-rose-600 font-bold mt-0.5">
+                  {finAtrasadasCount > 0
+                    ? `${summaryTotals.rutas24h.totalPlan} de 24 h · ${summaryTotals.rutas72h.totalPlan} de 72 h · ${summaryTotals.rutasMayor72h.totalPlan} de +72 h`
+                    : '0 atrasos registrados'}
+                </p>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5">
                   {finTotalParadasRealizadas} paradas completadas exitosas
                 </p>
