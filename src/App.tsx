@@ -70,6 +70,7 @@ import { RevertSplitModal } from './components/modals/RevertSplitModal';
 import { AssignModal } from './components/modals/AssignModal';
 import { LiquidateModal } from './components/modals/LiquidateModal';
 import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiertaModal';
+import { AbonosCajaModal, totalAbonado } from './components/modals/AbonosCajaModal';
 import { ReceiptModal } from './components/modals/ReceiptModal';
 import { NewTruckModal } from './components/modals/NewTruckModal';
 import { NewStaffModal } from './components/modals/NewStaffModal';
@@ -1127,6 +1128,8 @@ export default function App() {
   // Ruta seleccionada para registrar su "Liquidación Final" (cierre del pendiente
   // de validar caja/boleta de una liquidación previa en estado Caja Abierta).
   const [finalizeCajaAbiertaTarget, setFinalizeCajaAbiertaTarget] = useState<Route | null>(null);
+  // Abonos diarios de Caja Abierta.
+  const [abonosCajaTarget, setAbonosCajaTarget] = useState<Route | null>(null);
   const [receiptTarget, setReceiptTarget] = useState<Route | null>(null);
   const [receiptConsolidatedSiblings, setReceiptConsolidatedSiblings] = useState<Route[] | undefined>(undefined);
   const [isNewTruckModalOpen, setIsNewTruckModalOpen] = useState(false);
@@ -2952,6 +2955,80 @@ export default function App() {
     showToast(`Ruta ${routeId}: Liquidación Final registrada. Caja Abierta resuelta.`, 'success');
   };
 
+  // Registra un abono contra una Caja Abierta. Si lo abonado llega al 100% del
+  // valor pendiente, la caja se cierra sola (Liquidación Final) y la ruta queda
+  // liquidada. Solo agrega datos a la liquidación; no toca cajas, paradas ni motivos.
+  const handleRegistrarAbonoCaja = (
+    routeId: string,
+    routeKey: string,
+    abono: { fecha: string; monto: number; comentario?: string },
+    montoTotal?: number
+  ) => {
+    const target =
+      routes.find((r) => routeMatchesKey(r, routeId, routeKey)) ||
+      historicalRoutes.find((r) => routeMatchesKey(r, routeId, routeKey));
+    if (!target || !target.liquidacion?.cajaAbierta) {
+      showToast('No se encontró la Caja Abierta de esta ruta.', 'error');
+      return;
+    }
+    if (target.liquidacion.cajaAbiertaResuelta) {
+      showToast('Esta Caja Abierta ya está cerrada.', 'info');
+      return;
+    }
+    const total =
+      typeof target.liquidacion.montoDiferenciaCaja === 'number' && target.liquidacion.montoDiferenciaCaja > 0
+        ? target.liquidacion.montoDiferenciaCaja
+        : montoTotal || 0;
+    if (!(total > 0)) {
+      showToast('Indica el valor total pendiente de la caja.', 'error');
+      return;
+    }
+    const ahora = formatDateTimeToGuatemala(new Date());
+    const abonos = [
+      ...(target.liquidacion.abonosCaja || []),
+      {
+        fecha: abono.fecha,
+        monto: abono.monto,
+        comentario: abono.comentario,
+        registradoPor: currentUser?.nombre || currentUser?.username || '',
+        registradoEl: ahora,
+      },
+    ];
+    const abonado = totalAbonado(abonos);
+    const completo = abonado >= total - 0.005;
+    const fmt = (n: number) => n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const historial = [
+      ...(target.liquidacion.historialEstados || []),
+      { estado: `Abono Q ${fmt(abono.monto)} (${abono.fecha})`, fecha: ahora },
+      ...(completo ? [{ estado: 'Liquidación Final', fecha: ahora }] : []),
+    ];
+    const updatedRoute: Route = {
+      ...target,
+      liquidacion: {
+        ...target.liquidacion,
+        montoDiferenciaCaja: total,
+        abonosCaja: abonos,
+        historialEstados: historial,
+        ...(completo
+          ? {
+              cajaAbiertaResuelta: true,
+              fechaLiquidacionFinal: ahora,
+              comentarioLiquidacionFinal: `Cerrada por abonos: Q ${fmt(abonado)} de Q ${fmt(total)} (100%).`,
+            }
+          : {}),
+      },
+    };
+    setRoutes((prev) => prev.map((r) => (routeMatchesKey(r, routeId, routeKey) ? updatedRoute : r)));
+    setHistoricalRoutes((prev) => prev.map((r) => (routeMatchesKey(r, routeId, routeKey) ? updatedRoute : r)));
+    setAbonosCajaTarget(updatedRoute);
+    showToast(
+      completo
+        ? `Ruta ${routeId}: pago completo. Caja Abierta cerrada y ruta liquidada.`
+        : `Abono de Q ${fmt(abono.monto)} registrado. Saldo: Q ${fmt(Math.max(0, total - abonado))}.`,
+      'success'
+    );
+  };
+
   const handleCommitBatchRoutes = (importedRoutes: Route[], target: BatchImportTarget) => {
     // Seguridad: la agencia destino debe estar entre las permitidas al usuario.
     if (!importAgencyOptions.includes(target.agencia)) {
@@ -3838,6 +3915,7 @@ export default function App() {
               handleViewConsolidatedReceipt(parentRouteId, ref)
             }
             onOpenFinalizeCajaAbierta={(routeObj) => setFinalizeCajaAbiertaTarget(routeObj)}
+            onOpenAbonosCaja={(routeObj) => setAbonosCajaTarget(routeObj)}
             onShowToast={showToast}
             onDeleteRoutes={currentUser?.isAdmin ? (keys) => setDeleteRoutesTargetIds(keys) : undefined}
           />
@@ -4009,6 +4087,11 @@ export default function App() {
         onConfirmLiquidation={handleConfirmLiquidation}
       />
 
+      <AbonosCajaModal
+        route={abonosCajaTarget}
+        onClose={() => setAbonosCajaTarget(null)}
+        onRegistrar={handleRegistrarAbonoCaja}
+      />
       <FinalizeCajaAbiertaModal
         isOpen={!!finalizeCajaAbiertaTarget}
         onClose={() => setFinalizeCajaAbiertaTarget(null)}
