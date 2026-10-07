@@ -345,6 +345,16 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
             </div>
           </div>
 
+          {(route.esSelfService || route.tipoAsignacion === 'Self Service') && (
+            <div className="bg-teal-50 border border-teal-300 rounded-xl p-3 text-teal-950 space-y-1">
+              <div className="font-bold text-xs text-teal-900">Self Service: el cliente recogió (sin camión ni tripulación)</div>
+              <p className="text-[11px] leading-relaxed">
+                Registra las paradas y cajas entregadas como en cualquier liquidación.
+                {route.notaSelfService ? <span className="block mt-0.5"><strong>Observación:</strong> {route.notaSelfService}</span> : null}
+              </p>
+            </div>
+          )}
+
           {esBolson && (
             <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 text-rose-950 space-y-1">
               <div className="font-bold text-xs text-rose-900">🗃️ Ruta Bolsón: no salió a ruta (sin camión ni tripulación)</div>
