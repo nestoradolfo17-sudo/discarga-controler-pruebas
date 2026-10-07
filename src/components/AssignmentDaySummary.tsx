@@ -23,6 +23,7 @@ const dayNum = (v: unknown): number | null => {
 const isFloor = (r: Route) =>
   Boolean(r.aPiso || r.tipoAsignacion === 'Ruta a Piso' || r.asignacion?.tipoAsignacion === 'Ruta a Piso');
 const isBolson = (r: Route) => Boolean(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
+const isSelfService = (r: Route) => Boolean(r.esSelfService || r.tipoAsignacion === 'Self Service');
 const isRecarga = (r: Route) =>
   Boolean(r.esRecarga || r.tipoAsignacion === 'Recarga' || r.asignacion?.tipoAsignacion === 'Recarga');
 const volumenDe = (r: Route) => {
@@ -60,6 +61,9 @@ export const AssignmentDaySummary: React.FC<Props> = ({ routes, fechaOperacion, 
     const manana = nuevoBloque();
     let recargas = 0;
     let bolson = 0;
+    // Self Service: el cliente recoge (sin tripulación). Sí son rutas del día
+    // (cuentan en su bloque y en el volumen); aquí se muestra cuántas son.
+    let selfService = 0;
     routes.forEach((r) => {
       if (agencia !== 'TODAS' && r.agencia !== agencia) return;
       const base = dayNum(r.fechaOriginalRuta || r.fecha);
@@ -75,6 +79,7 @@ export const AssignmentDaySummary: React.FC<Props> = ({ routes, fechaOperacion, 
         if (!liquidada) bolson += 1;
         return;
       }
+      if (isSelfService(r) && (base === null || hoy === null || base <= hoy)) selfService += 1;
       if (base === null || hoy === null || base === hoy) sumar(dia, r);
       else if (base < hoy) sumar(anterior, r);
       else sumar(manana, r);
@@ -83,10 +88,10 @@ export const AssignmentDaySummary: React.FC<Props> = ({ routes, fechaOperacion, 
     const extras = new Set<string>();
     [dia, anterior, piso, manana].forEach((b) => b.porSeg.forEach((_, k) => extras.add(k)));
     const segmentos = [...SEGMENTO_OPTIONS, ...Array.from(extras).filter((s) => !SEGMENTO_OPTIONS.includes(s)).sort()];
-    return { dia, anterior, piso, manana, recargas, bolson, segmentos };
+    return { dia, anterior, piso, manana, recargas, bolson, selfService, segmentos };
   }, [routes, fechaOperacion, agencia]);
 
-  const { dia, anterior, piso, manana, recargas, bolson, segmentos } = resumen;
+  const { dia, anterior, piso, manana, recargas, bolson, selfService, segmentos } = resumen;
   const totalRutas = dia.rutas + anterior.rutas;
   const totalVolumen = dia.volumen + anterior.volumen;
 
@@ -109,6 +114,7 @@ export const AssignmentDaySummary: React.FC<Props> = ({ routes, fechaOperacion, 
   filas.push({ label: 'Total Volumen', value: fmtVol(totalVolumen), labelCls: 'font-black', valueCls: yellow, valueBg: '#ffff00' });
   bloque('Rutas piso', piso, false);
   filas.push({ label: 'Recargas', value: recargas, labelCls: 'font-black', valueCls: val, topBorder: true, valueBg: '#c8c8c8' });
+  filas.push({ label: 'Self Service (sin tripulación)', value: selfService, labelCls: 'font-black', valueCls: val, valueBg: '#c8c8c8' });
   if (bolson > 0) filas.push({ label: 'Rutas Bolsón (no salen)', value: bolson, labelCls: 'font-black', valueCls: val, valueBg: '#c8c8c8' });
   filas.push({ label: 'Rutas que salen Mañana', value: manana.rutas, labelCls: 'font-black', valueCls: val, valueBg: '#c8c8c8' });
 
@@ -165,7 +171,7 @@ export const AssignmentDaySummary: React.FC<Props> = ({ routes, fechaOperacion, 
         </tbody>
       </table>
       <p className="text-[10px] text-slate-400 text-center">
-        Solo lectura · Rutas del día y del día anterior según su fecha de ruta; a piso y recargas según su estado actual en el tablero.
+        Solo lectura · Rutas del día y del día anterior según su fecha de ruta; a piso y recargas según su estado actual en el tablero. Las Self Service ya están incluidas en Rutas del día y Total Rutas.
       </p>
     </div>
   );
