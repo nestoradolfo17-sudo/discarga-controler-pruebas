@@ -15,7 +15,7 @@ import {
 import { formatDateToGuatemala } from '../utils/date';
 import { SEGMENTO_OPTIONS } from '../data/segmentos';
 import { getRouteKey } from '../utils/routeKey';
-import { FileSpreadsheet, Download, UploadCloud, CheckCircle, X, Layers, AlertCircle, Users, MapPin, Tag } from 'lucide-react';
+import { FileSpreadsheet, Download, UploadCloud, CheckCircle, X, Layers, AlertCircle, Users, MapPin, Tag, Calendar } from 'lucide-react';
 import { SegmentedSelect } from './ui/SegmentedSelect';
 
 export interface BatchImportTarget {
@@ -73,7 +73,16 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
   const [targetAgencia, setTargetAgencia] = useState<string>(agencyOptions.length === 1 ? agencyOptions[0] : '');
   const [targetSegmento, setTargetSegmento] = useState<string>('');
   const effectiveAgencia = agencyOptions.includes(targetAgencia) ? targetAgencia : '';
-  const targetReady = !!effectiveAgencia && !!targetSegmento;
+  // Fecha en que SALEN las rutas del archivo: se pide siempre y se aplica a
+  // todas las rutas importadas (reemplaza la fecha que traiga el Excel).
+  const [fechaSalidaInput, setFechaSalidaInput] = useState<string>(''); // AAAA-MM-DD
+  const fechaSalida = (() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fechaSalidaInput);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+  })();
+  const isoGT = (offsetDays: number) =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guatemala' }).format(new Date(Date.now() + offsetDays * 86400000));
+  const targetReady = !!effectiveAgencia && !!targetSegmento && !!fechaSalida;
   const [isDragging, setIsDragging] = useState(false);
   const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
   const [sheetNames, setSheetNames] = useState<string[]>([]);
@@ -281,6 +290,10 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
       onShowToast('Selecciona el segmento al que se cargarán las rutas.', 'error');
       return;
     }
+    if (!fechaSalida) {
+      onShowToast('Indica la fecha en que salen las rutas.', 'error');
+      return;
+    }
     // Corrección: antes, si algo fallaba aquí adentro (o dentro de onCommitRoutes,
     // que se llama de forma síncrona), el error quedaba solo en la consola del
     // navegador — en pantalla no aparecía ningún aviso ni de éxito ni de error, y
@@ -289,7 +302,13 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
     // poder diagnosticar exactamente qué falla en vez de adivinar.
     try {
       const finalRoutes = previewRoutes.map((r) => {
-        const withTarget: Route = { ...r, agencia: effectiveAgencia, segmento: targetSegmento };
+        const withTarget: Route = {
+          ...r,
+          agencia: effectiveAgencia,
+          segmento: targetSegmento,
+          fecha: fechaSalida,
+          fechaOriginalRuta: fechaSalida,
+        };
         const clientes = clientesByNormRuta?.get(normRuta(r.id));
         return clientes && clientes.length > 0 ? { ...withTarget, clientesRuta: clientes } : withTarget;
       });
@@ -323,8 +342,8 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
         </button>
       </div>
 
-      {/* Destino de la carga: Agencia y Segmento */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+      {/* Destino de la carga: Agencia, Segmento y Fecha de salida */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
         <div>
           <label id="importAgenciaLabel" className="flex items-center text-xs font-semibold text-slate-700 mb-1">
             <MapPin className="w-3.5 h-3.5 mr-1 text-blue-600" />
@@ -361,8 +380,42 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
             required
           />
         </div>
-        <p className="sm:col-span-2 text-[11px] text-slate-500">
-          Todas las rutas del archivo se cargarán a la agencia y segmento seleccionados (reemplazan lo que traiga el Excel en esas columnas).
+        <div>
+          <label htmlFor="importFechaSalida" className="flex items-center text-xs font-semibold text-slate-700 mb-1">
+            <Calendar className="w-3.5 h-3.5 mr-1 text-indigo-600" />
+            Fecha de salida de las rutas *
+          </label>
+          <input
+            id="importFechaSalida"
+            type="date"
+            required
+            value={fechaSalidaInput}
+            onChange={(e) => setFechaSalidaInput(e.target.value)}
+            className={`w-full min-h-[44px] px-3 rounded-xl border text-sm font-semibold bg-white outline-none focus:ring-2 focus:ring-blue-500 ${
+              fechaSalida ? 'border-slate-300 text-slate-800' : 'border-amber-300 text-slate-500'
+            }`}
+          />
+          <div className="flex gap-1.5 mt-1.5">
+            <button
+              type="button"
+              id="btnFechaSalidaHoy"
+              onClick={() => setFechaSalidaInput(isoGT(0))}
+              className="min-h-[32px] px-2.5 rounded-lg border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Hoy
+            </button>
+            <button
+              type="button"
+              id="btnFechaSalidaManana"
+              onClick={() => setFechaSalidaInput(isoGT(1))}
+              className="min-h-[32px] px-2.5 rounded-lg border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Mañana
+            </button>
+          </div>
+        </div>
+        <p className="sm:col-span-3 text-[11px] text-slate-500">
+          Todas las rutas del archivo se cargarán a la agencia, segmento y fecha de salida seleccionados (reemplazan lo que traiga el Excel en esas columnas).
         </p>
       </div>
 
@@ -460,7 +513,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
               <button
                 onClick={handleCommit}
                 disabled={!targetReady}
-                title={targetReady ? undefined : 'Selecciona Agencia y Segmento arriba'}
+                title={targetReady ? undefined : 'Selecciona Agencia, Segmento y Fecha de salida arriba'}
                 type="button"
                 className="min-h-[44px] px-5 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm flex items-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -561,7 +614,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                     existingRoutes.some(
                       (ex) =>
                         ex.estado !== 'Liquidada' &&
-                        getRouteKey(ex) === getRouteKey({ id: r.id, fecha: r.fecha, agencia: effectiveAgencia })
+                        getRouteKey(ex) === getRouteKey({ id: r.id, fecha: fechaSalida || r.fecha, agencia: effectiveAgencia })
                     );
                   const clienteCount = clientesByNormRuta?.get(normRuta(r.id))?.length || 0;
                   return (
@@ -576,7 +629,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                         {targetSegmento || <span className="text-amber-600">Sin seleccionar</span>}
                       </td>
                       <td className="py-2 px-3 font-sans text-slate-700 whitespace-nowrap">
-                        {formatDateToGuatemala(r.fecha) || r.fecha}
+                        {fechaSalida || <span className="text-amber-600">Sin seleccionar</span>}
                       </td>
                       <td className="py-2 px-3 font-bold text-slate-900 font-mono">
                         {r.id}{' '}
