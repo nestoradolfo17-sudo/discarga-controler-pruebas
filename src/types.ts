@@ -175,6 +175,16 @@ export interface RouteLiquidationStatusEntry {
   fecha: string;
 }
 
+// Abono (pago parcial) registrado contra una Caja Abierta. Al sumar el 100% del
+// valor pendiente (montoDiferenciaCaja), la caja se cierra (Liquidación Final).
+export interface AbonoCaja {
+  fecha: string; // DD/MM/AAAA (día del abono)
+  monto: number; // Q
+  comentario?: string;
+  registradoPor?: string;
+  registradoEl: string; // fecha y hora real en que se registró en el sistema
+}
+
 export interface RouteLiquidation {
   guiasExitosas: number;
   guiasRechazadas: number;
@@ -208,6 +218,8 @@ export interface RouteLiquidation {
   motivoCajaAbierta?: CajaAbiertaReason;
   // Valor (Q) de la diferencia de la ruta que deja la caja pendiente (opcional).
   montoDiferenciaCaja?: number;
+  // Abonos diarios registrados contra la Caja Abierta (ver AbonoCaja).
+  abonosCaja?: AbonoCaja[];
   // Liquidación Final: para una ruta que quedó en Caja Abierta, esta opción
   // (disponible desde el Tablero de Rutas Liquidadas) permite cerrar
   // definitivamente el pendiente de validación una vez resuelto, sin alterar
