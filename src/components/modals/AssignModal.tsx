@@ -90,6 +90,8 @@ interface AssignModalProps {
   ) => void;
   // Ruta Bolsón: la ruta se envía a rechazo y no sale (sin camión ni tripulación).
   onMoveToBolson?: (routeId: string, fecha: string, motivo: string) => void;
+  // Self Service: sin camión ni tripulación; queda marcada para liquidar.
+  onMoveToSelfService?: (routeId: string, fecha: string, nota: string) => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -104,8 +106,10 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   onConfirmAssignment,
   onMoveToFloor,
   onMoveToBolson,
+  onMoveToSelfService,
   onShowToast,
 }) => {
+  const [notaSelfService, setNotaSelfService] = useState('');
   const [assignmentType, setAssignmentType] = useState<AssignmentType>('Primer Viaje');
   const [truckId, setTruckId] = useState('');
   const [driverName, setDriverName] = useState('');
@@ -281,6 +285,8 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   // Bolsón solo aplica si la ruta NO tiene camión/tripulación asignados en este momento.
   const canBolson = !!onMoveToBolson && !route.asignacion;
   const isBolson = assignmentType === 'Ruta Bolsón';
+  const canSelfService = !!onMoveToSelfService && !route.asignacion;
+  const isSelfService = assignmentType === 'Self Service';
   const isRevisita = assignmentType === 'Revisita';
 
   // Segmentación por agencia: solo se pueden asignar camiones y personal que
@@ -374,6 +380,11 @@ export const AssignModal: React.FC<AssignModalProps> = ({
 
     if (isPiso) {
       onMoveToFloor(route.id, getRouteKey(route), tomorrowDate, motivoPiso);
+      return;
+    }
+    if (isSelfService) {
+      if (!canSelfService || !onMoveToSelfService) return;
+      onMoveToSelfService(route.id, getRouteKey(route), notaSelfService.trim());
       return;
     }
     if (isBolson) {
@@ -664,7 +675,9 @@ export const AssignModal: React.FC<AssignModalProps> = ({
               ) : (
                 <Send className="w-5 h-5 mr-2 text-blue-400 flex-shrink-0" />
               )}
-              {isBolson
+              {isSelfService
+                ? 'Self Service: sin camión ni tripulación'
+                : isBolson
                 ? 'Ruta Bolsón: se envía a rechazo (no sale)'
                 : isPiso
                 ? 'Ruta a Piso: Reprogramación Automática para Mañana'
@@ -710,7 +723,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
               Modalidad de Asignación / Destino de la Carga *
             </label>
-            <div className={`grid grid-cols-2 gap-2 ${canBolson ? 'sm:grid-cols-3 lg:grid-cols-5' : 'sm:grid-cols-4'}`}>
+            <div className={`grid grid-cols-2 gap-2 ${canBolson || canSelfService ? 'sm:grid-cols-3 lg:grid-cols-6' : 'sm:grid-cols-4'}`}>
               {/* Opción 1: Primer Viaje */}
               <button
                 type="button"
@@ -838,6 +851,31 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                 </p>
               </button>
 
+              {/* Opción 6: Self Service (el cliente recoge; sin tripulación) */}
+              {canSelfService && (
+                <button
+                  type="button"
+                  id="optSelfService"
+                  onClick={() => setAssignmentType('Self Service')}
+                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    isSelfService
+                      ? 'bg-teal-50 border-teal-400 ring-2 ring-teal-500/20 shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-xs text-teal-900 flex items-center">
+                      <Package className="w-3.5 h-3.5 mr-1 text-teal-700" />
+                      Self Service
+                    </span>
+                    {isSelfService && <span className="w-2 h-2 rounded-full bg-teal-600"></span>}
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-tight">
+                    Sin tripulación.
+                  </p>
+                </button>
+              )}
+
               {/* Opción 5: Ruta Bolsón (se envía a rechazo, no sale) */}
               {canBolson && (
                 <button
@@ -955,8 +993,37 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             </div>
           )}
 
-          {/* VISTA 5: RUTA BOLSÓN (A RECHAZO, NO SALE) */}
-          {isBolson ? (
+          {/* VISTA 6: SELF SERVICE (SIN TRIPULACIÓN) */}
+          {isSelfService ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-teal-50 border border-teal-300 rounded-xl text-teal-950 space-y-3">
+                <div className="flex items-center font-bold text-sm text-teal-900">
+                  <Package className="w-4 h-4 mr-2 text-teal-700" />
+                  Self Service: el cliente recoge, no requiere camión ni tripulación
+                </div>
+                <p className="text-xs leading-relaxed text-teal-900">
+                  La ruta queda en el tablero marcada como <strong>Self Service · por liquidar</strong>. Cuando se entregue,
+                  se liquida con el botón “Liquidar Self Service” (formulario normal de liquidación). Si fue un error, se puede
+                  quitar desde “⋯”.
+                </p>
+              </div>
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                <label htmlFor="notaSelfServiceInput" className="block font-bold text-slate-800 text-xs">
+                  Observación (opcional):
+                </label>
+                <input
+                  id="notaSelfServiceInput"
+                  type="text"
+                  value={notaSelfService}
+                  onChange={(e) => setNotaSelfService(e.target.value)}
+                  maxLength={160}
+                  placeholder="Ej. Cliente recoge en bodega a las 10:00"
+                  className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg text-xs font-medium bg-white text-slate-800 outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+          ) : /* VISTA 5: RUTA BOLSÓN (A RECHAZO, NO SALE) */
+          isBolson ? (
             <div className="space-y-4">
               <div className="p-4 bg-rose-50 border border-rose-300 rounded-xl text-rose-950 space-y-3">
                 <div className="flex items-center font-bold text-sm text-rose-900">
@@ -1401,7 +1468,11 @@ export const AssignModal: React.FC<AssignModalProps> = ({
               </span>
             }
           >
-            {isBolson ? (
+            {isSelfService ? (
+              <Button type="submit" variant="success" size="lg" icon={ACTION_ICONS.liquidar}>
+                Marcar como Self Service
+              </Button>
+            ) : isBolson ? (
               <Button type="submit" variant="danger" size="lg" icon={ACTION_ICONS.aPiso}>
                 Enviar a Bolsón (rechazo)
               </Button>
