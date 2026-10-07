@@ -1761,9 +1761,11 @@ export default function App() {
     // Las rutas trasladadas a piso NO se cuentan como pendientes por asignar hoy
     // Ruta Bolsón (enviada a rechazo, sin asignación ni salida) NO es pendiente de asignar.
     const isBolsonRoute = (r: Route) => Boolean(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
+    const isSelfServiceRoute = (r: Route) => Boolean(r.esSelfService || r.tipoAsignacion === 'Self Service');
     const pendientesCount = scoped.filter(
-      (r) => r.estado === 'Pendiente' && !isFloor(r) && !isBolsonRoute(r)
+      (r) => r.estado === 'Pendiente' && !isFloor(r) && !isBolsonRoute(r) && !isSelfServiceRoute(r)
     ).length;
+    const selfServiceCount = scoped.filter((r) => r.estado !== 'Liquidada' && isSelfServiceRoute(r)).length;
     const bolsonCount = scoped.filter((r) => r.estado !== 'Liquidada' && isBolsonRoute(r)).length;
 
     // 2. Rutas en Tránsito en la jornada
@@ -1841,6 +1843,7 @@ export default function App() {
       transito: transitoCount,
       recargasTransito: recargasTransitoCount,
       bolson: bolsonCount,
+      selfService: selfServiceCount,
       abiertas: abiertasCount,
       liquidadas: liqHoy.length,
       liquidadasTotal: liqScoped.length,
@@ -2236,6 +2239,7 @@ export default function App() {
             esReasignacion: isRevisita,
             aPiso: effectiveTipo === 'Ruta a Piso',
             esBolson: false,
+            esSelfService: false,
             fechaAsignacion: fechaHoraAsignacion,
             asignacion: {
               camionId: assignment.truckId,
@@ -2398,6 +2402,61 @@ export default function App() {
       label: 'Deshacer',
       onClick: undo,
     });
+  };
+
+  // Self Service: el cliente recoge el pedido; no lleva camión ni tripulación.
+  // Queda en el tablero "Self Service · por liquidar" y se liquida con el
+  // formulario normal (cajas y paradas entregadas).
+  const handleMoveToSelfService = (routeId: string, fecha: string, nota: string) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    if (targetRoute.asignacion) {
+      showToast('La ruta tiene camión y tripulación asignados. Liquídala antes de pasarla a Self Service.', 'error');
+      return;
+    }
+    const undo = makeUndo([targetRoute]);
+    setRoutes((prev) =>
+      prev.map((r) =>
+        routeMatchesKey(r, routeId, fecha)
+          ? {
+              ...r,
+              estado: 'Pendiente',
+              asignacion: null,
+              tipoAsignacion: 'Self Service',
+              esSelfService: true,
+              fechaSelfService: formatDateTimeToGuatemala(new Date()),
+              notaSelfService: nota || undefined,
+              esBolson: false,
+              aPiso: false,
+            }
+          : r
+      )
+    );
+    setAssignTarget(null);
+    showToast(`Ruta ${routeId} marcada como Self Service: queda lista para liquidar.`, 'success', {
+      label: 'Deshacer',
+      onClick: undo,
+    });
+  };
+
+  const handleRemoveSelfService = (routeId: string, fecha: string) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    const undo = makeUndo([targetRoute]);
+    setRoutes((prev) =>
+      prev.map((r) =>
+        routeMatchesKey(r, routeId, fecha)
+          ? {
+              ...r,
+              esSelfService: false,
+              tipoAsignacion: (r.historialDespachos?.length || 0) > 0 ? 'Revisita' : r.esRecarga ? 'Recarga' : 'Primer Viaje',
+              fechaSelfService: undefined,
+              notaSelfService: undefined,
+            }
+          : r
+      )
+    );
+    showToast(`Ruta ${routeId} ya no es Self Service: vuelve a quedar por asignar.`, 'info', { label: 'Deshacer', onClick: undo });
   };
 
   const handleRemoveBolson = (routeId: string, fecha: string) => {
@@ -3808,6 +3867,7 @@ export default function App() {
           transito={boardStats.transito - boardStats.recargasTransito}
           recargas={boardStats.recargasTransito}
           bolson={boardStats.bolson}
+          selfService={boardStats.selfService}
           abiertas={boardStats.abiertas}
           liquidadas={boardStats.liquidadas}
           liquidadasTotal={boardStats.liquidadasTotal}
@@ -3894,6 +3954,7 @@ export default function App() {
                   transito={boardStats.transito - boardStats.recargasTransito}
                   recargas={boardStats.recargasTransito}
                   bolson={boardStats.bolson}
+          selfService={boardStats.selfService}
                   abiertas={boardStats.abiertas}
                   liquidadas={boardStats.liquidadas}
                   liquidadasTotal={boardStats.liquidadasTotal}
@@ -3961,6 +4022,7 @@ export default function App() {
             onOpenNewRouteModal={() => setIsRouteTypeSelectModalOpen(true)}
             onMoveToFloor={handleMoveToFloor}
             onRemoveBolson={handleRemoveBolson}
+            onRemoveSelfService={handleRemoveSelfService}
             onVisibleRoutesChange={handleBoardVisibleRoutes}
             onChangeSegment={(id, fecha) => {
               const r = routes.find((item) => routeMatchesKey(item, id, fecha));
@@ -4149,6 +4211,7 @@ export default function App() {
         onConfirmAssignment={handleConfirmAssignment}
         onMoveToFloor={handleMoveToFloor}
         onMoveToBolson={handleMoveToBolson}
+        onMoveToSelfService={handleMoveToSelfService}
         onShowToast={showToast}
       />
 
