@@ -1120,6 +1120,8 @@ export default function App() {
   const [isRouteTypeSelectModalOpen, setIsRouteTypeSelectModalOpen] = useState(false);
   const [isTrasladoRouteModalOpen, setIsTrasladoRouteModalOpen] = useState(false);
   const [splitRouteTarget, setSplitRouteTarget] = useState<Route | null>(null);
+  // Filtro de fecha del Tablero ('' = todas las fechas).
+  const [boardFecha, setBoardFecha] = useState<string>('');
   // Cambio de segmento (con autorización de administrador).
   const [segmentTarget, setSegmentTarget] = useState<Route | null>(null);
   const [revertSplitTarget, setRevertSplitTarget] = useState<Route | null>(null);
@@ -1546,6 +1548,8 @@ export default function App() {
       const matchesAgency = selectedAgency === 'TODAS' || r.agencia === selectedAgency;
       if (!matchesAgency) return false;
 
+      if (boardFecha && formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) !== boardFecha) return false;
+
       if (!q) return true;
 
       const asig = r.asignacion;
@@ -1564,7 +1568,7 @@ export default function App() {
       return matchSearch;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routes, selectedAgency, searchQuery, currentUser]);
+  }, [routes, selectedAgency, searchQuery, currentUser, boardFecha]);
 
   // Rutas del día (todos los estados) visibles para el usuario, respetando la
   // agencia seleccionada en la barra superior y su permiso de acceso por agencia.
@@ -1728,9 +1732,10 @@ export default function App() {
     [routes, currentUser]
   );
 
-  // Dashboard KPI stats
-  const stats = useMemo(() => {
-    const todayDateStr = formatDateToGuatemala(new Date());
+  // Dashboard KPI stats. buildStats se reutiliza para el filtro de fecha del
+  // Tablero: con fixedDate, "hoy" y la jornada operativa pasan a ser esa fecha.
+  const buildStats = (scoped0: Route[], liqScoped0: Route[], fixedDate?: string) => {
+    const todayDateStr = fixedDate || formatDateToGuatemala(new Date());
 
     // Identificar la fecha operativa activa de la jornada (detectando la fecha predominante en las rutas)
     const dateCounts: Record<string, number> = {};
@@ -1739,10 +1744,10 @@ export default function App() {
       if (d) dateCounts[d] = (dateCounts[d] || 0) + 1;
     });
     const predominantDate = Object.entries(dateCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const activeOperationDate = predominantDate || todayDateStr;
+    const activeOperationDate = fixedDate || predominantDate || todayDateStr;
 
-    const scoped = dashboardRoutes;
-    const liqScoped = dashboardLiquidatedRoutes;
+    const scoped = scoped0;
+    const liqScoped = liqScoped0;
 
     // Identificador de ruta trasladada a piso (queda en bodega para mañana)
     const isFloor = (r: Route) =>
@@ -1845,7 +1850,46 @@ export default function App() {
       cajasEntregadasHoy: cajasEntregadasTotalHoy,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routes, dashboardRoutes, dashboardLiquidatedRoutes]);
+  };
+  const stats = useMemo(
+    () => buildStats(dashboardRoutes, dashboardLiquidatedRoutes),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [routes, dashboardRoutes, dashboardLiquidatedRoutes]
+  );
+
+  // --- Filtro de FECHA del Tablero de Rutas ---
+  // "Todas" = como siempre. Al elegir una fecha, la tabla y los indicadores
+  // (Pendientes, Tránsito, Recargas, Abiertas, A Piso, Liquidadas, Cajas) se
+  // calculan solo con las rutas de esa fecha de ruta.
+  const rutaDia = (r: Route) => formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) || '';
+  const boardDateOptions = useMemo(() => {
+    const set = new Set<string>();
+    routes.forEach((r) => {
+      if (r.estado !== 'Liquidada' && canViewAgency(r.agencia)) {
+        const d = rutaDia(r);
+        if (d) set.add(d);
+      }
+    });
+    set.add(formatDateToGuatemala(new Date()));
+    if (boardFecha) set.add(boardFecha);
+    const num = (d: string) => {
+      const [dd, mm, yy] = d.split('/');
+      return Number(yy) * 10000 + Number(mm) * 100 + Number(dd);
+    };
+    return Array.from(set).sort((a, b) => num(a) - num(b));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routes, currentUser, boardFecha]);
+  const boardStats = useMemo(() => {
+    if (!boardFecha) return stats;
+    const liqDia = (r: Route) =>
+      formatDateToGuatemala(r.liquidacion?.fechaLiquidacion || r.fechaLiquidacion) === boardFecha || rutaDia(r) === boardFecha;
+    return buildStats(
+      dashboardRoutes.filter((r) => rutaDia(r) === boardFecha),
+      dashboardLiquidatedRoutes.filter(liqDia),
+      boardFecha
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardFecha, stats, dashboardRoutes, dashboardLiquidatedRoutes]);
 
   // Actions
   const handleCreateRoute = (newRouteData: Partial<Route>) => {
@@ -3649,6 +3693,27 @@ export default function App() {
     return loadingScreen('Cargando datos compartidos...');
   }
 
+  // Selector de fecha del Tablero (cambia la tabla y los indicadores).
+  const boardDateSelect = (
+    <select
+      id="boardFechaFiltro"
+      value={boardFecha}
+      onChange={(e) => setBoardFecha(e.target.value)}
+      aria-label="Fecha de las rutas del tablero"
+      title="Filtrar el tablero y sus indicadores por fecha de ruta"
+      className={`shrink-0 min-h-[40px] px-2 rounded-xl border text-xs font-bold cursor-pointer ${
+        boardFecha ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-300'
+      }`}
+    >
+      <option value="">Todas las fechas</option>
+      {boardDateOptions.map((d) => (
+        <option key={d} value={d}>
+          {d === formatDateToGuatemala(new Date()) ? `${d} (hoy)` : d}
+        </option>
+      ))}
+    </select>
+  );
+
   return (
     <div className="bg-gradient-to-b from-slate-100 to-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
       <Navbar
@@ -3735,21 +3800,24 @@ export default function App() {
               // Indicadores según la sección: los principales (pendientes, tránsito,
               // etc.) en el Tablero de Rutas; los de liquidación en Rutas Liquidadas.
               activeTab === 'board' ? (
+              <div className="flex items-center gap-1.5 min-w-0">
+                {boardDateSelect}
               <StatsCards
                 compact
-          pendientes={stats.pendientes}
-          transito={stats.transito - stats.recargasTransito}
-          recargas={stats.recargasTransito}
-          bolson={stats.bolson}
-          abiertas={stats.abiertas}
-          liquidadas={stats.liquidadas}
-          liquidadasTotal={stats.liquidadasTotal}
-          pisoHoy={stats.pisoHoy}
-          fechaHoy={stats.fechaHoy}
-          cajasFisicasHoy={stats.cajasFisicasHoy}
-          cajasEntregadasHoy={stats.cajasEntregadasHoy}
+          pendientes={boardStats.pendientes}
+          transito={boardStats.transito - boardStats.recargasTransito}
+          recargas={boardStats.recargasTransito}
+          bolson={boardStats.bolson}
+          abiertas={boardStats.abiertas}
+          liquidadas={boardStats.liquidadas}
+          liquidadasTotal={boardStats.liquidadasTotal}
+          pisoHoy={boardStats.pisoHoy}
+          fechaHoy={boardStats.fechaHoy}
+          cajasFisicasHoy={boardStats.cajasFisicasHoy}
+          cajasEntregadasHoy={boardStats.cajasEntregadasHoy}
           onSelectTab={setActiveTab}
         />
+              </div>
               ) : activeTab === 'liquidated' && liqKpis ? (
                 <LiquidatedStatsStrip {...liqKpis} />
               ) : activeTab === 'staff' ? (
@@ -3818,18 +3886,23 @@ export default function App() {
                 Tablero de Rutas{selectedAgency !== 'TODAS' ? ` · ${selectedAgency}` : ''}
               </span>
               <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                {boardDateSelect}
                 <StatsCards
                   compact
-                  pendientes={stats.pendientes}
-                  transito={stats.transito}
-                  abiertas={stats.abiertas}
-                  liquidadas={stats.liquidadas}
-                  liquidadasTotal={stats.liquidadasTotal}
-                  pisoHoy={stats.pisoHoy}
-                  fechaHoy={stats.fechaHoy}
-                  cajasFisicasHoy={stats.cajasFisicasHoy}
-                  cajasEntregadasHoy={stats.cajasEntregadasHoy}
+                  pendientes={boardStats.pendientes}
+                  transito={boardStats.transito - boardStats.recargasTransito}
+                  recargas={boardStats.recargasTransito}
+                  bolson={boardStats.bolson}
+                  abiertas={boardStats.abiertas}
+                  liquidadas={boardStats.liquidadas}
+                  liquidadasTotal={boardStats.liquidadasTotal}
+                  pisoHoy={boardStats.pisoHoy}
+                  fechaHoy={boardStats.fechaHoy}
+                  cajasFisicasHoy={boardStats.cajasFisicasHoy}
+                  cajasEntregadasHoy={boardStats.cajasEntregadasHoy}
                 />
+                </div>
               </div>
               <input
                 type="search"
