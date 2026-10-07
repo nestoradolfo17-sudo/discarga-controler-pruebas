@@ -4214,7 +4214,8 @@ export default function App() {
         trucks={visibleTrucks}
         selectedAgency={selectedAgency}
         agencies={agencies}
-        fechaHoy={stats.fechaHoy}
+        // Abre con la fecha elegida en el filtro del Tablero (o con hoy).
+        fechaHoy={boardFecha || formatDateToGuatemala(new Date())}
         initialMode={dailySummaryMode}
         onOpenClosingActa={() => {
           setIsDailySummaryModalOpen(false);
