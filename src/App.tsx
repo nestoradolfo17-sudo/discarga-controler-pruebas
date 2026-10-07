@@ -2410,11 +2410,39 @@ export default function App() {
   const handleMoveToSelfService = (routeId: string, fecha: string, nota: string) => {
     const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
     if (!targetRoute) return;
-    if (targetRoute.asignacion) {
-      showToast('La ruta tiene camión y tripulación asignados. Liquídala antes de pasarla a Self Service.', 'error');
-      return;
-    }
     const undo = makeUndo([targetRoute]);
+
+    // Si la ruta se asignó por error (camión y tripulación), al pasarla a Self
+    // Service se liberan, salvo que sigan en otra ruta en tránsito.
+    const asigPrevia = targetRoute.asignacion;
+    if (asigPrevia) {
+      const otras = routes.filter(
+        (r) => !routeMatchesKey(r, routeId, fecha) && r.estado === 'En Tránsito' && r.asignacion
+      );
+      if (asigPrevia.camionId) {
+        const siguen = otras.filter((r) => r.asignacion?.camionId === asigPrevia.camionId);
+        setTrucks((prev) =>
+          prev.map((t) =>
+            t.id === asigPrevia.camionId
+              ? siguen.length > 0
+                ? { ...t, estado: 'En Ruta', rutaActual: siguen.map((r) => r.id).join(', ') }
+                : { ...t, estado: 'Disponible', rutaActual: null }
+              : t
+          )
+        );
+      }
+      const crew = [asigPrevia.conductor, asigPrevia.auxiliar1, asigPrevia.auxiliar2, asigPrevia.auxiliar3, asigPrevia.auxiliar4].filter(Boolean) as string[];
+      setStaff((prev) =>
+        prev.map((st) => {
+          if (!crew.includes(st.nombre) || st.estado === 'Baja') return st;
+          const enOtra = otras.some((r) =>
+            [r.asignacion?.conductor, r.asignacion?.auxiliar1, r.asignacion?.auxiliar2, r.asignacion?.auxiliar3, r.asignacion?.auxiliar4].includes(st.nombre)
+          );
+          return enOtra ? { ...st, estado: 'En Ruta' } : { ...st, estado: 'Disponible' };
+        })
+      );
+    }
+
     setRoutes((prev) =>
       prev.map((r) =>
         routeMatchesKey(r, routeId, fecha)
@@ -2422,6 +2450,8 @@ export default function App() {
               ...r,
               estado: 'Pendiente',
               asignacion: null,
+              fechaAsignacion: undefined,
+              esRecarga: false,
               tipoAsignacion: 'Self Service',
               esSelfService: true,
               fechaSelfService: formatDateTimeToGuatemala(new Date()),
@@ -2433,7 +2463,12 @@ export default function App() {
       )
     );
     setAssignTarget(null);
-    showToast(`Ruta ${routeId} marcada como Self Service: queda lista para liquidar.`, 'success', {
+    showToast(
+      asigPrevia
+        ? `Ruta ${routeId} pasó a Self Service: se liberaron el camión ${asigPrevia.camionPlaca} y su tripulación. Queda lista para liquidar.`
+        : `Ruta ${routeId} marcada como Self Service: queda lista para liquidar.`,
+      'success',
+      {
       label: 'Deshacer',
       onClick: undo,
     });
