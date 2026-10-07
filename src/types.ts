@@ -3,7 +3,7 @@ export type RouteStatus = 'Pendiente' | 'En Tránsito' | 'Abierta' | 'Liquidada'
 export type StaffPuesto = 'VPP' | 'VPPB' | 'APP';
 export type StaffRol = 'Conductor' | 'Auxiliar';
 export type ResourceStatus = 'Disponible' | 'En Ruta' | 'Baja';
-export type AssignmentType = 'Primer Viaje' | 'Recarga' | 'Revisita' | 'Ruta a Piso' | 'Ruta Bolsón';
+export type AssignmentType = 'Primer Viaje' | 'Recarga' | 'Revisita' | 'Ruta a Piso' | 'Ruta Bolsón' | 'Self Service';
 
 export type TruckUnavailableReason = 'Taller' | 'Stand By' | 'Deshabilitado' | 'Consignado MP';
 
@@ -320,6 +320,11 @@ export interface Route {
   esBolson?: boolean;
   fechaBolson?: string;
   motivoBolson?: string;
+  // Self Service: el cliente recoge el pedido; no lleva camión ni tripulación.
+  // Queda en el tablero marcada para liquidar (con el formulario normal).
+  esSelfService?: boolean;
+  fechaSelfService?: string;
+  notaSelfService?: string;
   tipoRuta?: 'Entrega' | 'Traslado';
   origen?: string;
   destino?: string;
