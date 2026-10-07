@@ -789,7 +789,12 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   <td className="px-2 md:px-2.5 lg:px-3 py-2 md:py-2.5 text-center whitespace-nowrap">
                     {route.asignacion ? (
                       <div className="text-[11px] leading-tight text-left inline-block">
-                        <div className="font-bold text-slate-800">{route.asignacion.camionPlaca}</div>
+                        {(() => {
+                          const tk = trucks.find((t) => t.id === route.asignacion?.camionId);
+                          const idTk = tk?.idCamion || route.asignacion.camionId;
+                          return idTk ? <div className="font-black text-slate-900 text-[12px]">ID {idTk}</div> : null;
+                        })()}
+                        <div className="font-semibold text-blue-800">Placa {route.asignacion.camionPlaca}</div>
                         <div className="text-slate-500">{route.asignacion.conductor || <span className="italic text-amber-600">Sin piloto (solo camión)</span>}</div>
                       </div>
                     ) : isAbierta ? (
