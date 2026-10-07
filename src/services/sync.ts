@@ -257,6 +257,13 @@ export async function pushSharedCollection<T>(
       data: item,
       updated_at: now,
     }));
+    // Primero se guardan las filas que NO quedan "En Tránsito" (liquidaciones,
+    // liberaciones) y después las asignaciones: así, cuando en un mismo guardado
+    // un camión o una persona pasa de una ruta liquidada a otra (p. ej. carga
+    // de contingencia), la base ya ve libre el recurso al validar la nueva ruta.
+    const enTransito = (r: { data: unknown }) =>
+      (r.data as { estado?: string } | null)?.estado === 'En Tránsito' ? 1 : 0;
+    rows.sort((a, b) => enTransito(a) - enTransito(b));
     // En lotes, para no mandar solicitudes gigantes (ver UPSERT_BATCH_SIZE).
     for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
       const batch = rows.slice(i, i + UPSERT_BATCH_SIZE);
