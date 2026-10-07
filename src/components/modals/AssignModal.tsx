@@ -285,7 +285,9 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   // Bolsón solo aplica si la ruta NO tiene camión/tripulación asignados en este momento.
   const canBolson = !!onMoveToBolson && !route.asignacion;
   const isBolson = assignmentType === 'Ruta Bolsón';
-  const canSelfService = !!onMoveToSelfService && !route.asignacion;
+  // Self Service también se permite al REASIGNAR una ruta asignada por error:
+  // se liberan camión y tripulación.
+  const canSelfService = !!onMoveToSelfService && route.estado !== 'Liquidada';
   const isSelfService = assignmentType === 'Self Service';
   const isRevisita = assignmentType === 'Revisita';
 
@@ -1002,6 +1004,12 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   Self Service: el cliente recoge, no requiere camión ni tripulación
                 </div>
                 <p className="text-xs leading-relaxed text-teal-900">
+                  {route.asignacion && (
+                    <span className="block mb-1 font-bold text-amber-800">
+                      Esta ruta tiene asignado el camión {route.asignacion.camionPlaca} con {route.asignacion.conductor}: al
+                      confirmar se liberan camión y tripulación.
+                    </span>
+                  )}
                   La ruta queda en el tablero marcada como <strong>Self Service · por liquidar</strong>. Cuando se entregue,
                   se liquida con el botón “Liquidar Self Service” (formulario normal de liquidación). Si fue un error, se puede
                   quitar desde “⋯”.
