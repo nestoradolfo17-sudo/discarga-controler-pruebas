@@ -447,6 +447,15 @@ export function buildContingenciaPlan(input: PlanInput): ContPlan {
   let creadas = 0;
 
   const truckByRef = (ref: string, agencia: string): Truck | undefined => {
+    // Acepta lo que trae la lista del formato ("4521 - C111AAA"): prueba el
+    // texto completo y luego cada parte (ID y placa).
+    const partes = ref.split(/\s+-\s+/).map((x) => x.trim()).filter(Boolean);
+    if (partes.length > 1) {
+      for (const p of partes) {
+        const t = truckByRef(p, agencia);
+        if (t) return t;
+      }
+    }
     const v = normTxt(ref).replace(/\s|-/g, '');
     const hits = trucks.filter(
       (t) =>
