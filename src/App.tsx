@@ -4221,6 +4221,9 @@ export default function App() {
             />
             {currentUser.isAdmin && (
               <ContingenciaImportView
+                trucks={trucks}
+                staff={staff}
+                agencies={importAgencyOptions}
                 onPreview={handlePreviewContingencia}
                 onApply={handleApplyContingencia}
                 onShowToast={showToast}
