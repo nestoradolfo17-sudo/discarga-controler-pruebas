@@ -2,6 +2,8 @@ import React, { useMemo, useRef, useState } from 'react';
 import { ShieldAlert, Download, UploadCloud, CheckCircle, AlertTriangle, AlertCircle, X, FileSpreadsheet } from 'lucide-react';
 import { ContParsed, ContPlan, ContResultado, parseContingenciaWorkbook } from '../utils/contingencia';
 import { loadXLSX } from '../utils/excel';
+import { descargarPlantillaContingencia } from '../utils/contingenciaPlantilla';
+import { Truck, Staff } from '../types';
 
 // --- Carga de Contingencia (solo ADMINISTRADORES) ---
 // Sube los formatos de Excel de contingencia (Asignación y/o Liquidación) que
@@ -10,6 +12,9 @@ import { loadXLSX } from '../utils/excel';
 // válidas con las mismas reglas de Asignar y Liquidar.
 
 interface Props {
+  trucks: Truck[];
+  staff: Staff[];
+  agencies: string[];
   onPreview: (parsed: ContParsed) => ContPlan;
   onApply: (parsed: ContParsed) => ContPlan;
   onShowToast: (msg: string, type: 'success' | 'error' | 'info') => void;
@@ -18,8 +23,8 @@ interface Props {
 type Filtro = 'todos' | 'error' | 'aviso' | 'ok';
 
 const PLANTILLAS = [
-  { href: '/plantillas/Contingencia_Asignacion.xlsx', label: 'Formato de Asignación' },
-  { href: '/plantillas/Contingencia_Liquidacion.xlsx', label: 'Formato de Liquidación' },
+  { tipo: 'asignacion' as const, label: 'Formato de Asignación' },
+  { tipo: 'liquidacion' as const, label: 'Formato de Liquidación' },
 ];
 
 const estadoChip: Record<ContResultado['estado'], string> = {
@@ -29,7 +34,22 @@ const estadoChip: Record<ContResultado['estado'], string> = {
 };
 const estadoTxt: Record<ContResultado['estado'], string> = { ok: 'Lista', aviso: 'Aviso', error: 'Error' };
 
-export const ContingenciaImportView: React.FC<Props> = ({ onPreview, onApply, onShowToast }) => {
+export const ContingenciaImportView: React.FC<Props> = ({ trucks, staff, agencies, onPreview, onApply, onShowToast }) => {
+  const [agenciaFormato, setAgenciaFormato] = useState<string>('TODAS');
+  const [descargando, setDescargando] = useState<string>('');
+  const descargarFormato = async (tipo: 'asignacion' | 'liquidacion') => {
+    setDescargando(tipo);
+    try {
+      const r = await descargarPlantillaContingencia(tipo, tipo === 'asignacion' ? { trucks, staff, agencia: agenciaFormato } : undefined);
+      if (!r.ok) onShowToast(r.error || 'No se pudo descargar el formato.', 'error');
+      else if (tipo === 'asignacion' && !r.conRecursos)
+        onShowToast('Se descargó el formato sin la lista de camiones y personal (puedes escribirlos a mano).', 'info');
+    } catch (e) {
+      onShowToast(`No se pudo descargar el formato: ${String((e as Error)?.message || e)}`, 'error');
+    } finally {
+      setDescargando('');
+    }
+  };
   const [archivos, setArchivos] = useState<string[]>([]);
   const [parsed, setParsed] = useState<ContParsed | null>(null);
   const [plan, setPlan] = useState<ContPlan | null>(null);
@@ -129,22 +149,45 @@ export const ContingenciaImportView: React.FC<Props> = ({ onPreview, onApply, on
             ruta queda marcada con el archivo y la fila de origen.
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-          {PLANTILLAS.map((p) => (
-            <a
-              key={p.href}
-              href={p.href}
-              download
-              className="inline-flex items-center justify-center min-h-[44px] px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-sm font-semibold transition"
-            >
-              <Download className="w-4 h-4 mr-1.5 text-amber-600" />
-              {p.label}
-            </a>
-          ))}
+        <div className="flex flex-col gap-2 shrink-0">
+          <select
+            id="contingenciaAgenciaFormato"
+            value={agenciaFormato}
+            onChange={(e) => setAgenciaFormato(e.target.value)}
+            aria-label="Agencia de las listas del formato"
+            title="Camiones y personal que aparecerán en las listas ▼ del formato de Asignación"
+            className="min-h-[40px] px-2 rounded-lg border border-slate-300 text-xs font-semibold bg-white"
+          >
+            <option value="TODAS">Listas ▼ con todas las agencias</option>
+            {agencies.map((a) => (
+              <option key={a} value={a}>
+                Listas ▼ de {a}
+              </option>
+            ))}
+          </select>
+          <div className="flex flex-col sm:flex-row gap-2">
+            {PLANTILLAS.map((p) => (
+              <button
+                key={p.tipo}
+                id={`btnFormato_${p.tipo}`}
+                type="button"
+                disabled={!!descargando}
+                onClick={() => descargarFormato(p.tipo)}
+                className="inline-flex items-center justify-center min-h-[44px] px-4 bg-white hover:bg-slate-50 disabled:opacity-60 text-slate-700 border border-slate-300 rounded-xl text-sm font-semibold transition"
+              >
+                <Download className="w-4 h-4 mr-1.5 text-amber-600" />
+                {descargando === p.tipo ? 'Preparando…' : p.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <ol className="text-xs text-slate-600 list-decimal pl-5 space-y-0.5">
+        <li>
+          Descarga los formatos desde aquí: las columnas con <strong>▼</strong> traen la lista de opciones permitidas (agencias, tipos,
+          motivos y, en Asignación, los camiones y el personal activos de la agencia elegida).
+        </li>
         <li>Antes de cargar, descarga un respaldo (menú de usuario → Descargar respaldo).</li>
         <li>
           Sube juntos los archivos de <strong>Asignación</strong> y <strong>Liquidación</strong> del mismo día: la app aplica primero la
