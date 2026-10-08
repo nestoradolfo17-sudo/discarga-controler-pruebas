@@ -133,7 +133,16 @@ export function getFormattedCellValue(cell: any, colType: string): string {
   }
 
   if (colType === 'date') {
-    if (rawVal instanceof Date && !isNaN(rawVal.getTime())) return formatDateToGuatemala(rawVal);
+    if (rawVal instanceof Date && !isNaN(rawVal.getTime())) {
+      // SheetJS 0.19+ entrega las fechas de Excel como hora UTC "tal cual"
+      // (la celda 08/10/2026 llega como 2026-10-08T00:00Z). Se leen las partes
+      // en UTC (redondeando unos segundos) para no correr la fecha un día
+      // hacia atrás en Guatemala (UTC-6).
+      const u = new Date(rawVal.getTime() + 30000);
+      const dd = String(u.getUTCDate()).padStart(2, '0');
+      const mm = String(u.getUTCMonth() + 1).padStart(2, '0');
+      return `${dd}/${mm}/${u.getUTCFullYear()}`;
+    }
     if (typeof rawVal === 'number' && rawVal > 25000 && rawVal < 70000) {
       const jsDate = new Date(Math.round((rawVal - 25569) * 86400 * 1000));
       const localDate = new Date(jsDate.getTime() + jsDate.getTimezoneOffset() * 60000);
