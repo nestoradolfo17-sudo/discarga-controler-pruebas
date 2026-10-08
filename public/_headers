@@ -1,0 +1,12 @@
+# Encabezados de seguridad para Netlify (se aplican a todas las páginas).
+# - X-Frame-Options / frame-ancestors: ningún otro sitio puede mostrar la app
+#   dentro de su página (evita "clickjacking").
+# - X-Content-Type-Options: el navegador no "adivina" el tipo de archivo.
+# - Referrer-Policy: no envía la dirección completa de la app a otros sitios.
+# - Permissions-Policy: la app no usa cámara, micrófono, ubicación ni pagos.
+/*
+  X-Frame-Options: SAMEORIGIN
+  Content-Security-Policy: frame-ancestors 'self'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
