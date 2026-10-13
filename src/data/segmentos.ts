@@ -7,4 +7,5 @@ export const SEGMENTO_OPTIONS: string[] = [
   'MAYOREO',
   'ZV&COLEGIOS',
   'INSTITUCIONALES',
+  'SUPERMERCADO',
 ];
