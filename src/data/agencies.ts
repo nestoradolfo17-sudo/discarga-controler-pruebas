@@ -26,4 +26,5 @@ export const AGENCIA_LOCATION_OPTIONS: string[] = [
   'Xela',
   'La Mariposa',
   'Planta Cuyotenango',
+  'Atanasio',
 ];
