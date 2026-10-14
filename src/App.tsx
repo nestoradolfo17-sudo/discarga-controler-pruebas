@@ -986,7 +986,10 @@ export default function App() {
   };
 
   // Permisos efectivos del usuario en sesión (un administrador siempre tiene acceso total)
-  const canView = (key: keyof TablePermissions) => !!currentUser && (currentUser.isAdmin || currentUser.permissions[key]);
+  const canView = (key: keyof TablePermissions) => !!currentUser && (currentUser.isAdmin || !!currentUser.permissions[key]);
+  // Pantalla Usuarios: administradores, o usuarios con el permiso "Crear usuarios"
+  // (estos solo ven el formulario de creación, con permisos limitados a los suyos).
+  const canManageUsers = !!currentUser && (currentUser.isAdmin || currentUser.permissions.canCreateUsers === true);
   const canDeleteData = !!currentUser && (currentUser.isAdmin || currentUser.canDelete);
   // Corrección: la carga masiva de Excel (Camiones/Personal) se controla con un
   // permiso independiente, pero AGREGAR MANUALMENTE ya no es un permiso aparte:
@@ -1100,7 +1103,7 @@ export default function App() {
       batch: 'batch',
     };
     if (activeTab === 'users') {
-      if (!currentUser.isAdmin) setActiveTab('board');
+      if (!canManageUsers) setActiveTab('board');
       return;
     }
     const key = tabPermissionKey[activeTab];
@@ -3918,7 +3921,7 @@ export default function App() {
           showTrucks={canView('trucks')}
           showStaff={canView('staff')}
           showBatch={canView('batch')}
-          showUsers={!!currentUser.isAdmin}
+          showUsers={canManageUsers}
           isAdmin={!!currentUser.isAdmin}
         />
         </aside>
@@ -3944,7 +3947,7 @@ export default function App() {
           showTrucks={canView('trucks')}
           showStaff={canView('staff')}
           showBatch={canView('batch')}
-          showUsers={!!currentUser.isAdmin}
+          showUsers={canManageUsers}
           isAdmin={!!currentUser.isAdmin}
         />
         </div>
@@ -4012,7 +4015,7 @@ export default function App() {
           showTrucks={canView('trucks')}
           showStaff={canView('staff')}
           showBatch={canView('batch')}
-          showUsers={!!currentUser.isAdmin}
+          showUsers={canManageUsers}
           isAdmin={!!currentUser.isAdmin}
         />
         </div>
@@ -4232,7 +4235,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'users' && currentUser.isAdmin && (
+        {activeTab === 'users' && canManageUsers && (
           <UsersView
             users={users}
             currentUser={currentUser}
@@ -4241,7 +4244,7 @@ export default function App() {
             onResetPassword={handleResetPassword}
             onDeleteUser={handleDeleteUser}
             onVerifyPassword={handleVerifyPassword}
-            onDownloadBackup={isSupabaseConfigured ? handleDownloadBackup : undefined}
+            onDownloadBackup={isSupabaseConfigured && currentUser.isAdmin ? handleDownloadBackup : undefined}
           />
         )}
       </main>
