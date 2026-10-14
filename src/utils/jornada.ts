@@ -1,12 +1,12 @@
 import { formatDateToGuatemala } from './date';
 
 // --- Jornada operativa de una ruta ---
-// Una ruta con fecha FUTURA (p. ej. las del día siguiente que se asignan la
-// noche anterior, ~21:00) pertenece a la jornada de su fecha. Una ruta de hoy
-// o de días anteriores (rezagadas aún activas) pertenece a la jornada de HOY.
-// Dos rutas solo compiten por el mismo camión o la misma tripulación si son de
-// la misma jornada: así se puede asignar mañana sin liquidar lo de hoy.
-
+// Cada ruta pertenece a la jornada de SU PROPIA FECHA. Dos rutas solo compiten
+// por el mismo camión o la misma tripulación si tienen la MISMA fecha: así se
+// puede asignar una ruta de mañana sin liquidar las de hoy, y una ruta de hoy
+// aunque el recurso siga "en tránsito" en una ruta de un día anterior que aún
+// no se liquida en el sistema. (Antes, las rutas de días anteriores contaban
+// como de hoy y bloqueaban el recurso.) Una ruta sin fecha cuenta como de hoy.
 const dayNum = (v: unknown): number | null => {
   if (!v) return null;
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(formatDateToGuatemala(v) || '');
@@ -16,7 +16,7 @@ const dayNum = (v: unknown): number | null => {
 export function jornadaDeRuta(fecha: unknown, hoy: Date = new Date()): number {
   const today = dayNum(hoy) ?? Math.floor(hoy.getTime() / 86400000);
   const d = dayNum(fecha);
-  return d !== null && d > today ? d : today;
+  return d !== null ? d : today;
 }
 
 export function mismaJornada(a: { fecha?: string }, b: { fecha?: string }, hoy: Date = new Date()): boolean {
