@@ -56,7 +56,11 @@ export type MotivoDevolucionReason =
   // Solo para Ruta Abierta (ver MOTIVOS_RUTA_ABIERTA en data/motivosDevolucion).
   | 'Pedido mal Digitado'
   | 'No Hizo Pedido'
-  | 'Paso Bloqueado';
+  | 'Paso Bloqueado'
+  // Disponibles en todas las modalidades de liquidación.
+  | 'Pendiente Envase / Cajilla'
+  | 'Falta de Albarán / Contraseña'
+  | 'Refacturación';
 
 // Catálogo de motivos por los que la Caja (POS) de una ruta liquidada queda
 // pendiente de validar (nuevo estado "Caja Abierta" del módulo de Liquidación).
@@ -75,7 +79,10 @@ export type CajaAbiertaReason =
   | 'Asalto'
   | 'Pedido mal Digitado'
   | 'No Hizo Pedido'
-  | 'Paso Bloqueado';
+  | 'Paso Bloqueado'
+  | 'Pendiente Envase / Cajilla'
+  | 'Falta de Albarán / Contraseña'
+  | 'Refacturación';
 
 // Un cliente/punto de venta dentro de una ruta, tal como viene en el archivo
 // "Clientes N" que envía el cliente (operador logístico) junto con el resumen de
