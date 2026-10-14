@@ -80,6 +80,16 @@ export async function signIn(username: string, password: string): Promise<string
   return null;
 }
 
+/** Registra "ahora" como última conexión del usuario en sesión (solo su propio registro). */
+export async function touchLastLogin(): Promise<void> {
+  if (!supabase) return;
+  try {
+    await supabase.rpc('touch_last_login');
+  } catch {
+    /* sin conexión: se intenta de nuevo en el próximo aviso */
+  }
+}
+
 export async function signOut(): Promise<void> {
   if (!supabase) return;
   await supabase.auth.signOut();
