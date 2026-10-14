@@ -93,6 +93,28 @@ const PERMISSION_LABELS: { key: keyof TablePermissions; label: string; grandfath
 const isPermEnabled = (user: AppUser, key: keyof TablePermissions, grandfathered?: boolean) =>
   grandfathered ? user.permissions[key] !== false : !!user.permissions[key];
 
+// Última conexión: fecha y hora + hace cuánto, con un punto verde si estuvo
+// activo en los últimos 15 minutos (la app la renueva cada 10 min en uso).
+const renderUltimaConexion = (iso?: string) => {
+  if (!iso) return <span className="text-xs italic text-slate-400">Nunca</span>;
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return <span className="text-xs text-slate-400">—</span>;
+  const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+  const enLinea = min <= 15;
+  const hace =
+    min < 1 ? 'hace un momento' : min < 60 ? `hace ${min} min` : min < 1440 ? `hace ${Math.floor(min / 60)} h` : `hace ${Math.floor(min / 1440)} día(s)`;
+  const color = enLinea ? 'bg-emerald-500' : min < 1440 ? 'bg-amber-400' : min < 7 * 1440 ? 'bg-slate-300' : 'bg-rose-400';
+  return (
+    <div className="text-xs leading-tight" title={formatDateTimeToGuatemala(iso)}>
+      <div className="flex items-center gap-1.5 font-semibold text-slate-700">
+        <span className={`inline-block w-2 h-2 rounded-full ${color}`} aria-hidden="true" />
+        {enLinea ? 'Conectado' : hace}
+      </div>
+      <div className="text-[10px] text-slate-500 mt-0.5">{formatDateTimeToGuatemala(iso)}</div>
+    </div>
+  );
+};
+
 export const UsersView: React.FC<UsersViewProps> = ({
   users,
   currentUser,
@@ -594,6 +616,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
               <tr>
                 <th className="py-3 px-4">Usuario</th>
                 <th className="py-3 px-4">Nombre</th>
+                <th className="py-3 px-4 whitespace-nowrap">Última conexión</th>
                 <th className="py-3 px-4">Rol</th>
                 <th className="py-3 px-4">Permisos de acceso</th>
                 <th className="py-3 px-4">Agencias</th>
@@ -632,14 +655,6 @@ export const UsersView: React.FC<UsersViewProps> = ({
                                 {u.createdBy ? ` · por ${u.createdBy}` : ''}
                               </p>
                             )}
-                            <p>
-                              Último acceso:{' '}
-                              {u.lastLogin ? (
-                                formatDateTimeToGuatemala(u.lastLogin)
-                              ) : (
-                                <span className="italic">Nunca</span>
-                              )}
-                            </p>
                           </div>
                         </>
                       )}
@@ -694,6 +709,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                         </div>
                       )}
                     </td>
+                    <td className="py-3 px-4 whitespace-nowrap">{renderUltimaConexion(u.lastLogin)}</td>
                     <td className="py-3 px-4">
                       {u.isAdmin ? (
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
