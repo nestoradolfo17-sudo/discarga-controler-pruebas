@@ -476,7 +476,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       label = `Carga compartida: ${routesOnTruck.map((r) => r.id).join(', ')}`;
     } else if (t.estado === 'En Ruta' && !rutaFutura) {
       status = 'enruta';
-      label = 'En ruta';
+      label = 'En ruta en otra fecha (disponible para esta)';
     } else if (isSug) {
       status = 'sugerido';
       label = `Sugerido · ${suggestion!.truckCount} de ${suggestion!.samples}`;
@@ -513,7 +513,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       label = `Carga compartida: ${sameTruck.map((r) => r.id).join(', ')}`;
     } else if (d.estado === 'En Ruta' && !rutaFutura) {
       status = 'enruta';
-      label = 'En ruta';
+      label = 'En ruta en otra fecha (disponible para esta)';
     } else if (isSug) {
       status = 'sugerido';
       label = `Sugerido · ${suggestion!.driverCount} de ${suggestion!.samples}`;
@@ -548,7 +548,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
         label = `En ruta ${routesOnHelper.map((r) => r.id).join(', ')}`;
       } else if (h.estado === 'En Ruta' && !rutaFutura) {
         status = 'enruta';
-        label = 'En ruta';
+        label = 'En ruta en otra fecha (disponible para esta)';
       } else if (isSug) {
         status = 'sugerido';
         label = `Sugerido · ${suggestion!.helperCounts[h.nombre] || 0} de ${suggestion!.samples}`;
