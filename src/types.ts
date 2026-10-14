@@ -386,6 +386,10 @@ export interface TablePermissions {
   canManualAddTrucks: boolean; // Agregar Camiones manualmente
   canBulkUploadStaff: boolean; // Subir Excel de Personal
   canManualAddStaff: boolean; // Agregar Personal manualmente
+  // Permite a un usuario NO administrador crear usuarios nuevos (sin dar rango
+  // de administrador ni permisos que él mismo no tenga). Solo un administrador
+  // puede otorgarlo. Ausente = no permitido.
+  canCreateUsers?: boolean;
 }
 
 export interface AppUser {
