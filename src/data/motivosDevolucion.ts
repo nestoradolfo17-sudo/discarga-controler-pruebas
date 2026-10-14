@@ -19,6 +19,9 @@ export const MOTIVO_DEVOLUCION_OPTIONS: MotivoDevolucionOption[] = [
   { reason: 'Dirección No Localizada', icon: '📍', style: 'default' },
   { reason: 'Fuera de Horario / Retraso', icon: '⏰', style: 'default' },
   { reason: 'Cliente Rechaza Pedido', icon: '🚫', style: 'danger' },
+  { reason: 'Pendiente Envase / Cajilla', icon: '🍾', style: 'default' },
+  { reason: 'Falta de Albarán / Contraseña', icon: '🔐', style: 'default' },
+  { reason: 'Refacturación', icon: '🔁', style: 'default' },
 ];
 
 // Motivos adicionales disponibles SOLO en la modalidad "Ruta Abierta" del
