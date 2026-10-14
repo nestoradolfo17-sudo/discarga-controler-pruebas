@@ -83,6 +83,7 @@ const PERMISSION_LABELS: { key: keyof TablePermissions; label: string; grandfath
   { key: 'batch', label: 'Carga Masiva Excel' },
   { key: 'canBulkUploadTrucks', label: 'Subir Excel Camiones', grandfathered: true },
   { key: 'canBulkUploadStaff', label: 'Subir Excel Personal', grandfathered: true },
+  { key: 'canCreateUsers', label: 'Crear usuarios' },
 ];
 
 // Devuelve si un permiso está habilitado para un usuario, respetando la
@@ -114,7 +115,9 @@ export const UsersView: React.FC<UsersViewProps> = ({
   const [isAdmin, setIsAdmin] = useState(false);
   const [permissions, setPermissions] = useState<TablePermissions>({ ...DEFAULT_PERMISSIONS });
   const [canDelete, setCanDelete] = useState(false);
-  const [agencyAll, setAgencyAll] = useState(true);
+  const [agencyAll, setAgencyAll] = useState(
+    currentUser.isAdmin || currentUser.agencyAccess === 'all' || !currentUser.agencyAccess
+  );
   const [agencySelection, setAgencySelection] = useState<string[]>([]);
   const [formError, setFormError] = useState('');
   const [passwordEditingId, setPasswordEditingId] = useState<string | null>(null);
@@ -141,6 +144,21 @@ export const UsersView: React.FC<UsersViewProps> = ({
   const [confirmError, setConfirmError] = useState('');
 
   const adminCount = users.filter((u) => u.isAdmin).length;
+
+  // Quien NO es administrador pero tiene el permiso "Crear usuarios" solo puede
+  // dar permisos y agencias que él mismo tiene, nunca rango de administrador ni
+  // el propio permiso de crear usuarios (el servidor aplica la misma regla).
+  const isAdminSession = currentUser.isAdmin;
+  const canGrant = (key: keyof TablePermissions, grandfathered?: boolean) =>
+    isAdminSession || (key !== 'canCreateUsers' && isPermEnabled(currentUser, key, grandfathered));
+  const grantableLabels = PERMISSION_LABELS.filter((p) => canGrant(p.key, p.grandfathered));
+  const myAgencies = currentUser.agencyAccess;
+  const agencyChoices =
+    isAdminSession || myAgencies === 'all' || !myAgencies
+      ? AGENCIA_LOCATION_OPTIONS
+      : AGENCIA_LOCATION_OPTIONS.filter((ag) => myAgencies.includes(ag));
+  const canGrantAllAgencies = isAdminSession || myAgencies === 'all' || !myAgencies;
+  const canGrantDelete = isAdminSession || currentUser.canDelete;
 
   const [isCreating, setIsCreating] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -172,13 +190,27 @@ export const UsersView: React.FC<UsersViewProps> = ({
       setFormError('Ya existe un usuario con ese nombre.');
       return;
     }
+    if (!isAdminSession && !canGrantAllAgencies && (agencyAll || agencySelection.length === 0)) {
+      setFormError('Selecciona al menos una de tus agencias para el nuevo usuario.');
+      return;
+    }
+    // Recorte final de lo que este usuario puede otorgar (por si acaso).
+    const permisosFinales: TablePermissions = isAdminSession
+      ? permissions
+      : (Object.fromEntries(
+          Object.entries(permissions).map(([k, v]) => {
+            const lbl = PERMISSION_LABELS.find((p) => p.key === k);
+            return [k, !!v && canGrant(k as keyof TablePermissions, lbl?.grandfathered)];
+          })
+        ) as unknown as TablePermissions);
+    if (!isAdminSession) permisosFinales.canCreateUsers = false;
     setIsCreating(true);
     const created = await onCreateUser({
       username: trimmed,
       password,
       nombre: nombre.trim() || undefined,
-      isAdmin,
-      permissions: isAdmin
+      isAdmin: isAdminSession && isAdmin,
+      permissions: isAdminSession && isAdmin
         ? {
             dashboard: true,
             board: true,
@@ -190,10 +222,16 @@ export const UsersView: React.FC<UsersViewProps> = ({
             canManualAddTrucks: true,
             canBulkUploadStaff: true,
             canManualAddStaff: true,
+            canCreateUsers: true,
           }
-        : permissions,
-      canDelete: isAdmin ? true : canDelete,
-      agencyAccess: isAdmin ? 'all' : agencyAll ? 'all' : agencySelection,
+        : permisosFinales,
+      canDelete: isAdminSession && isAdmin ? true : canGrantDelete && canDelete,
+      agencyAccess:
+        isAdminSession && isAdmin
+          ? 'all'
+          : agencyAll && canGrantAllAgencies
+          ? 'all'
+          : agencySelection.filter((a) => agencyChoices.includes(a)),
     });
     setIsCreating(false);
     if (!created) return;
@@ -205,7 +243,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
     setIsAdmin(false);
     setPermissions({ ...DEFAULT_PERMISSIONS });
     setCanDelete(false);
-    setAgencyAll(true);
+    setAgencyAll(canGrantAllAgencies);
     setAgencySelection([]);
   };
 
@@ -354,7 +392,9 @@ export const UsersView: React.FC<UsersViewProps> = ({
             Crear Nuevo Usuario
           </h3>
           <p className="text-sm text-slate-400 mt-0.5">
-            Solo el administrador puede crear usuarios y asignarles permisos de acceso.
+            {isAdminSession
+              ? 'El administrador puede crear usuarios y asignarles permisos. Para que otra persona pueda crear usuarios sin ser administrador, márcale el permiso "Crear usuarios".'
+              : 'Tienes permiso para crear usuarios. Solo puedes darles los permisos y agencias que tú tienes; para crear un administrador o editar usuarios existentes, pide ayuda a un administrador.'}
           </p>
         </div>
 
@@ -420,30 +460,35 @@ export const UsersView: React.FC<UsersViewProps> = ({
             </div>
           </div>
 
-          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer w-fit">
-            <input
-              type="checkbox"
-              checked={isAdmin}
-              onChange={(e) => setIsAdmin(e.target.checked)}
-              className="cursor-pointer w-5 h-5"
-            />
-            Es Administrador (acceso total y puede crear otros usuarios)
-          </label>
+          {isAdminSession && (
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                checked={isAdmin}
+                onChange={(e) => setIsAdmin(e.target.checked)}
+                className="cursor-pointer w-5 h-5"
+              />
+              Es Administrador (acceso total y puede crear otros usuarios)
+            </label>
+          )}
 
-          {!isAdmin && (
+          {!(isAdminSession && isAdmin) && (
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
               <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">
                 Permisos de acceso por tabla
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                {PERMISSION_LABELS.map(({ key, label }) => (
+                {grantableLabels.map(({ key, label }) => (
                   <label
                     key={key}
-                    className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer"
+                    className={`flex items-center gap-2 text-xs cursor-pointer ${
+                      key === 'canCreateUsers' ? 'font-bold text-blue-800' : 'font-medium text-slate-700'
+                    }`}
+                    title={key === 'canCreateUsers' ? 'Podrá crear usuarios NO administradores, solo con sus mismos permisos y agencias.' : undefined}
                   >
                     <input
                       type="checkbox"
-                      checked={permissions[key]}
+                      checked={!!permissions[key]}
                       onChange={(e) =>
                         setPermissions((prev) => ({ ...prev, [key]: e.target.checked }))
                       }
@@ -453,6 +498,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                   </label>
                 ))}
               </div>
+              {canGrantDelete && (
               <div className="pt-2 border-t border-slate-200">
                 <label className="flex items-center gap-2 text-xs font-bold text-rose-700 cursor-pointer w-fit">
                   <input
@@ -464,8 +510,10 @@ export const UsersView: React.FC<UsersViewProps> = ({
                   Puede eliminar datos (rutas, camiones, personal)
                 </label>
               </div>
+              )}
 
               <div className="pt-3 border-t border-slate-200 space-y-2">
+                {canGrantAllAgencies && (
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer w-fit">
                   <input
                     type="checkbox"
@@ -475,7 +523,8 @@ export const UsersView: React.FC<UsersViewProps> = ({
                   />
                   Ver rutas de todas las agencias
                 </label>
-                {!agencyAll && (
+                )}
+                {(!agencyAll || !canGrantAllAgencies) && (
                   <div className="space-y-1.5">
                     <p className="text-[11px] text-slate-500">
                       Selecciona las agencias que este usuario podrá ver en el Tablero de Rutas y
@@ -483,7 +532,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                       Traslado):
                     </p>
                     <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-white">
-                      {AGENCIA_LOCATION_OPTIONS.map((ag) => (
+                      {agencyChoices.map((ag) => (
                         <label
                           key={ag}
                           className="flex items-center gap-1 text-[11px] font-medium text-slate-700 cursor-pointer px-1.5 py-0.5 rounded hover:bg-slate-50"
@@ -520,7 +569,14 @@ export const UsersView: React.FC<UsersViewProps> = ({
         </form>
       </div>
 
+      {!isAdminSession && (
+        <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-4">
+          La lista de usuarios, los cambios de permisos, contraseñas y eliminaciones solo los puede hacer un administrador.
+        </p>
+      )}
+
       {/* Lista de usuarios */}
+      {isAdminSession && (
       <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-7 shadow-sm space-y-5">
         <div className="pb-4 border-b border-slate-100">
           <h3 className="font-bold text-slate-800 text-lg flex items-center">
@@ -847,6 +903,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
           </table>
         </div>
       </div>
+      )}
 
       {/* Herramientas de administrador (al final: acciones poco frecuentes).
           El respaldo también está en el menú del usuario de la barra superior. */}
