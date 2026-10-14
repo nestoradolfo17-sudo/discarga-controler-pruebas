@@ -4,7 +4,9 @@
 // usuarios. Corre en los servidores de Supabase con la llave de servicio
 // (service_role), que NUNCA llega al navegador. Antes de hacer cualquier
 // cosa verifica que quien la llama haya iniciado sesión y sea un
-// administrador activo en "app_users".
+// administrador activo en "app_users". Excepción: un usuario activo con el
+// permiso "Crear usuarios" puede CREAR usuarios normales (sin rango de
+// administrador y solo con sus mismos permisos y agencias).
 //
 // Despliegue: Supabase → Edge Functions → Deploy a new function → Via Editor
 // → nombre "admin-users" → pegar este archivo → Deploy.
@@ -54,21 +56,26 @@ Deno.serve(async (req) => {
   const caller = authData?.user;
   if (!caller) return fail('Sesión no válida. Vuelve a iniciar sesión.', 401);
 
-  // 2) ¿Es administrador activo?
+  // 2) ¿Es administrador activo? (o, solo para CREAR, un usuario activo con
+  //    el permiso "Crear usuarios").
   const { data: callerProfile } = await admin
     .from('app_users')
-    .select('id, username, nombre, is_admin, activo')
+    .select('id, username, nombre, is_admin, activo, permissions, can_delete, agency_access')
     .eq('id', caller.id)
     .maybeSingle();
-  if (!callerProfile?.is_admin || !callerProfile.activo) {
-    return fail('Solo un administrador puede gestionar usuarios.', 403);
-  }
 
   let body: any;
   try {
     body = await req.json();
   } catch {
     return fail('Solicitud inválida.');
+  }
+
+  const isAdminCaller = !!callerProfile?.is_admin && !!callerProfile?.activo;
+  const canCreateUsers =
+    !!callerProfile?.activo && callerProfile?.permissions?.canCreateUsers === true;
+  if (!isAdminCaller && !(body?.action === 'create' && canCreateUsers)) {
+    return fail('Solo un administrador puede gestionar usuarios.', 403);
   }
 
   const normalize = (u: unknown) => String(u ?? '').trim().toLowerCase();
@@ -89,6 +96,32 @@ Deno.serve(async (req) => {
           .from('app_users').select('id').eq('username', username).maybeSingle();
         if (existing) return fail('Ya existe un usuario con ese nombre.');
 
+        // Quien NO es administrador solo puede crear usuarios normales con los
+        // permisos y agencias que él mismo tiene (nunca administradores ni el
+        // permiso de crear usuarios).
+        let isAdminNew = !!body.isAdmin;
+        let canDeleteNew = !!body.canDelete;
+        let permissionsNew: Record<string, unknown> = body.permissions ?? {};
+        let agencyNew: unknown = body.agencyAccess ?? 'all';
+        if (!isAdminCaller) {
+          const mine = (callerProfile?.permissions ?? {}) as Record<string, unknown>;
+          const grandfathered = ['canBulkUploadTrucks', 'canManualAddTrucks', 'canBulkUploadStaff', 'canManualAddStaff'];
+          const tengo = (k: string) => (grandfathered.includes(k) ? mine[k] !== false : mine[k] === true);
+          isAdminNew = false;
+          canDeleteNew = canDeleteNew && !!callerProfile?.can_delete;
+          permissionsNew = Object.fromEntries(
+            Object.entries(permissionsNew).map(([k, v]) => [k, v === true && k !== 'canCreateUsers' && tengo(k)])
+          );
+          permissionsNew.canCreateUsers = false;
+          const myAg = callerProfile?.agency_access;
+          if (myAg && myAg !== 'all') {
+            const allowed = Array.isArray(myAg) ? (myAg as string[]) : [];
+            const pedidas = Array.isArray(agencyNew) ? (agencyNew as string[]) : allowed;
+            agencyNew = pedidas.filter((a) => allowed.includes(a));
+            if ((agencyNew as string[]).length === 0) return fail('Debes asignar al menos una de tus agencias.');
+          }
+        }
+
         const { data: created, error: createErr } = await admin.auth.admin.createUser({
           email: `${username}@${USER_EMAIL_DOMAIN}`,
           password,
@@ -104,10 +137,10 @@ Deno.serve(async (req) => {
             id: created.user.id,
             username,
             nombre: body.nombre ? String(body.nombre).trim() : null,
-            is_admin: !!body.isAdmin,
-            can_delete: !!body.canDelete,
-            permissions: body.permissions ?? {},
-            agency_access: body.agencyAccess ?? 'all',
+            is_admin: isAdminNew,
+            can_delete: canDeleteNew,
+            permissions: permissionsNew,
+            agency_access: agencyNew,
             created_by: callerProfile.nombre || callerProfile.username,
           })
           .select()
