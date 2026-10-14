@@ -38,6 +38,7 @@ import { getRouteKey, routeMatchesKey, isSameSplitGroup } from './utils/routeKey
 import { esJornadaFutura } from './utils/jornada';
 import {
   getSessionUserId,
+  touchLastLogin,
   onAuthChange,
   signIn,
   signOut,
@@ -231,6 +232,26 @@ export default function App() {
     }
     return users.find((u) => u.username.toLowerCase() === (currentUsername || '').toLowerCase()) || null;
   }, [users, currentUsername, authUserId]);
+
+  // Última conexión: además del inicio de sesión, se registra al abrir la app
+  // con una sesión guardada y cada 10 minutos mientras la pestaña está visible,
+  // para que el administrador vea en "Usuarios" cuándo se usó la app por última vez.
+  const currentUserIdForPresence = currentUser?.id;
+  useEffect(() => {
+    if (!isSupabaseConfigured || !currentUserIdForPresence) return;
+    void touchLastLogin();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void touchLastLogin();
+    }, 10 * 60 * 1000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void touchLastLogin();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [currentUserIdForPresence]);
 
   // Recuperar la sesión guardada y escuchar inicios/cierres de sesión.
   useEffect(() => {
