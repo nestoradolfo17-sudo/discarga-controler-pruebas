@@ -14,6 +14,7 @@ import {
   Layers,
   Building2,
 } from 'lucide-react';
+import { toNum } from '../utils/number';
 
 // --- Dashboard ejecutivo (propuesta nueva) ---
 // Solo LEE los datos que ya existen (rutas del tablero, liquidadas, camiones y
@@ -80,7 +81,7 @@ const hoursSince = (r: Route, now: number) => {
   const d = parseFlexibleDate(r.fechaOriginalRuta || r.fecha || '');
   return d && !isNaN(d.getTime()) ? Math.max(0, (now - d.getTime()) / 36e5) : 0;
 };
-const cajasPlan = (r: Route) => Number(r.cajasOriginales || r.cajasFisicas || 0);
+const cajasPlan = (r: Route) => toNum(r.cajasOriginales || r.cajasFisicas);
 
 // ---------- piezas visuales ----------
 const Card: React.FC<{ title: string; sub?: string; icon?: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string }> = ({
