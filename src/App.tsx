@@ -34,7 +34,7 @@ import {
 import { TRUCK_REASON_REMUNERA, STAFF_REASON_REMUNERA } from './data/unavailableReasons';
 import { exportRoutesToExcel, exportRutasPrioridadesToExcel } from './utils/excel';
 import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate, parseFlexibleDate } from './utils/date';
-import { getRouteKey, routeMatchesKey, isSameSplitGroup } from './utils/routeKey';
+import { getRouteKey, routeMatchesKey, isSameSplitGroup, clavesDuplicado } from './utils/routeKey';
 import { esJornadaFutura } from './utils/jornada';
 import { isDemoMode } from './services/demoMode';
 import {
@@ -2069,6 +2069,10 @@ export default function App() {
     );
   }, [routes, isRemoteReady]);
 
+  // Rutas ya cargadas (tablero + liquidadas archivadas) para el filtro de
+  // seguridad de la carga de Excel (no repetir ruta + fecha + agencia).
+  const batchExistingRoutes = useMemo(() => [...routes, ...historicalRoutes], [routes, historicalRoutes]);
+
   // Control de cajas de cada ruta partida (total, entregado, devuelto y
   // pendiente de entregar), para mostrarlo en el Tablero junto a cada viaje.
   const resumenGruposSplit = useMemo(() => {
@@ -3480,8 +3484,38 @@ export default function App() {
     // de una asignación en curso si se vuelve a subir el archivo de ese día), pero
     // ya no bloquea la carga de rutas nuevas de otro día que por coincidencia
     // reutilizan el mismo número.
-    const runningKeys = new Set(activeRunningBacklog.map((r) => getRouteKey(r)));
-    const freshDailyRoutes = importedRoutes.filter((r) => !runningKeys.has(getRouteKey(r)));
+    // FILTRO DE SEGURIDAD: no se carga una ruta que ya existe con el mismo
+    // número, fecha y agencia — ni en el Tablero (en cualquier estado, también
+    // liquidada o enviada a piso) ni en las liquidadas archivadas — ni dos veces
+    // la misma ruta dentro del mismo archivo.
+    const clavesExistentes = new Set<string>();
+    [...routes, ...historicalRoutes].forEach((r) => clavesDuplicado(r).forEach((k) => clavesExistentes.add(k)));
+    const clavesArchivo = new Set<string>();
+    const yaExisten: string[] = [];
+    const repetidasArchivo: string[] = [];
+    const freshDailyRoutes = importedRoutes.filter((r) => {
+      const k = clavesDuplicado(r)[0];
+      if (clavesArchivo.has(k)) {
+        repetidasArchivo.push(String(r.id));
+        return false;
+      }
+      clavesArchivo.add(k);
+      if (clavesDuplicado(r).some((c) => clavesExistentes.has(c))) {
+        yaExisten.push(String(r.id));
+        return false;
+      }
+      return true;
+    });
+    const bloqueadasMsg = [
+      yaExisten.length > 0
+        ? `${yaExisten.length} ya existían en el tablero con la misma fecha y no se cargaron (${yaExisten.slice(0, 10).join(', ')}${yaExisten.length > 10 ? '…' : ''})`
+        : '',
+      repetidasArchivo.length > 0
+        ? `${repetidasArchivo.length} venían repetidas en el archivo (${repetidasArchivo.slice(0, 10).join(', ')}${repetidasArchivo.length > 10 ? '…' : ''})`
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
     // Claves de las rutas que salen del tablero activo en este import (las ya
     // Liquidadas, que se acaban de archivar arriba en historicalRoutes). Se
@@ -3533,11 +3567,14 @@ export default function App() {
             scopedPendientes > 0 ? ` (${scopedPendientes} pendiente(s) de días anteriores)` : ''
           }.`
         : `Se importaron ${freshDailyRoutes.length} rutas a ${destino}, listas para asignar.`;
+    if (bloqueadasMsg) {
+      showToast(`Filtro de seguridad: ${bloqueadasMsg}.`, freshDailyRoutes.length === 0 ? 'error' : 'info');
+    }
     showToast(
       clientesAgregados > 0
         ? `${msg} Se agregó la lista de clientes a ${clientesAgregados} ruta(s) que ya estaban cargadas.`
         : msg,
-      'success'
+      freshDailyRoutes.length === 0 ? 'info' : 'success'
     );
   };
 
@@ -4439,7 +4476,7 @@ export default function App() {
         {activeTab === 'batch' && (
           <div className="space-y-6">
             <BatchImportView
-              existingRoutes={routes}
+              existingRoutes={batchExistingRoutes}
               agencyOptions={importAgencyOptions}
               onCommitRoutes={handleCommitBatchRoutes}
               onShowToast={showToast}
