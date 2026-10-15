@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
+import { toNum } from '../../utils/number';
 
 interface ClosingActaModalProps {
   isOpen: boolean;
@@ -73,7 +74,7 @@ function buildActaRow(r: Route): ActaRow {
     isFloor,
     camionPlaca: asig?.camionPlaca || '—',
     conductor: asig?.conductor || '—',
-    cajasPlan: Number(r.cajasFisicas || r.cajasOriginales || 0) || 0,
+    cajasPlan: toNum(r.cajasFisicas || r.cajasOriginales) || 0,
     cajasEntregadas: Number(r.liquidacion?.cajasEntregadas || 0) || 0,
     cajasDevueltas: Number(r.liquidacion?.cajasDevueltas || 0) || 0,
     paradasPlan: Number(r.paradas || r.paradasOriginales || 0) || 0,
