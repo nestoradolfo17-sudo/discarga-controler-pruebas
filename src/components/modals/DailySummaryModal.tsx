@@ -35,6 +35,7 @@ import {
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { generateDailySummaryPdf } from '../../utils/dailySummaryPdf';
+import { toNum } from '../../utils/number';
 
 export type DailySummaryMode = 'inicio' | 'fin';
 export type InicioFilter = 'todas' | 'pendientes' | 'transito' | 'en_tiempo' | 'atrasadas' | 'piso' | 'recargas' | 'bolson';
@@ -291,7 +292,7 @@ function buildRouteSummaryMetric(r: Route, fechaHoyStr?: string): RouteSummaryMe
     : 'Atrasada mayor a 72 h';
 
   // 5. CAJAS FÍSICAS
-  const cajasFisicasPlan = Number(r.cajasFisicas || r.cajasOriginales || 0);
+  const cajasFisicasPlan = toNum(r.cajasFisicas || r.cajasOriginales);
   const cajasFisicasEntregadas = Number(r.liquidacion?.cajasEntregadas ?? (isLiquidada ? cajasFisicasPlan : 0));
   const cajasFisicasDevueltas = Number(r.liquidacion?.cajasDevueltas || 0);
 
