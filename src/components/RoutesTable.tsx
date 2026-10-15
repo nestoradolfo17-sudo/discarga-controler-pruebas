@@ -43,6 +43,8 @@ interface RoutesTableProps {
   onOpenLiquidateModal: (routeId: string, fecha: string) => void;
   onOpenSplitRouteModal: (routeId: string, fecha: string) => void;
   onOpenRevertSplitModal: (routeId: string, fecha: string) => void;
+  // Repartir cajas entre viajes de una ruta partida (un solo cliente).
+  onOpenRepartirCajas?: (routeId: string, fecha: string) => void;
   onViewSettlementReceipt: (routeId: string, fecha: string) => void;
   onViewConsolidatedReceipt: (parentRouteId: string, ref?: Route) => void;
   onOpenNewRouteModal: () => void;
@@ -84,6 +86,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   onOpenLiquidateModal,
   onOpenSplitRouteModal,
   onOpenRevertSplitModal,
+  onOpenRepartirCajas,
   onViewSettlementReceipt,
   onViewConsolidatedReceipt,
   onOpenNewRouteModal,
@@ -621,6 +624,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                         onLiquidate: () => onOpenLiquidateModal(route.id, routeKey),
                         onSplit: () => onOpenSplitRouteModal(route.id, routeKey),
                         onRevertSplit: () => onOpenRevertSplitModal(route.id, routeKey),
+                        onRepartirCajas: onOpenRepartirCajas ? () => onOpenRepartirCajas(route.id, routeKey) : undefined,
                         onMoveToFloor: onMoveToFloor
                           ? () =>
                               onMoveToFloor(
