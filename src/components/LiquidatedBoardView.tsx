@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Route, Staff } from '../types';
 import { exportHistoricalToExcel, getRouteAssignmentType } from '../utils/excel';
 import { parseFlexibleDate, formatDateToGuatemala, formatDateTimeToGuatemala } from '../utils/date';
-import { CheckCircle2, FileText, Download, Search, Filter, Calendar, PackageCheck, AlertCircle, RotateCcw, Repeat, Lock, Users } from 'lucide-react';
+import { CheckCircle2, FileText, Download, Search, Filter, Calendar, PackageCheck, AlertCircle, RotateCcw, Repeat, Lock, Users, Eye, X } from 'lucide-react';
 import { Button } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 import { ClientesRutaList } from './ClientesRutaList';
@@ -67,6 +67,32 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [expandedClientesKey, setExpandedClientesKey] = useState<string | null>(null);
+  // Ventanita (ojo) con camión y tripulación de una ruta liquidada.
+  const [unidadPop, setUnidadPop] = useState<{
+    key: string;
+    top: number;
+    left: number;
+    placa: string;
+    idCamion: string;
+    piloto: string;
+    puesto: string;
+    dpi: string;
+    auxiliares: string[];
+    salida: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!unidadPop) return;
+    const cerrar = () => setUnidadPop(null);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && cerrar();
+    window.addEventListener('scroll', cerrar, true);
+    window.addEventListener('resize', cerrar);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('scroll', cerrar, true);
+      window.removeEventListener('resize', cerrar);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [unidadPop]);
 
   const filteredList = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
@@ -430,10 +456,10 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
               )}
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">ID Ruta</th>
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Estado</th>
+              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Clientes</th>
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Agencia y Segmento</th>
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Fecha Ruta & Cierre</th>
-              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Camión (Placa)</th>
-              <th scope="col" className="px-5 py-4 min-w-[200px] sticky top-0 z-20 bg-slate-50">Tripulación</th>
+              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Unidad</th>
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Paradas</th>
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Balance Cajas Físicas</th>
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Motivo Devolución</th>
@@ -589,6 +615,43 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                     )}
                   </td>
 
+                  {/* Clientes (prioridad): lista completa con los pendientes marcados */}
+                  <td className="px-5 py-4 text-xs sm:text-sm">
+                    {(() => {
+                      const total = r.clientesRuta?.length || 0;
+                      const pend = liq.clientesPendientes?.length || 0;
+                      if (total === 0 && pend === 0) return <span className="text-[11px] text-slate-400">Sin lista</span>;
+                      const abierto = expandedClientesKey === routeKey;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedClientesKey((prev) => (prev === routeKey ? null : routeKey))}
+                          title="Ver la lista de clientes de esta ruta"
+                          aria-expanded={abierto}
+                          className={`inline-flex flex-col items-start gap-0.5 min-h-[44px] px-3 py-1.5 rounded-lg border-2 transition cursor-pointer text-left ${
+                            abierto
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100'
+                          }`}
+                        >
+                          <span className="inline-flex items-center gap-1 font-bold text-xs whitespace-nowrap">
+                            <Users className="w-3.5 h-3.5" />
+                            {abierto ? 'Ocultar' : 'Ver'} clientes ({Math.max(total, pend)})
+                          </span>
+                          {pend > 0 && (
+                            <span
+                              className={`text-[10px] font-bold px-1.5 rounded ${
+                                abierto ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-700'
+                              }`}
+                            >
+                              {pend} pendiente(s)
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })()}
+                  </td>
+
                   {/* Agencia y Segmento */}
                   <td className="px-5 py-4 text-xs sm:text-sm">
                     <div className="font-semibold text-blue-700">{r.agencia}</div>
@@ -621,31 +684,47 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                     </div>
                   </td>
 
-                  {/* Camión */}
-                  <td className="px-5 py-4 font-mono font-bold text-slate-800 text-xs sm:text-sm">
-                    {asig.camionPlaca || '-'}
-                  </td>
-
-                  {/* Tripulación */}
+                  {/* Unidad: placa + ojo con camión y tripulación (compacto) */}
                   <td className="px-5 py-4 text-xs sm:text-sm">
-                    <div>
-                      <strong className="text-slate-800">{asig.conductor || 'N/A'}</strong>{' '}
-                      <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold ml-1">
-                        {driverObj?.puesto || 'VPP'}
-                      </span>
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0">
+                        <div className="font-mono font-bold text-slate-800 whitespace-nowrap">{asig.camionPlaca || '-'}</div>
+                        <div className="text-[11px] text-slate-500 truncate max-w-[140px]" title={asig.conductor || ''}>
+                          {asig.conductor || 'Sin piloto'}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          setUnidadPop((prev) =>
+                            prev && prev.key === routeKey
+                              ? null
+                              : {
+                                  key: routeKey,
+                                  top: rect.bottom + 6,
+                                  left: Math.max(8, Math.min(rect.left - 120, window.innerWidth - 300)),
+                                  placa: asig.camionPlaca || '-',
+                                  idCamion: '',
+                                  piloto: asig.conductor || '',
+                                  puesto: driverObj?.puesto || 'VPP',
+                                  dpi: driverObj?.dpi && driverObj.dpi !== 'N/A' ? driverObj.dpi : '',
+                                  auxiliares: helpers as string[],
+                                  salida: asig.horaSalida || '',
+                                }
+                          );
+                        }}
+                        aria-label={`Ver camión y tripulación de la ruta ${r.id}`}
+                        title="Ver camión y tripulación"
+                        className={`shrink-0 w-10 h-10 rounded-lg border flex items-center justify-center cursor-pointer transition ${
+                          unidadPop?.key === routeKey
+                            ? 'bg-slate-800 border-slate-800 text-white'
+                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
                     </div>
-                    {driverObj?.dpi && driverObj.dpi !== 'N/A' && (
-                      <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                        DPI: {driverObj.dpi}
-                      </div>
-                    )}
-                    {helpers.length > 0 ? (
-                      <div className="text-[11px] sm:text-xs text-slate-500 mt-1">
-                        Aux: <span className="font-medium text-slate-700">{helpers.join(', ')}</span>
-                      </div>
-                    ) : (
-                      <div className="text-[11px] text-slate-400 mt-0.5">Sin auxiliares</div>
-                    )}
                   </td>
 
                   {/* Paradas */}
@@ -659,22 +738,6 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                         {isDevolucionRevisita ? 'Total Devuelto: ' : 'Rechazadas: '}
                         {liq.guiasRechazadas}
                       </div>
-                    )}
-                    {r.clientesRuta && r.clientesRuta.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setExpandedClientesKey((prev) => (prev === routeKey ? null : routeKey))}
-                        title="Ver la lista de clientes de esta ruta (solo consulta)"
-                        aria-expanded={expandedClientesKey === routeKey}
-                        className={`mt-1 inline-flex items-center gap-1 min-h-[36px] px-2.5 text-[11px] font-semibold rounded-lg border transition cursor-pointer ${
-                          expandedClientesKey === routeKey
-                            ? 'bg-blue-600 border-blue-600 text-white'
-                            : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50 hover:border-slate-400'
-                        }`}
-                      >
-                        <Users className="w-3 h-3" />
-                        {expandedClientesKey === routeKey ? 'Ocultar' : 'Ver'} clientes ({r.clientesRuta.length})
-                      </button>
                     )}
                   </td>
 
@@ -814,10 +877,11 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                     </div>
                   </td>
                 </tr>
-                {expandedClientesKey === routeKey && r.clientesRuta && r.clientesRuta.length > 0 && (
+                {expandedClientesKey === routeKey &&
+                  ((r.clientesRuta && r.clientesRuta.length > 0) || (liq.clientesPendientes && liq.clientesPendientes.length > 0)) && (
                   <tr className="bg-slate-50/70">
                     <td colSpan={canDelete ? 12 : 11} className="px-5 py-3">
-                      <ClientesRutaList clientes={r.clientesRuta} />
+                      <ClientesRutaList clientes={r.clientesRuta || []} pendientes={liq.clientesPendientes} />
                     </td>
                   </tr>
                 )}
@@ -837,6 +901,57 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
           </div>
         )}
       </div>
+      {unidadPop && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setUnidadPop(null)} aria-hidden />
+          <div
+            role="dialog"
+            aria-label="Camión y tripulación"
+            className="fixed z-50 w-[290px] bg-white border border-slate-200 rounded-xl shadow-xl p-3 text-xs space-y-2"
+            style={{ top: Math.min(unidadPop.top, window.innerHeight - 260), left: unidadPop.left }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-slate-800">Camión y tripulación</span>
+              <button
+                type="button"
+                onClick={() => setUnidadPop(null)}
+                aria-label="Cerrar"
+                className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-2">
+              <div className="text-[10px] uppercase text-slate-500 font-semibold">Camión</div>
+              <div className="font-mono font-bold text-slate-900 text-sm">
+                {unidadPop.idCamion ? `${unidadPop.idCamion} · ` : ''}
+                {unidadPop.placa}
+              </div>
+              {unidadPop.salida && <div className="text-[11px] text-slate-500">Salida: {unidadPop.salida}</div>}
+            </div>
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-2">
+              <div className="text-[10px] uppercase text-slate-500 font-semibold">Piloto</div>
+              <div className="font-semibold text-slate-900">
+                {unidadPop.piloto || 'Sin piloto'}{' '}
+                <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">{unidadPop.puesto}</span>
+              </div>
+              {unidadPop.dpi && <div className="text-[11px] text-slate-500 font-mono">DPI: {unidadPop.dpi}</div>}
+            </div>
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-2">
+              <div className="text-[10px] uppercase text-slate-500 font-semibold">Auxiliares ({unidadPop.auxiliares.length})</div>
+              {unidadPop.auxiliares.length > 0 ? (
+                <ul className="list-disc list-inside text-slate-800">
+                  {unidadPop.auxiliares.map((a) => (
+                    <li key={a}>{a}</li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-slate-400">Sin auxiliares</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
