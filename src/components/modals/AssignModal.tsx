@@ -28,6 +28,7 @@ import { formatDateToGuatemala, getTomorrowGuatemalaDate } from '../../utils/dat
 import { ResourcePicker, PickerItem, PickerStatus } from '../ResourcePicker';
 import { suggestCrewForRoute } from '../../utils/crewSuggestion';
 import { mismaJornada, esJornadaFutura } from '../../utils/jornada';
+import { toNum } from '../../utils/number';
 
 // Recursos ocupados ahora mismo en OTRAS rutas en tránsito DE LA MISMA JORNADA
 // (para no precargarlos como sugerencia por defecto). Las rutas del día
@@ -1250,8 +1251,8 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   {selectedTruckObj && (() => {
                     const routesOnTruck = inTransitOthers.filter((ar) => ar.asignacion?.camionId === selectedTruckObj.id);
                     if (routesOnTruck.length === 0) return null;
-                    const otherBoxes = routesOnTruck.reduce((acc, r) => acc + (parseFloat(String(r.cajasFisicas || 0)) || 0), 0);
-                    const combined = (otherBoxes + (parseFloat(String(route.cajasFisicas || 0)) || 0)).toFixed(1);
+                    const otherBoxes = routesOnTruck.reduce((acc, r) => acc + (toNum(r.cajasFisicas) || 0), 0);
+                    const combined = (otherBoxes + (toNum(route.cajasFisicas) || 0)).toFixed(1);
                     return (
                       <div className="text-[11px] bg-sky-50 border border-sky-200 rounded-lg px-2.5 py-1.5 text-sky-900">
                         <strong>Carga compartida</strong> con {routesOnTruck.map((r) => `Ruta ${r.id}`).join(', ')} ({otherBoxes.toFixed(1)} cajas) · Total camión: <strong>{combined} cajas</strong>
