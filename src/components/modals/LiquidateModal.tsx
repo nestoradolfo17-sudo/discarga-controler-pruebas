@@ -9,6 +9,9 @@ import { useMaximized } from '../ui/useMaximized';
 import { MOTIVO_DEVOLUCION_OPTIONS, MOTIVO_REVISITA, MOTIVOS_RUTA_ABIERTA } from '../../data/motivosDevolucion';
 import { CAJA_ABIERTA_OPTIONS } from '../../data/motivosCajaAbierta';
 import { toNum } from '../../utils/number';
+import { repartirParejo, ResumenGrupo } from '../../utils/splitGroup';
+
+const fmt3 = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 3 });
 
 interface LiquidateModalProps {
   isOpen: boolean;
@@ -18,6 +21,10 @@ interface LiquidateModalProps {
   // abierta). El campo sigue siendo editable por si quien liquida físicamente
   // en la agencia es otra persona.
   defaultAuditor?: string;
+  // Ruta partida: viajes del mismo grupo que pueden recibir las cajas devueltas
+  // de este viaje, y el control de cajas del grupo.
+  viajesPendientesGrupo?: Route[];
+  resumenGrupo?: ResumenGrupo | null;
   // Corrección: se agrega "fecha" porque el mismo ID de ruta puede repetirse en
   // fechas distintas (ver src/utils/routeKey.ts) — sin esto, liquidar una fila podía
   // terminar liquidando también otra fila con el mismo ID pero de otra fecha.
@@ -47,6 +54,8 @@ interface LiquidateModalProps {
       // tenía clientesRuta cargado y el usuario marcó al menos uno; si no, queda
       // undefined y la liquidación funciona exactamente igual que siempre.
       clientesPendientes?: ClientePendiente[];
+      // Ruta partida: pasar las cajas devueltas a los viajes pendientes del grupo.
+      transferirDevueltas?: boolean;
     }
   ) => void;
 }
@@ -61,6 +70,8 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   route,
   defaultAuditor,
   onConfirmLiquidation,
+  viajesPendientesGrupo = [],
+  resumenGrupo = null,
 }) => {
   const [isMaximized, toggleMaximized] = useMaximized('dc_liquidate_maximized');
   const [guiasExitosas, setGuiasExitosas] = useState(0);
@@ -88,6 +99,8 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   const [clientesMarcados, setClientesMarcados] = useState<Map<string, string>>(new Map());
   const [clientesFiltro, setClientesFiltro] = useState('');
   const [clientesPendientesError, setClientesPendientesError] = useState('');
+  // Ruta partida: las cajas devueltas pasan a los viajes pendientes del grupo.
+  const [transferir, setTransferir] = useState(true);
 
   useEffect(() => {
     if (isOpen && route) {
@@ -110,6 +123,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       setClientesMarcados(new Map());
       setClientesFiltro('');
       setClientesPendientesError('');
+      setTransferir(true);
     }
   }, [isOpen, route, defaultAuditor]);
 
@@ -166,7 +180,13 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
     setGuiasExitosas(ok);
   };
 
-  const hayDiferencia = devueltasNum > 0 || guiasRechazadas > 0;
+  // Ruta partida (Cierre Definitivo): las cajas devueltas pueden pasar a los
+  // viajes pendientes del grupo; así no cuentan como devolución.
+  const puedeTransferir =
+    viajesPendientesGrupo.length > 0 && tipoResolucion === 'liquidada' && devueltasNum > 0 && !isBolsonRoute(route);
+  const transfiere = puedeTransferir && transferir;
+  const repartoTransferencia = transfiere ? repartirParejo(devueltasNum, viajesPendientesGrupo.length) : [];
+  const hayDiferencia = (transfiere ? 0 : devueltasNum) > 0 || guiasRechazadas > 0;
   const tieneClientes = !!route.clientesRuta && route.clientesRuta.length > 0;
   // Opciones de motivo según la modalidad.
   const esBolson = isBolsonRoute(route);
@@ -286,6 +306,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       montoDiferenciaCaja: isCajaAbierta && montoNum !== undefined ? Math.round(montoNum * 100) / 100 : undefined,
       comentario: comentario.trim() || undefined,
       clientesPendientes,
+      transferirDevueltas: transfiere || undefined,
     });
   };
 
@@ -452,6 +473,60 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
             <p className="text-[10px] text-slate-500">
               El motivo de lo no entregado se registra por cliente, en la lista de clientes de abajo.
             </p>
+
+            {resumenGrupo && (
+              <div className="p-3 rounded-xl border border-purple-200 bg-purple-50/60 space-y-2">
+                <p className="font-bold text-purple-900 text-xs">
+                  Control de cajas · Ruta {resumenGrupo.padre} ({resumenGrupo.viajes} viajes)
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                  <div className="bg-white rounded-lg border border-purple-100 px-2 py-1">
+                    <span className="block text-slate-500">Total</span>
+                    <b className="font-mono text-slate-800">{fmt3(resumenGrupo.total)}</b>
+                  </div>
+                  <div className="bg-white rounded-lg border border-purple-100 px-2 py-1">
+                    <span className="block text-slate-500">Entregadas</span>
+                    <b className="font-mono text-emerald-700">{fmt3(resumenGrupo.entregado)}</b>
+                  </div>
+                  <div className="bg-white rounded-lg border border-purple-100 px-2 py-1">
+                    <span className="block text-slate-500">Devueltas</span>
+                    <b className="font-mono text-rose-700">{fmt3(resumenGrupo.devuelto)}</b>
+                  </div>
+                  <div className="bg-white rounded-lg border border-purple-100 px-2 py-1">
+                    <span className="block text-slate-500">Pendientes de entregar</span>
+                    <b className="font-mono text-blue-700">{fmt3(resumenGrupo.pendiente)}</b>
+                    <span className="block text-[10px] text-slate-400">{resumenGrupo.viajesPendientes} viaje(s), incluye este</span>
+                  </div>
+                </div>
+
+                {puedeTransferir && (
+                  <label className="flex items-start gap-2 bg-white rounded-lg border border-purple-200 p-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={transferir}
+                      onChange={(e) => setTransferir(e.target.checked)}
+                      className="mt-0.5 w-5 h-5 cursor-pointer"
+                    />
+                    <span className="text-[11px] text-purple-950 leading-relaxed">
+                      <b>Pasar las {fmt3(devueltasNum)} cajas devueltas a los viajes pendientes</b> del grupo (no se
+                      registran como devolución):
+                      <span className="block mt-1 font-mono text-[11px]">
+                        {viajesPendientesGrupo.map((v, i) => (
+                          <span key={getRouteKey(v)} className="inline-block mr-3">
+                            {i > 0 ? '· ' : ''}{v.id}: {fmt3(toNum(v.cajasFisicas))} → <b>{fmt3(toNum(v.cajasFisicas) + (repartoTransferencia[i] || 0))}</b>{' '}
+                          </span>
+                        ))}
+                      </span>
+                      {!transferir && (
+                        <span className="block text-rose-700 font-semibold mt-1">
+                          Sin marcar: las cajas se registran como devolución de este viaje.
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Modalidad de Cierre / Resolución */}
@@ -908,7 +983,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                 <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs bg-slate-50 border border-slate-200 rounded-xl p-3">
                   <dt className="text-slate-500">Modalidad</dt><dd className="font-semibold text-slate-800">{modalidad}</dd>
                   <dt className="text-slate-500">Paradas</dt><dd className="font-semibold text-slate-800">{guiasExitosas} entregadas · {guiasRechazadas} no entregadas</dd>
-                  <dt className="text-slate-500">Cajas</dt><dd className="font-semibold text-slate-800">{n3(cajasEntregadas)} entregadas · {n3(devueltasNum)} devueltas</dd>
+                  <dt className="text-slate-500">Cajas</dt><dd className="font-semibold text-slate-800">{n3(cajasEntregadas)} entregadas · {transfiere ? `${n3(devueltasNum)} pasan a los viajes ${viajesPendientesGrupo.map((v) => v.id).join(', ')}` : `${n3(devueltasNum)} devueltas`}</dd>
                   <dt className="text-slate-500">Motivo</dt><dd className={`font-semibold ${motivoTxt.startsWith('—') ? 'text-rose-700' : 'text-slate-800'}`}>{motivoTxt}</dd>
                   {tipoResolucion === 'cajaAbierta' && (
                     <>
