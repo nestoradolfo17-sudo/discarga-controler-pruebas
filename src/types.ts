@@ -283,6 +283,9 @@ export interface Route {
   // Bitácora de cambios de segmento hechos desde el Tablero (con autorización
   // de un administrador).
   historialSegmento?: { fecha: string; de: string; a: string; por: string; autorizadoPor: string }[];
+  // Bitácora de "Repartir cajas" entre los viajes de una ruta partida (rutas de
+  // un solo cliente), cuando cambian las cajas reales a entregar por viaje.
+  historialRepartoCajas?: { fecha: string; de: number; a: number; por: string }[];
   fecha: string;
   fechaAsignacion?: string;
   fechaLiquidacion?: string;
