@@ -63,6 +63,7 @@ import { BatchImportView, BatchImportTarget } from './components/BatchImportView
 import { ContingenciaImportView } from './components/ContingenciaImportView';
 import { buildContingenciaPlan, ContParsed, ContPlan } from './utils/contingencia';
 import { AGENCIA_LOCATION_OPTIONS } from './data/agencies';
+import { SEGMENTO_OPTIONS } from './data/segmentos';
 import { ClientesImportView } from './components/ClientesImportView';
 import { LiquidatedBoardView, LiquidatedKpis } from './components/LiquidatedBoardView';
 import { NewRouteModal } from './components/modals/NewRouteModal';
@@ -113,6 +114,29 @@ const STORAGE_KEY_SESSION = 'rutamaster_session_v1';
 // cada vez volvía lenta la entrada). El resto se trae a pedido desde
 // "Rutas Liquidadas" → "Cargar historial completo".
 const HISTORY_INITIAL_DAYS = 45;
+
+// Filtro por segmento del Tablero: compara sin importar mayúsculas/espacios;
+// '__SIN__' = rutas que no tienen segmento.
+// Buscador del Tablero (ruta, agencia, mercado, segmento, fecha, camión y
+// tripulación). Se usa para la tabla y para los indicadores de arriba.
+function coincideBusqueda(r: Route, q: string): boolean {
+  if (!q) return true;
+  const asig = r.asignacion;
+  const has = (v: unknown) => !!v && String(v).toLowerCase().includes(q);
+  return (
+    has(r.id) ||
+    has(r.agencia) ||
+    has(r.mercado) ||
+    has(r.segmento) ||
+    has(r.fecha) ||
+    (!!asig && (has(asig.camionPlaca) || has(asig.conductor) || has(asig.auxiliar1) || has(asig.auxiliar2) || has(asig.auxiliar3)))
+  );
+}
+
+function coincideSegmento(r: { segmento?: string }, filtro: string): boolean {
+  const sg = String(r.segmento || '').trim().toUpperCase();
+  return filtro === '__SIN__' ? !sg : sg === filtro.trim().toUpperCase();
+}
 
 const LOCAL_DATA_KEYS = [STORAGE_KEY_ROUTES, STORAGE_KEY_TRUCKS, STORAGE_KEY_STAFF, STORAGE_KEY_HISTORY, STORAGE_KEY_USERS];
 if (isSupabaseConfigured) {
@@ -1150,6 +1174,8 @@ export default function App() {
   const [splitRouteTarget, setSplitRouteTarget] = useState<Route | null>(null);
   // Filtro de fecha del Tablero ('' = todas las fechas).
   const [boardFecha, setBoardFecha] = useState<string>('');
+  // Filtro de SEGMENTO del Tablero ('' = todos; '__SIN__' = rutas sin segmento).
+  const [boardSegmento, setBoardSegmento] = useState<string>('');
   // Cambio de segmento (con autorización de administrador).
   const [segmentTarget, setSegmentTarget] = useState<Route | null>(null);
   const [revertSplitTarget, setRevertSplitTarget] = useState<Route | null>(null);
@@ -1580,25 +1606,12 @@ export default function App() {
 
       if (boardFecha && formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) !== boardFecha) return false;
 
-      if (!q) return true;
+      if (boardSegmento && !coincideSegmento(r, boardSegmento)) return false;
 
-      const asig = r.asignacion;
-      const matchSearch =
-        String(r.id).toLowerCase().includes(q) ||
-        String(r.agencia || '').toLowerCase().includes(q) ||
-        String(r.mercado || '').toLowerCase().includes(q) ||
-        String(r.segmento || '').toLowerCase().includes(q) ||
-        (r.fecha && String(r.fecha).toLowerCase().includes(q)) ||
-        (asig && asig.camionPlaca.toLowerCase().includes(q)) ||
-        (asig && asig.conductor.toLowerCase().includes(q)) ||
-        (asig && asig.auxiliar1 && asig.auxiliar1.toLowerCase().includes(q)) ||
-        (asig && asig.auxiliar2 && asig.auxiliar2.toLowerCase().includes(q)) ||
-        (asig && asig.auxiliar3 && asig.auxiliar3.toLowerCase().includes(q));
-
-      return matchSearch;
+      return coincideBusqueda(r, q);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routes, selectedAgency, searchQuery, currentUser, boardFecha]);
+  }, [routes, selectedAgency, searchQuery, currentUser, boardFecha, boardSegmento]);
 
   // Rutas del día (todos los estados) visibles para el usuario, respetando la
   // agencia seleccionada en la barra superior y su permiso de acceso por agencia.
@@ -1850,10 +1863,12 @@ export default function App() {
 
     // Consolidación de todas las rutas de la jornada para el cálculo de Cajas Físicas del Día
     const allDayMap = new Map<string, Route>();
-    scoped.forEach((r) => allDayMap.set(String(r.id), r));
+    // Clave ID+fecha (getRouteKey): la misma ruta en dos fechas distintas son
+    // dos cargas diferentes y antes se contaba solo una.
+    scoped.forEach((r) => allDayMap.set(getRouteKey(r), r));
     liqHoy.forEach((r) => {
-      if (!allDayMap.has(String(r.id))) {
-        allDayMap.set(String(r.id), r);
+      if (!allDayMap.has(getRouteKey(r))) {
+        allDayMap.set(getRouteKey(r), r);
       }
     });
 
@@ -1912,17 +1927,35 @@ export default function App() {
     return Array.from(set).sort((a, b) => num(a) - num(b));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routes, currentUser, boardFecha]);
+  // Segmentos para el filtro del Tablero: los de la lista oficial más
+  // cualquier otro que traigan las rutas cargadas.
+  const boardSegmentOptions = useMemo(() => {
+    const set = new Set<string>(SEGMENTO_OPTIONS);
+    dashboardRoutes.forEach((r) => {
+      const sg = String(r.segmento || '').trim().toUpperCase();
+      if (sg) set.add(sg);
+    });
+    return Array.from(set);
+  }, [dashboardRoutes]);
+
+  // Indicadores de arriba del Tablero: siguen TODOS los filtros de la tabla
+  // (agencia, fecha, segmento y buscador).
   const boardStats = useMemo(() => {
-    if (!boardFecha) return stats;
+    const q = searchQuery.toLowerCase().trim();
+    if (!boardFecha && !boardSegmento && !q) return stats;
+    const enSeg = (r: Route) => (!boardSegmento || coincideSegmento(r, boardSegmento)) && coincideBusqueda(r, q);
+    if (!boardFecha) {
+      return buildStats(dashboardRoutes.filter(enSeg), dashboardLiquidatedRoutes.filter(enSeg));
+    }
     const liqDia = (r: Route) =>
       formatDateToGuatemala(r.liquidacion?.fechaLiquidacion || r.fechaLiquidacion) === boardFecha || rutaDia(r) === boardFecha;
     return buildStats(
-      dashboardRoutes.filter((r) => rutaDia(r) === boardFecha),
-      dashboardLiquidatedRoutes.filter(liqDia),
+      dashboardRoutes.filter((r) => rutaDia(r) === boardFecha && enSeg(r)),
+      dashboardLiquidatedRoutes.filter((r) => liqDia(r) && enSeg(r)),
       boardFecha
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardFecha, stats, dashboardRoutes, dashboardLiquidatedRoutes]);
+  }, [boardFecha, boardSegmento, searchQuery, stats, dashboardRoutes, dashboardLiquidatedRoutes]);
 
   // Actions
   const handleCreateRoute = (newRouteData: Partial<Route>) => {
@@ -3931,6 +3964,28 @@ export default function App() {
     return loadingScreen('Cargando datos compartidos...');
   }
 
+  // Selector de segmento del Tablero (cambia la tabla y los indicadores).
+  const boardSegmentSelect = (
+    <select
+      id="boardSegmentoFiltro"
+      value={boardSegmento}
+      onChange={(e) => setBoardSegmento(e.target.value)}
+      aria-label="Segmento de las rutas del tablero"
+      title="Ver solo las rutas de un segmento"
+      className={`shrink-0 min-h-[40px] px-2 rounded-xl border text-xs font-bold cursor-pointer ${
+        boardSegmento ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-700 border-slate-300'
+      }`}
+    >
+      <option value="">Todos los segmentos</option>
+      {boardSegmentOptions.map((sg) => (
+        <option key={sg} value={sg}>
+          {sg}
+        </option>
+      ))}
+      <option value="__SIN__">Sin segmento</option>
+    </select>
+  );
+
   // Selector de fecha del Tablero (cambia la tabla y los indicadores).
   const boardDateSelect = (
     <select
@@ -4047,6 +4102,7 @@ export default function App() {
               activeTab === 'board' ? (
               <div className="flex items-center gap-1.5 min-w-0">
                 {boardDateSelect}
+                {boardSegmentSelect}
               <StatsCards
                 compact
           pendientes={boardStats.pendientes}
@@ -4134,6 +4190,7 @@ export default function App() {
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                 {boardDateSelect}
+                {boardSegmentSelect}
                 <StatsCards
                   compact
                   pendientes={boardStats.pendientes}
