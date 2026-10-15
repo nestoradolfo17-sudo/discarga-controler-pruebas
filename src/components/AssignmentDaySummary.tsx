@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Route } from '../types';
 import { SEGMENTO_OPTIONS } from '../data/segmentos';
 import { formatDateToGuatemala } from '../utils/date';
+import { toNum } from '../utils/number';
 
 // --- Resumen de Fin de Asignación (solo lectura) ---
 // Cuadro tipo reporte con las rutas del día, las del día anterior (parciales
@@ -27,7 +28,7 @@ const isSelfService = (r: Route) => Boolean(r.esSelfService || r.tipoAsignacion 
 const isRecarga = (r: Route) =>
   Boolean(r.esRecarga || r.tipoAsignacion === 'Recarga' || r.asignacion?.tipoAsignacion === 'Recarga');
 const volumenDe = (r: Route) => {
-  const n = Number(r.cajasFisicas || r.cajasOriginales || 0);
+  const n = toNum(r.cajasFisicas || r.cajasOriginales);
   return isNaN(n) ? 0 : n;
 };
 const segDe = (r: Route) => {
