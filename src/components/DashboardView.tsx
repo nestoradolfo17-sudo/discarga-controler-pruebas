@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Route, Truck, Staff } from '../types';
 import { formatDateToGuatemala } from '../utils/date';
 import { DashboardExecutive } from './DashboardExecutive';
+import { DashboardSeguimiento } from './DashboardSeguimiento';
 import {
   AlertTriangle,
   Truck as TruckIcon,
@@ -685,11 +686,12 @@ const DashboardClassic: React.FC<DashboardViewProps> = ({
 
 // Selector de vista: "Ejecutivo" (propuesta nueva) o "Clásico" (el dashboard de
 // siempre, sin cambios). La preferencia se recuerda en este navegador.
-type DashView = 'ejecutivo' | 'clasico';
+type DashView = 'ejecutivo' | 'seguimiento' | 'clasico';
 export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   const [view, setView] = useState<DashView>(() => {
     try {
-      return localStorage.getItem('dc_dashboard_view') === 'clasico' ? 'clasico' : 'ejecutivo';
+      const v = localStorage.getItem('dc_dashboard_view');
+      return v === 'clasico' || v === 'seguimiento' ? v : 'ejecutivo';
     } catch {
       return 'ejecutivo';
     }
@@ -708,6 +710,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
         <div role="tablist" aria-label="Vista del dashboard" className="inline-flex bg-slate-100 border border-slate-200 rounded-xl p-1">
           {([
             ['ejecutivo', 'Ejecutivo'],
+            ['seguimiento', 'Cajas y Rutas Abiertas'],
             ['clasico', 'Clásico'],
           ] as [DashView, string][]).map(([k, label]) => (
             <button
@@ -725,7 +728,16 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
           ))}
         </div>
       </div>
-      {view === 'ejecutivo' ? (
+      {view === 'seguimiento' ? (
+        <DashboardSeguimiento
+          routes={props.routes}
+          liquidatedRoutes={props.liquidatedRoutes}
+          selectedAgency={props.selectedAgency}
+          historyLimitedDays={props.historyLimitedDays}
+          onLoadFullHistory={props.onLoadFullHistory}
+          isLoadingFullHistory={props.isLoadingFullHistory}
+        />
+      ) : view === 'ejecutivo' ? (
         <DashboardExecutive
           routes={props.routes}
           liquidatedRoutes={props.liquidatedRoutes}
