@@ -14,7 +14,7 @@ import {
 } from '../utils/excel';
 import { formatDateToGuatemala } from '../utils/date';
 import { SEGMENTO_OPTIONS } from '../data/segmentos';
-import { getRouteKey } from '../utils/routeKey';
+import { clavesDuplicado } from '../utils/routeKey';
 import { FileSpreadsheet, Download, UploadCloud, CheckCircle, X, Layers, AlertCircle, Users, MapPin, Tag, Calendar } from 'lucide-react';
 import { SegmentedSelect } from './ui/SegmentedSelect';
 
@@ -290,6 +290,28 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
       unmatchedRutas: unmatchedRutas.sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
     };
   }, [clientesByRutaMap, previewRoutes]);
+
+  // FILTRO DE SEGURIDAD (vista previa): rutas que ya existen en el tablero con
+  // el mismo número, fecha y agencia, o que vienen repetidas en el archivo. No
+  // se cargan (App.tsx vuelve a validar al confirmar).
+  const estadoDuplicados = useMemo(() => {
+    const existentes = new Set<string>();
+    existingRoutes.forEach((r) => clavesDuplicado(r).forEach((k) => existentes.add(k)));
+    const vistos = new Set<string>();
+    const estado: ('nueva' | 'existe' | 'repetida')[] = previewRoutes.map((r) => {
+      if (!effectiveAgencia || !fechaSalida) return 'nueva';
+      const k = clavesDuplicado({ id: r.id, fecha: fechaSalida, agencia: effectiveAgencia })[0];
+      if (vistos.has(k)) return 'repetida';
+      vistos.add(k);
+      return existentes.has(k) ? 'existe' : 'nueva';
+    });
+    return {
+      estado,
+      existen: estado.filter((e) => e === 'existe').length,
+      repetidas: estado.filter((e) => e === 'repetida').length,
+      nuevas: estado.filter((e) => e === 'nueva').length,
+    };
+  }, [existingRoutes, previewRoutes, effectiveAgencia, fechaSalida]);
 
   const handleCommit = () => {
     if (previewRoutes.length === 0) {
@@ -584,13 +606,23 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
 
               <button
                 onClick={handleCommit}
-                disabled={!targetReady}
-                title={targetReady ? undefined : 'Selecciona Agencia, Segmento y Fecha de salida arriba'}
+                disabled={!targetReady || (estadoDuplicados.nuevas === 0 && !clientesByNormRuta)}
+                title={
+                  !targetReady
+                    ? 'Selecciona Agencia, Segmento y Fecha de salida arriba'
+                    : estadoDuplicados.nuevas === 0 && !clientesByNormRuta
+                    ? 'Todas las rutas ya existen en el tablero para esa fecha'
+                    : undefined
+                }
                 type="button"
                 className="min-h-[44px] px-5 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm flex items-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <CheckCircle className="w-4 h-4 mr-1.5" />
-                Importar rutas
+                {targetReady && estadoDuplicados.nuevas === 0 && clientesByNormRuta
+                  ? 'Solo agregar clientes a rutas existentes'
+                  : targetReady && estadoDuplicados.nuevas !== previewRoutes.length
+                  ? `Importar ${estadoDuplicados.nuevas} ruta(s) nueva(s)`
+                  : 'Importar rutas'}
               </button>
             </div>
           </div>
@@ -619,6 +651,23 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
               {selectedClientesSheet && !clientesSummary && (
                 <div className="text-[11px] text-blue-700">No se detectaron clientes válidos en esta pestaña.</div>
               )}
+            </div>
+          )}
+
+          {targetReady && (estadoDuplicados.existen > 0 || estadoDuplicados.repetidas > 0) && (
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-900 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <b>Filtro de seguridad:</b>{' '}
+                {estadoDuplicados.existen > 0 && (
+                  <>
+                    {estadoDuplicados.existen} ruta(s) ya existen en el tablero para el {fechaSalida} en {effectiveAgencia}
+                    {estadoDuplicados.repetidas > 0 ? ' y ' : ''}
+                  </>
+                )}
+                {estadoDuplicados.repetidas > 0 && <>{estadoDuplicados.repetidas} vienen repetidas en el archivo</>}
+                . Esas no se cargarán (marcadas en rojo). Se importarán <b>{estadoDuplicados.nuevas}</b> ruta(s) nueva(s).
+              </div>
             </div>
           )}
 
@@ -665,19 +714,15 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white font-mono">
                 {previewRoutes.map((r, idx) => {
-                  // Ya existe una ruta vigente con el mismo número, fecha y agencia destino.
-                  const isDuplicate =
-                    !!effectiveAgencia &&
-                    existingRoutes.some(
-                      (ex) =>
-                        ex.estado !== 'Liquidada' &&
-                        getRouteKey(ex) === getRouteKey({ id: r.id, fecha: fechaSalida || r.fecha, agencia: effectiveAgencia })
-                    );
+                  // Ya existe en el tablero (misma ruta, fecha y agencia) o viene
+                  // repetida en el archivo: no se cargará.
+                  const dup = estadoDuplicados.estado[idx];
+                  const isDuplicate = dup !== 'nueva';
                   const clienteCount = clientesByNormRuta?.get(normRuta(r.id))?.length || 0;
                   return (
                     <tr
                       key={`${r.id}-${idx}`}
-                      className={isDuplicate ? 'bg-amber-50/80 hover:bg-amber-100/70' : 'hover:bg-slate-50'}
+                      className={isDuplicate ? 'bg-rose-50/80 hover:bg-rose-100/70 line-through decoration-rose-300' : 'hover:bg-slate-50'}
                     >
                       <td className="py-2 px-3 font-sans font-medium text-slate-800">
                         {effectiveAgencia || <span className="text-amber-600">Sin seleccionar</span>}
@@ -691,8 +736,8 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                       <td className="py-2 px-3 font-bold text-slate-900 font-mono">
                         {r.id}{' '}
                         {isDuplicate && (
-                          <span className="ml-1 text-[9px] bg-amber-200 text-amber-900 px-1 py-0.5 rounded font-sans">
-                            En cola
+                          <span className="ml-1 text-[9px] bg-rose-200 text-rose-900 px-1 py-0.5 rounded font-sans no-underline inline-block">
+                            {dup === 'existe' ? 'Ya existe · no se carga' : 'Repetida en archivo'}
                           </span>
                         )}
                       </td>
