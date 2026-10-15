@@ -71,6 +71,7 @@ import { RouteTypeSelectModal } from './components/modals/RouteTypeSelectModal';
 import { SplitRouteModal } from './components/modals/SplitRouteModal';
 import { ChangeSegmentModal } from './components/modals/ChangeSegmentModal';
 import { RevertSplitModal } from './components/modals/RevertSplitModal';
+import { RepartirCajasModal } from './components/modals/RepartirCajasModal';
 import { AssignModal } from './components/modals/AssignModal';
 import { LiquidateModal } from './components/modals/LiquidateModal';
 import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiertaModal';
@@ -1152,6 +1153,8 @@ export default function App() {
   // Cambio de segmento (con autorización de administrador).
   const [segmentTarget, setSegmentTarget] = useState<Route | null>(null);
   const [revertSplitTarget, setRevertSplitTarget] = useState<Route | null>(null);
+  // Repartir cajas entre los viajes de una ruta partida (un solo cliente).
+  const [repartirCajasTarget, setRepartirCajasTarget] = useState<Route | null>(null);
   const [assignTarget, setAssignTarget] = useState<Route | null>(null);
   const [liquidateTarget, setLiquidateTarget] = useState<Route | null>(null);
   // Ruta seleccionada para registrar su "Liquidación Final" (cierre del pendiente
@@ -2030,6 +2033,52 @@ export default function App() {
       )
     );
   }, [routes, isRemoteReady]);
+
+  // Viajes del mismo grupo que todavía se pueden ajustar (no liquidados ni
+  // abiertos) y que llevan a lo sumo un cliente.
+  const repartirCajasTrips = (r: Route | null): Route[] => {
+    if (!r || !r.isSplitRoute) return [];
+    const parent = String(r.parentRouteId || String(r.id).split('.')[0]);
+    return routes.filter(
+      (x) =>
+        isSameSplitGroup(x, parent, r) &&
+        (x.estado === 'Pendiente' || x.estado === 'En Tránsito') &&
+        (x.clientesRuta?.length || 0) <= 1
+    );
+  };
+
+  const openRepartirCajas = (r: Route) => {
+    if (repartirCajasTrips(r).length < 2) {
+      showToast('Para repartir cajas se necesitan al menos 2 viajes de la ruta sin liquidar.', 'info');
+      return;
+    }
+    setRepartirCajasTarget(r);
+  };
+
+  const handleConfirmRepartirCajas = (cambios: { key: string; cajas: number }[]) => {
+    const byKey = new Map(cambios.map((c) => [c.key, c.cajas]));
+    const fecha = formatDateTimeToGuatemala(new Date());
+    const por = currentUser?.nombre || currentUser?.username || '';
+    setRoutes((prev) =>
+      prev.map((r) => {
+        const nuevo = byKey.get(getRouteKey(r));
+        if (nuevo === undefined) return r;
+        const antes = Number(r.cajasFisicas) || 0;
+        if (Math.abs(antes - nuevo) < 0.0005) return r;
+        return {
+          ...r,
+          cajasFisicas: nuevo,
+          ...(r.clientesRuta && r.clientesRuta.length === 1
+            ? { clientesRuta: [{ ...r.clientesRuta[0], cajas: nuevo }] }
+            : {}),
+          historialRepartoCajas: [...(r.historialRepartoCajas || []), { fecha, de: antes, a: nuevo, por }],
+        };
+      })
+    );
+    const parent = repartirCajasTarget?.parentRouteId || String(repartirCajasTarget?.id || '').split('.')[0];
+    setRepartirCajasTarget(null);
+    showToast(`Cajas repartidas entre los viajes de la ruta ${parent}.`, 'success');
+  };
 
   const handleConfirmSplit = (originalRoute: Route, childRoutes: Route[]) => {
     setRoutes((prev) => {
@@ -4152,6 +4201,10 @@ export default function App() {
               const r = routes.find((item) => routeMatchesKey(item, id, fecha));
               if (r) setRevertSplitTarget(r);
             }}
+            onOpenRepartirCajas={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
+              if (r) openRepartirCajas(r);
+            }}
             onViewSettlementReceipt={(id, fecha) => handleViewSettlementReceipt(id, undefined, fecha)}
             onViewConsolidatedReceipt={(parentRouteId, ref) =>
               handleViewConsolidatedReceipt(parentRouteId, ref)
@@ -4327,6 +4380,13 @@ export default function App() {
         onClose={() => setSplitRouteTarget(null)}
         route={splitRouteTarget}
         onConfirmSplit={handleConfirmSplit}
+      />
+
+      <RepartirCajasModal
+        isOpen={!!repartirCajasTarget}
+        onClose={() => setRepartirCajasTarget(null)}
+        trips={repartirCajasTrips(repartirCajasTarget)}
+        onConfirm={handleConfirmRepartirCajas}
       />
 
       <RevertSplitModal
