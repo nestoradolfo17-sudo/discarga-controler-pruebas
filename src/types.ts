@@ -212,6 +212,11 @@ export interface RouteLiquidation {
   // que ejecutó la liquidación en el sistema (no editable, se llena solo).
   liquidadoPorUsuario?: string;
   fechaLiquidacion: string;
+  // Ruta partida: cajas que regresaron de este viaje y se pasaron a los viajes
+  // pendientes del mismo grupo (no cuentan como devolución) y a cuáles.
+  cajasTransferidas?: number;
+  transferidasA?: string[];
+  motivoTransferencia?: string;
   horaLiquidacion?: string;
   // Comentario libre y opcional que se captura en el momento de liquidar (las 3
   // modalidades: Liquidada, Ruta Abierta y Caja Abierta), para dejar contexto
@@ -285,7 +290,7 @@ export interface Route {
   historialSegmento?: { fecha: string; de: string; a: string; por: string; autorizadoPor: string }[];
   // Bitácora de "Repartir cajas" entre los viajes de una ruta partida (rutas de
   // un solo cliente), cuando cambian las cajas reales a entregar por viaje.
-  historialRepartoCajas?: { fecha: string; de: number; a: number; por: string }[];
+  historialRepartoCajas?: { fecha: string; de: number; a: number; por: string; motivo?: string }[];
   fecha: string;
   fechaAsignacion?: string;
   fechaLiquidacion?: string;
