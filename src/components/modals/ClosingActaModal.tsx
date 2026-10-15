@@ -11,6 +11,7 @@ import {
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { toNum } from '../../utils/number';
+import { getRouteKey } from '../../utils/routeKey';
 
 interface ClosingActaModalProps {
   isOpen: boolean;
@@ -126,20 +127,20 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
       const isLiq = (r: Route) => r.estado === 'Liquidada';
       const m2 = new Map<string, Route>();
       routes.forEach((r) => {
-        if (isLiq(r) ? liqOk(r) : activaOk(r)) m2.set(String(r.id), r);
+        if (isLiq(r) ? liqOk(r) : activaOk(r)) m2.set(getRouteKey(r), r);
       });
       allLiquidatedRoutes.forEach((r) => {
-        if (!m2.has(String(r.id)) && liqOk(r)) m2.set(String(r.id), r);
+        if (!m2.has(getRouteKey(r)) && liqOk(r)) m2.set(getRouteKey(r), r);
       });
       return Array.from(m2.values())
         .map(buildActaRow)
         .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
     }
     const map = new Map<string, Route>();
-    routes.forEach((r) => map.set(String(r.id), r));
+    routes.forEach((r) => map.set(getRouteKey(r), r));
     allLiquidatedRoutes.forEach((r) => {
-      if (!map.has(String(r.id))) {
-        map.set(String(r.id), r);
+      if (!map.has(getRouteKey(r))) {
+        map.set(getRouteKey(r), r);
       }
     });
 
