@@ -4660,9 +4660,11 @@ export default function App() {
         isOpen={isDailySummaryModalOpen}
         onClose={() => setIsDailySummaryModalOpen(false)}
         routes={routes.filter((r) => canViewAgency(r.agencia))}
-        allLiquidatedRoutes={allLiquidatedRoutes}
-        staff={visibleStaff}
-        trucks={visibleTrucks}
+        allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia))}
+        // Camiones y personal de todas las agencias permitidas: el reporte los
+        // filtra con su propio selector de agencia (que abre con el general).
+        staff={staffLive.filter((s) => !s.agencia || canViewAgency(s.agencia))}
+        trucks={trucksLive.filter((t) => !t.agencia || canViewAgency(t.agencia))}
         selectedAgency={selectedAgency}
         agencies={agencies}
         // Abre con la fecha elegida en el filtro del Tablero (o con hoy).
@@ -4680,7 +4682,7 @@ export default function App() {
         isOpen={isClosingActaModalOpen}
         onClose={() => setIsClosingActaModalOpen(false)}
         routes={routes.filter((r) => canViewAgency(r.agencia))}
-        allLiquidatedRoutes={allLiquidatedRoutes}
+        allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia))}
         selectedAgency={selectedAgency}
         agencies={agencies}
         // Acta de Cierre con la fecha del filtro del Tablero (o hoy).
