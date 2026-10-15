@@ -95,6 +95,7 @@ import { ToastContainer } from './components/ToastContainer';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { UsersView } from './components/UsersView';
 import { DashboardView } from './components/DashboardView';
+import { toNum } from './utils/number';
 
 const STORAGE_KEY_ROUTES = 'rutamaster_routes_v6';
 const STORAGE_KEY_TRUCKS = 'rutamaster_trucks_v6';
@@ -1874,12 +1875,12 @@ export default function App() {
 
     const dayRoutesList = Array.from(allDayMap.values());
     const cajasFisicasTotalHoy = dayRoutesList.reduce((acc, r) => {
-      const c = Number(r.cajasFisicas || r.cajasOriginales || 0);
+      const c = toNum(r.cajasFisicas || r.cajasOriginales);
       return acc + (isNaN(c) ? 0 : c);
     }, 0);
 
     const cajasEntregadasTotalHoy = liqHoy.reduce((acc, r) => {
-      const c = Number(r.liquidacion?.cajasEntregadas ?? (r.cajasFisicas || 0));
+      const c = toNum(r.liquidacion?.cajasEntregadas ?? r.cajasFisicas);
       return acc + (isNaN(c) ? 0 : c);
     }, 0);
 
@@ -2096,7 +2097,7 @@ export default function App() {
       prev.map((r) => {
         const nuevo = byKey.get(getRouteKey(r));
         if (nuevo === undefined) return r;
-        const antes = Number(r.cajasFisicas) || 0;
+        const antes = toNum(r.cajasFisicas) || 0;
         if (Math.abs(antes - nuevo) < 0.0005) return r;
         return {
           ...r,
@@ -2234,7 +2235,7 @@ export default function App() {
     } else {
       const sumParadas = siblings.reduce((acc, s) => acc + (parseInt(String(s.paradas)) || 0), 0);
       const sumCajas = siblings.reduce(
-        (acc, s) => acc + (parseFloat(String(s.cajasFisicas)) || 0),
+        (acc, s) => acc + (toNum(s.cajasFisicas) || 0),
         0
       );
       restoredRoute = {
