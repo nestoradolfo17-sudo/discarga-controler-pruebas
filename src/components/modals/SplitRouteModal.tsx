@@ -6,6 +6,7 @@ import { Button, IconButton } from '../ui/Button';
 import { ModalFooter } from '../ui/ModalFooter';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { useMaximized } from '../ui/useMaximized';
+import { toNum } from '../../utils/number';
 
 interface SplitRouteModalProps {
   isOpen: boolean;
@@ -62,7 +63,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
   }, [isOpen, route]);
 
   const recalculateTripInputs = (tripsCount: number, currentRoute: Route) => {
-    const totalCajas = parseFloat(String(currentRoute.cajasFisicas)) || 0;
+    const totalCajas = toNum(currentRoute.cajasFisicas) || 0;
     const totalParadas = parseInt(String(currentRoute.paradas)) || 1;
 
     const cajasPorViaje = parseFloat((totalCajas / tripsCount).toFixed(3));
@@ -176,8 +177,8 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
         ...(singleClient ? { paradasOriginales: totalParadasRuta || 1 } : {}),
         equipoFrio: Math.round((parseInt(String(route.equipoFrio)) || 0) / numTrips),
         capacidadPorc: route.capacidadPorc || '100%',
-        cajas12Oz: ((parseFloat(String(route.cajas12Oz)) || 0) / numTrips).toFixed(3),
-        pesoKg: ((parseFloat(String(route.pesoKg)) || 0) / numTrips).toFixed(3),
+        cajas12Oz: ((toNum(route.cajas12Oz) || 0) / numTrips).toFixed(3),
+        pesoKg: ((toNum(route.pesoKg) || 0) / numTrips).toFixed(3),
         cajasFisicas: ti.cajas,
         // Cada viaje se lleva solo los clientes que le tocan.
         ...(hasClients
@@ -196,7 +197,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
     onConfirmSplit(route, childRoutes);
   };
 
-  const totalCajas = parseFloat(String(route.cajasFisicas)) || 0;
+  const totalCajas = toNum(route.cajasFisicas) || 0;
   const totalParadas = parseInt(String(route.paradas)) || 0;
 
   // Cuadre en vivo: antes no existía ninguna validación de que la suma de los
