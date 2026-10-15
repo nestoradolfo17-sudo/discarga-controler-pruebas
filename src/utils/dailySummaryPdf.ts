@@ -775,51 +775,55 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
     }
   });
 
-  autoTable(doc, {
-    startY: currentY,
-    head: detailedHead,
-    body: detailedRows,
-    theme: 'striped',
-    styles: {
-      fontSize: 6.5,
-      cellPadding: 1.4,
-      textColor: [15, 23, 42],
-      lineColor: [226, 232, 240],
-      lineWidth: 0.15,
-    },
-    headStyles: {
-      fillColor: [15, 23, 42],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      halign: 'center',
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252],
-    },
-    columnStyles: {
-      0: { fontStyle: 'bold', halign: 'center' },
-      1: { halign: 'center' },
-      2: { halign: 'center' },
-      3: { halign: 'center' },
-      [isInicio ? 3 : 4]: { halign: 'left' },
-      5: { halign: 'center' },
-      6: { halign: 'center' },
-      7: { halign: 'center' },
-      8: { halign: 'center' },
-      9: { halign: 'left' },
-    },
-    didParseCell: (hookData) => {
-      // Colorear ligeramente si está atrasado en la columna de indicador
-      if (hookData.section === 'body') {
-        const rowData = routesList[hookData.row.index];
-        if (rowData && rowData.estaAtrasado && hookData.column.index === (isInicio ? 3 : 4)) {
-          hookData.cell.styles.textColor = [185, 28, 28]; // Rojo
-          hookData.cell.styles.fontStyle = 'bold';
+  // Inicio de Día: sin el detalle ruta por ruta (solo totales, segmento y
+  // recursos no asignados). Fin de Día conserva su tabla.
+  if (!isInicio) {
+    autoTable(doc, {
+      startY: currentY,
+      head: detailedHead,
+      body: detailedRows,
+      theme: 'striped',
+      styles: {
+        fontSize: 6.5,
+        cellPadding: 1.4,
+        textColor: [15, 23, 42],
+        lineColor: [226, 232, 240],
+        lineWidth: 0.15,
+      },
+      headStyles: {
+        fillColor: [15, 23, 42],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        halign: 'center',
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252],
+      },
+      columnStyles: {
+        0: { fontStyle: 'bold', halign: 'center' },
+        1: { halign: 'center' },
+        2: { halign: 'center' },
+        3: { halign: 'center' },
+        [isInicio ? 3 : 4]: { halign: 'left' },
+        5: { halign: 'center' },
+        6: { halign: 'center' },
+        7: { halign: 'center' },
+        8: { halign: 'center' },
+        9: { halign: 'left' },
+      },
+      didParseCell: (hookData) => {
+        // Colorear ligeramente si está atrasado en la columna de indicador
+        if (hookData.section === 'body') {
+          const rowData = routesList[hookData.row.index];
+          if (rowData && rowData.estaAtrasado && hookData.column.index === (isInicio ? 3 : 4)) {
+            hookData.cell.styles.textColor = [185, 28, 28]; // Rojo
+            hookData.cell.styles.fontStyle = 'bold';
+          }
         }
-      }
-    },
-    margin: { left: margin, right: margin },
-  });
+      },
+      margin: { left: margin, right: margin },
+    });
+  }
 
   // 4.5 TABLA 3: RECURSOS NO ASIGNADOS (camiones y personal disponibles que no
   // salieron a ruta hoy, con su motivo) — antes se calculaba en el modal pero
