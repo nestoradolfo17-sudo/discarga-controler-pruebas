@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { isDemoMode, demoFetch } from './demoMode';
 
 // --- Conexión opcional a Supabase (fase de pruebas compartidas) ---
 //
@@ -25,5 +26,7 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
         persistSession: true,
         autoRefreshToken: true,
       },
+      // Versión DEMO: lee los datos reales pero no escribe nada (ver demoMode.ts).
+      ...(isDemoMode ? { global: { fetch: demoFetch } } : {}),
     })
   : null;
