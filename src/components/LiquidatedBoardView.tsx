@@ -207,23 +207,105 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-        <div>
-          <h3 className="font-bold text-slate-800 text-base flex items-center">
-            <CheckCircle2 className="w-5 h-5 mr-2 text-emerald-600" />
-            Tablero de Rutas Liquidadas
-          </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Control centralizado de rutas cerradas operativamente, balances de entrega y actas de liquidación.
-          </p>
+    <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:p-4 shadow-sm space-y-3">
+      {/* Encabezado + filtros en una sola franja compacta (para que el
+          historial de rutas tenga más espacio). Los filtros son los mismos. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <h3
+          className="font-bold text-slate-800 text-sm flex items-center whitespace-nowrap mr-1"
+          title="Control centralizado de rutas cerradas operativamente, balances de entrega y actas de liquidación."
+        >
+          <CheckCircle2 className="w-4 h-4 mr-1.5 text-emerald-600" />
+          Rutas Liquidadas
+        </h3>
+
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            id="liqSearchInput"
+            type="search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar ID, piloto, camión…"
+            aria-label="Buscar por ID, Piloto, Camión"
+            className="w-full min-h-[40px] pl-8 pr-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+          />
         </div>
+
+        <select
+          id="liqAgencyFilter"
+          value={selectedAgency}
+          onChange={(e) => setSelectedAgency(e.target.value)}
+          aria-label="Filtrar por Agencia"
+          className={`min-h-[40px] px-2 text-xs border rounded-lg font-semibold cursor-pointer outline-none ${
+            selectedAgency !== 'TODAS' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-300'
+          }`}
+        >
+          <option value="TODAS">Todas las agencias</option>
+          {allAgencies.map((ag) => (
+            <option key={ag} value={ag}>
+              {ag}
+            </option>
+          ))}
+        </select>
+
+        <div
+          className="flex items-center gap-1 text-xs text-slate-600 bg-slate-50 border border-slate-300 rounded-lg px-2 min-h-[40px]"
+          title="Filtra por fecha de liquidación (cierre), no por fecha de la ruta"
+        >
+          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+          <span className="font-semibold whitespace-nowrap">Liquidación</span>
+          <input
+            id="liqDateFrom"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            aria-label="Fecha Liquidación Desde"
+            className="bg-transparent outline-none text-xs py-1 w-[120px]"
+          />
+          <span className="text-slate-400">a</span>
+          <input
+            id="liqDateTo"
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            aria-label="Fecha Liquidación Hasta"
+            className="bg-transparent outline-none text-xs py-1 w-[120px]"
+          />
+        </div>
+
+        {(searchTerm || selectedAgency !== 'TODAS' || dateFrom || dateTo) && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setSelectedAgency('TODAS');
+              setDateFrom('');
+              setDateTo('');
+            }}
+            className="min-h-[40px] px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-300 rounded-lg bg-white cursor-pointer"
+            title="Quitar todos los filtros"
+          >
+            Limpiar
+          </button>
+        )}
+
         {/* Exportación única de esta sección: descarga lo que se ve (respeta los filtros). */}
-        <Button variant="secondary" icon={ACTION_ICONS.exportar} onClick={handleExport} className="text-emerald-700">
+        <Button variant="secondary" size="sm" icon={ACTION_ICONS.exportar} onClick={handleExport} className="text-emerald-700 ml-auto">
           Exportar vista ({filteredList.length})
         </Button>
       </div>
+
+      {historyLimitedDays && onLoadFullHistory && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-sky-900">
+          <span>
+            Mostrando liquidaciones de los <strong>últimos {historyLimitedDays} días</strong>.
+          </span>
+          <Button variant="secondary" size="sm" onClick={onLoadFullHistory} loading={isLoadingFullHistory} loadingText="Cargando…" className="text-sky-800 border-sky-300">
+            Cargar historial completo
+          </Button>
+        </div>
+      )}
 
       {/* Los indicadores (Rutas, Entregadas, Devueltas, Efectividad, Caja
           Abierta) ahora se muestran arriba, en la barra de indicadores de la app,
@@ -277,84 +359,6 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
 
       </>
       )}
-
-      {historyLimitedDays && onLoadFullHistory && (
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 rounded-xl border border-sky-200 bg-sky-50 text-sky-900 text-xs">
-          <span>
-            Se muestran las liquidaciones de los <strong>últimos {historyLimitedDays} días</strong> para que la app abra
-            más rápido.
-          </span>
-          <Button variant="primary" size="sm" onClick={onLoadFullHistory} loading={isLoadingFullHistory} loadingText="Cargando…">
-            Cargar historial completo
-          </Button>
-        </div>
-      )}
-
-      {/* Filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
-        <div>
-          <label htmlFor="liqSearchInput" className="block font-semibold text-slate-600 mb-1 flex items-center">
-            <Search className="w-3.5 h-3.5 mr-1 text-slate-400" />
-            Buscar por ID, Piloto, Camión:
-          </label>
-          <input
-            id="liqSearchInput"
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Ej: 102201, C-102, Carlos..."
-            className="w-full min-h-[44px] p-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="liqAgencyFilter" className="block font-semibold text-slate-600 mb-1 flex items-center">
-            <Filter className="w-3.5 h-3.5 mr-1 text-slate-400" />
-            Filtrar por Agencia:
-          </label>
-          <select
-            id="liqAgencyFilter"
-            value={selectedAgency}
-            onChange={(e) => setSelectedAgency(e.target.value)}
-            className="w-full min-h-[44px] p-2 bg-white border border-slate-300 rounded-lg font-medium cursor-pointer outline-none"
-          >
-            <option value="TODAS">-- Todas las Agencias --</option>
-            {allAgencies.map((ag) => (
-              <option key={ag} value={ag}>
-                {ag}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="liqDateFrom" className="block font-semibold text-slate-600 mb-1 flex items-center" title="Filtra por fecha de liquidación (cierre), no por fecha de la ruta">
-            <Calendar className="w-3.5 h-3.5 mr-1 text-slate-400" />
-            Fecha Liquidación Desde:
-          </label>
-          <input
-            id="liqDateFrom"
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="w-full min-h-[44px] p-2 bg-white border border-slate-300 rounded-lg outline-none"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="liqDateTo" className="block font-semibold text-slate-600 mb-1 flex items-center" title="Filtra por fecha de liquidación (cierre), no por fecha de la ruta">
-            <Calendar className="w-3.5 h-3.5 mr-1 text-slate-400" />
-            Fecha Liquidación Hasta:
-          </label>
-          <input
-            id="liqDateTo"
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="w-full min-h-[44px] p-2 bg-white border border-slate-300 rounded-lg outline-none"
-          />
-        </div>
-      </div>
 
       {/* Table */}
       {/* Corrección (causa real del encabezado "trabado"): este contenedor tiene
