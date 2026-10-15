@@ -27,6 +27,7 @@ import { RouteRowActions } from './RouteRowActions';
 import { Button } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 import { getRouteKey, isSameSplitGroup } from '../utils/routeKey';
+import { toNum } from '../utils/number';
 
 interface RoutesTableProps {
   // Rediseño tablet: el tablero ocupa toda la altura disponible de la pantalla
@@ -172,8 +173,8 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
           comparison = getRouteElapsedHours(a) - getRouteElapsedHours(b);
           break;
         case 'carga': {
-          const cA = Number(a.cajasFisicas) || 0;
-          const cB = Number(b.cajasFisicas) || 0;
+          const cA = toNum(a.cajasFisicas) || 0;
+          const cB = toNum(b.cajasFisicas) || 0;
           if (cA !== cB) {
             comparison = cA - cB;
           } else {
@@ -315,7 +316,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   // marcadas con la casilla (útil para armar la carga de un camión con varias rutas).
   const selectedKeySet = new Set(selectedRouteIds);
   const selectedRoutesForTotals = allRoutes.filter((r) => selectedKeySet.has(getRouteKey(r)));
-  const subtotalCajas = selectedRoutesForTotals.reduce((acc, r) => acc + (parseFloat(String(r.cajasFisicas || 0)) || 0), 0);
+  const subtotalCajas = selectedRoutesForTotals.reduce((acc, r) => acc + (toNum(r.cajasFisicas) || 0), 0);
   const subtotalParadas = selectedRoutesForTotals.reduce((acc, r) => acc + (parseInt(String(r.paradas || 0)) || 0), 0);
 
   return (
