@@ -34,6 +34,8 @@ export interface RowActionHandlers {
   onLiquidate: () => void;
   onSplit: () => void;
   onRevertSplit: () => void;
+  // Repartir cajas entre los viajes de una ruta partida de un solo cliente.
+  onRepartirCajas?: () => void;
   onMoveToFloor?: () => void;
   // Ruta Bolsón: sacarla del bolsón (vuelve a quedar por asignar).
   onRemoveBolson?: () => void;
@@ -61,6 +63,10 @@ export function getRowActions(
     ? { key: 'piso', label: 'A Piso', hint: 'Guardar en bodega para mañana', icon: ACTION_ICONS.aPiso, tone: 'warning', run: h.onMoveToFloor }
     : null;
   const split: RowAction = { key: 'partir', label: 'Partir en viajes', hint: 'Dividir clientes y carga', icon: ACTION_ICONS.partir, tone: 'purple', run: h.onSplit };
+  const repartir: RowAction | null =
+    h.onRepartirCajas && route.isSplitRoute && (route.clientesRuta?.length || 0) <= 1
+      ? { key: 'repartirCajas', label: 'Repartir cajas', hint: 'Cambiar las cajas de cada viaje', icon: ACTION_ICONS.partir, tone: 'purple', run: h.onRepartirCajas }
+      : null;
   const revert: RowAction = { key: 'revertir', label: 'Revertir partición', hint: 'Volver a la ruta original', icon: ACTION_ICONS.revertir, tone: 'danger', run: h.onRevertSplit };
 
   switch (route.estado) {
@@ -84,11 +90,13 @@ export function getRowActions(
         if (aPiso) more.push(aPiso);
       }
       if (canSplit) more.push(split);
+      if (repartir) more.push(repartir);
       if (route.isSplitRoute) more.push(revert);
       break;
     case 'En Tránsito':
       primary = { key: 'liquidar', label: 'Liquidar', hint: 'Registrar entrega y cierre', icon: ACTION_ICONS.liquidar, tone: 'success', run: h.onLiquidate };
       more.push({ key: 'reasignar', label: 'Modificar / Reasignar', hint: 'Cambiar camión o tripulación', icon: ACTION_ICONS.reasignar, tone: 'primary', run: h.onAssign });
+      if (repartir) more.push(repartir);
       if (aPiso) more.push(aPiso);
       break;
     case 'Abierta':
