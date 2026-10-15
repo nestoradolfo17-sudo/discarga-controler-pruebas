@@ -36,6 +36,7 @@ import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { generateDailySummaryPdf } from '../../utils/dailySummaryPdf';
 import { toNum } from '../../utils/number';
+import { getRouteKey } from '../../utils/routeKey';
 
 export type DailySummaryMode = 'inicio' | 'fin';
 export type InicioFilter = 'todas' | 'pendientes' | 'transito' | 'en_tiempo' | 'atrasadas' | 'piso' | 'recargas' | 'bolson';
@@ -427,12 +428,15 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   const allCurrentRoutes = useMemo(() => {
 
     const map = new Map<string, Route>();
+    // Clave ID + fecha + agencia: el mismo número de ruta existe en varias
+    // agencias; antes, con solo el ID, una agencia "tapaba" a la otra y el
+    // reporte filtrado por agencia salía incompleto.
     routes.forEach((r) => {
-      if (r.estado !== 'Liquidada' ? activaEnFecha(r) : liquidadaEnFecha(r)) map.set(String(r.id), r);
+      if (r.estado !== 'Liquidada' ? activaEnFecha(r) : liquidadaEnFecha(r)) map.set(getRouteKey(r), r);
     });
     allLiquidatedRoutes.forEach((r) => {
-      if (!map.has(String(r.id)) && liquidadaEnFecha(r)) {
-        map.set(String(r.id), r);
+      if (!map.has(getRouteKey(r)) && liquidadaEnFecha(r)) {
+        map.set(getRouteKey(r), r);
       }
     });
     return Array.from(map.values());
@@ -892,12 +896,18 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
   // Camiones y personal disponibles que NO salieron a ruta hoy, con su motivo (Fin de Asignación)
   const unassignedTrucks = useMemo(
-    () => (trucks || []).filter((t) => Boolean(t.motivoNoAsignado)),
-    [trucks]
+    () =>
+      (trucks || []).filter(
+        (t) => Boolean(t.motivoNoAsignado) && (filterAgency === 'TODAS' || t.agencia === filterAgency)
+      ),
+    [trucks, filterAgency]
   );
   const unassignedStaff = useMemo(
-    () => (staff || []).filter((s) => Boolean(s.motivoNoAsignado)),
-    [staff]
+    () =>
+      (staff || []).filter(
+        (s) => Boolean(s.motivoNoAsignado) && (filterAgency === 'TODAS' || s.agencia === filterAgency)
+      ),
+    [staff, filterAgency]
   );
   const unassignedTrucksByReason = useMemo(() => {
     const map = new Map<string, number>();
