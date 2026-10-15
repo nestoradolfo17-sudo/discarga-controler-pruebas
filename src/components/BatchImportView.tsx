@@ -124,12 +124,20 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
         setWorkbook(wb);
         setSheetNames(wb.SheetNames);
 
-        // Find best sheet (se excluyen las pestañas de detalle de clientes: aunque
-        // también mencionan "ruta", no son la fuente de las rutas en sí).
-        let bestSheetName = wb.SheetNames[0];
-        let bestScore = -1;
+        // Se leen las DOS PRIMERAS hojas del archivo (de izquierda a derecha):
+        // la de rutas ("Resumen N") y la de clientes ("Clientes N"). Arriba de la
+        // vista previa se muestra qué hojas se están leyendo y se pueden cambiar.
+        const primeras = wb.SheetNames.slice(0, 2);
+        const tieneDatos = (n: string) => !!wb.Sheets[n] && !!wb.Sheets[n]['!ref'];
+        const rutasEnPrimeras = primeras.find((n) => tieneDatos(n) && !isClientesSheet(wb, n));
+        const clientesEnPrimeras = primeras.find((n) => tieneDatos(n) && isClientesSheet(wb, n) && n !== rutasEnPrimeras);
 
-        for (const sName of wb.SheetNames) {
+        // Respaldo (si las dos primeras no sirven): la hoja que más se parezca a
+        // una de rutas (se excluyen las de detalle de clientes).
+        let bestSheetName = rutasEnPrimeras || wb.SheetNames[0];
+        let bestScore = rutasEnPrimeras ? Number.POSITIVE_INFINITY : -1;
+
+        for (const sName of rutasEnPrimeras ? [] : wb.SheetNames) {
           if (isClientesSheet(wb, sName)) continue;
           const ws = wb.Sheets[sName];
           if (!ws || !ws['!ref']) continue;
@@ -146,7 +154,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
         // Detecta y preselecciona automáticamente la pestaña de clientes del mismo día.
         const clientesCandidates = detectClientesSheets(wb);
         setClientesSheetNames(clientesCandidates);
-        const autoClientes = autoMatchClientesSheet(bestSheetName, clientesCandidates);
+        const autoClientes = clientesEnPrimeras || autoMatchClientesSheet(bestSheetName, clientesCandidates);
         setSelectedClientesSheet(autoClientes);
         parseAndSetClientes(wb, autoClientes);
       } catch (err) {
@@ -219,8 +227,14 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
     setSelectedSheet(sheetName);
     if (workbook) {
       parseAndSetRoutes(workbook, sheetName);
-      // Re-sincroniza la pestaña de clientes sugerida con el nuevo día de rutas.
-      const autoClientes = autoMatchClientesSheet(sheetName, clientesSheetNames);
+      // Re-sincroniza la pestaña de clientes sugerida con el nuevo día de rutas
+      // (si la hoja elegida es la primera, se usa la segunda como clientes).
+      const idx = workbook.SheetNames.indexOf(sheetName);
+      const siguiente = workbook.SheetNames[idx + 1];
+      const autoClientes =
+        siguiente && isClientesSheet(workbook, siguiente)
+          ? siguiente
+          : autoMatchClientesSheet(sheetName, clientesSheetNames);
       setSelectedClientesSheet(autoClientes);
       parseAndSetClientes(workbook, autoClientes);
     }
@@ -463,6 +477,87 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
         </p>
       </div>
 
+      {/* Hojas del archivo: cuáles se están leyendo (por defecto las dos
+          primeras, de izquierda a derecha) y selector para cambiarlas. */}
+      {workbook && sheetNames.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-slate-500" />
+            <h4 className="font-bold text-xs text-slate-800">Hojas del archivo ({sheetNames.length})</h4>
+            <span className="text-[11px] text-slate-500">de izquierda a derecha, como en Excel</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5" aria-label="Hojas del archivo">
+            {sheetNames.map((n, i) => {
+              const esRutas = n === selectedSheet;
+              const esClientes = n === selectedClientesSheet;
+              return (
+                <span
+                  key={n}
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-semibold ${
+                    esRutas
+                      ? 'bg-emerald-50 border-emerald-400 text-emerald-800'
+                      : esClientes
+                      ? 'bg-blue-50 border-blue-400 text-blue-800'
+                      : 'bg-slate-50 border-slate-200 text-slate-500'
+                  }`}
+                >
+                  <span className="text-[10px] text-slate-400">{i + 1}.</span> {n}
+                  {esRutas && <span className="ml-1 px-1 rounded bg-emerald-600 text-white text-[9px]">RUTAS</span>}
+                  {esClientes && <span className="ml-1 px-1 rounded bg-blue-600 text-white text-[9px]">CLIENTES</span>}
+                </span>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-slate-600">
+            Leyendo rutas de <b className="text-emerald-700">"{selectedSheet}"</b>
+            {selectedClientesSheet ? (
+              <>
+                {' '}y clientes de <b className="text-blue-700">"{selectedClientesSheet}"</b>
+              </>
+            ) : (
+              ' (sin detalle de clientes)'
+            )}
+            . Si no son las correctas, elígelas aquí:
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1 text-xs font-semibold text-emerald-800">
+              Hoja de rutas
+              <select
+                id="sheetSelect"
+                value={selectedSheet}
+                onChange={(e) => handleSheetChange(e.target.value)}
+                className="min-h-[44px] bg-white border-2 border-emerald-300 rounded-lg text-sm px-2 font-medium text-slate-800 cursor-pointer"
+              >
+                {sheetNames.map((name, i) => (
+                  <option key={name} value={name}>
+                    {i + 1}. {name}
+                    {clientesSheetNames.includes(name) ? ' (parece de clientes)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-blue-800">
+              Hoja de clientes (opcional)
+              <select
+                id="clientesSheetSelect"
+                value={selectedClientesSheet}
+                onChange={(e) => handleClientesSheetChange(e.target.value)}
+                className="min-h-[44px] bg-white border-2 border-blue-300 rounded-lg text-sm px-2 font-medium text-slate-800 cursor-pointer"
+              >
+                <option value="">— No importar clientes —</option>
+                {sheetNames
+                  .filter((n) => n !== selectedSheet)
+                  .map((name) => (
+                    <option key={name} value={name}>
+                      {sheetNames.indexOf(name) + 1}. {name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+        </div>
+      )}
+
       {/* Preview table */}
       {previewRoutes.length > 0 && (
         <div className="space-y-3 pt-2">
@@ -478,29 +573,6 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
             </div>
 
             <div className="flex items-center space-x-2">
-              {sheetNames.filter((n) => !clientesSheetNames.includes(n)).length > 1 && (
-                <div className="flex items-center space-x-1.5 text-xs bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-                  <Layers className="w-3.5 h-3.5 text-slate-500" />
-                  <label htmlFor="sheetSelect" className="text-slate-600 font-semibold">
-                    Pestaña:
-                  </label>
-                  <select
-                    id="sheetSelect"
-                    value={selectedSheet}
-                    onChange={(e) => handleSheetChange(e.target.value)}
-                    className="min-h-[36px] bg-white border border-slate-300 rounded-lg text-xs px-1.5 font-medium cursor-pointer"
-                  >
-                    {sheetNames
-                      .filter((n) => !clientesSheetNames.includes(n))
-                      .map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              )}
-
               <button
                 onClick={handleCancelPreview}
                 type="button"
@@ -523,26 +595,11 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
             </div>
           </div>
 
-          {clientesSheetNames.length > 0 && (
+          {selectedClientesSheet && (
             <div className="bg-blue-50/60 border border-blue-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
               <div className="flex items-center gap-1.5 text-xs shrink-0">
                 <Users className="w-3.5 h-3.5 text-blue-600" />
-                <label htmlFor="clientesSheetSelect" className="text-blue-800 font-semibold">
-                  Detalle de Clientes (opcional):
-                </label>
-                <select
-                  id="clientesSheetSelect"
-                  value={selectedClientesSheet}
-                  onChange={(e) => handleClientesSheetChange(e.target.value)}
-                  className="min-h-[40px] bg-white border border-blue-300 rounded-lg text-xs px-2 font-medium cursor-pointer"
-                >
-                  <option value="">— No importar clientes —</option>
-                  {clientesSheetNames.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+                <span className="text-blue-800 font-semibold">Detalle de clientes: "{selectedClientesSheet}"</span>
               </div>
 
               {selectedClientesSheet && clientesSummary && (
