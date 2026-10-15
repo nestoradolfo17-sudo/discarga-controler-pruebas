@@ -96,6 +96,7 @@ import { LoginScreen } from './components/auth/LoginScreen';
 import { UsersView } from './components/UsersView';
 import { DashboardView } from './components/DashboardView';
 import { toNum } from './utils/number';
+import { viajesQueRecibenCajas, resumenGrupo, repartirParejo } from './utils/splitGroup';
 
 const STORAGE_KEY_ROUTES = 'rutamaster_routes_v6';
 const STORAGE_KEY_TRUCKS = 'rutamaster_trucks_v6';
@@ -2068,6 +2069,25 @@ export default function App() {
     );
   }, [routes, isRemoteReady]);
 
+  // Control de cajas de cada ruta partida (total, entregado, devuelto y
+  // pendiente de entregar), para mostrarlo en el Tablero junto a cada viaje.
+  const resumenGruposSplit = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof resumenGrupo>>();
+    const todas = [...historicalRoutes, ...routes];
+    const splitTodas = todas.filter((r) => r.isSplitRoute);
+    routes.forEach((r) => {
+      if (!r.isSplitRoute) return;
+      const k = `${r.parentRouteId || String(r.id).split('.')[0]}|${r.fecha}|${r.agencia}`;
+      if (!map.has(k)) map.set(k, resumenGrupo(splitTodas, r));
+    });
+    return map;
+  }, [routes, historicalRoutes]);
+  const resumenGrupoDe = useCallback(
+    (r: Route) =>
+      r.isSplitRoute ? resumenGruposSplit.get(`${r.parentRouteId || String(r.id).split('.')[0]}|${r.fecha}|${r.agencia}`) || null : null,
+    [resumenGruposSplit]
+  );
+
   // Viajes del mismo grupo que todavía se pueden ajustar (no liquidados ni
   // abiertos) y que llevan a lo sumo un cliente.
   const repartirCajasTrips = (r: Route | null): Route[] => {
@@ -2933,10 +2953,55 @@ export default function App() {
       // Clientes marcados puntualmente como pendientes (Ruta Abierta / Caja
       // Abierta), cada uno con su motivo — ver ClientePendiente en types.ts.
       clientesPendientes?: ClientePendiente[];
+      // Ruta partida: pasar las cajas devueltas a los viajes pendientes del grupo.
+      transferirDevueltas?: boolean;
     }
   ) => {
     const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
     if (!targetRoute) return;
+
+    // Ruta partida (Cierre Definitivo): las cajas devueltas de este viaje pasan
+    // a los viajes pendientes del grupo, repartidas parejo. Este viaje queda con
+    // lo que entregó (no cuenta como devolución) y cada viaje que recibe deja
+    // constancia en su historial de reparto.
+    const receptores =
+      data.transferirDevueltas && !data.isRutaAbierta && data.cajasDevueltas > 0
+        ? viajesQueRecibenCajas(routes, targetRoute)
+        : [];
+    const cajasTransferidas = receptores.length > 0 ? data.cajasDevueltas : 0;
+    const motivoTransferencia = data.motivoDevolucion || '';
+    if (cajasTransferidas > 0) {
+      const partes = repartirParejo(cajasTransferidas, receptores.length);
+      const porKey = new Map(receptores.map((v, i) => [getRouteKey(v), partes[i]]));
+      const fechaT = formatDateTimeToGuatemala(new Date());
+      const porT = currentUser?.nombre || currentUser?.username || '';
+      setRoutes((prev) =>
+        prev.map((r) => {
+          const extra = porKey.get(getRouteKey(r));
+          if (extra === undefined) return r;
+          const antes = toNum(r.cajasFisicas);
+          const nuevo = Math.round((antes + extra) * 1000) / 1000;
+          return {
+            ...r,
+            cajasFisicas: nuevo,
+            ...(r.clientesRuta && r.clientesRuta.length === 1 ? { clientesRuta: [{ ...r.clientesRuta[0], cajas: nuevo }] } : {}),
+            historialRepartoCajas: [
+              ...(r.historialRepartoCajas || []),
+              { fecha: fechaT, de: antes, a: nuevo, por: porT, motivo: `Devolución del viaje ${targetRoute.id}` },
+            ],
+          };
+        })
+      );
+      data = {
+        ...data,
+        cajasDevueltas: 0,
+        motivoDevolucion: data.guiasRechazadas > 0 ? data.motivoDevolucion : '',
+      };
+      showToast(
+        `${cajasTransferidas} cajas devueltas del viaje ${targetRoute.id} pasaron a ${receptores.map((v) => v.id).join(', ')}.`,
+        'info'
+      );
+    }
 
     // Free Truck and Staff, considerando si otras rutas activas siguen utilizando la unidad o tripulación (Optimización / Carga compartida)
     const otherActiveRoutes = routes.filter(
@@ -3077,7 +3142,25 @@ export default function App() {
       estado: 'Liquidada',
       fechaLiquidacion: fechaHoraLiquidacion,
       motivoDevolucion: cleanMotivo,
+      // Si sus cajas devueltas pasaron a otros viajes, este viaje queda con lo
+      // que realmente entregó (lo cargado = entregadas + liquidacion.cajasTransferidas);
+      // así el total del grupo no se cuenta doble en reportes y Dashboard.
+      ...(cajasTransferidas > 0
+        ? {
+            cajasFisicas: data.cajasEntregadas,
+            ...(targetRoute.clientesRuta && targetRoute.clientesRuta.length === 1
+              ? { clientesRuta: [{ ...targetRoute.clientesRuta[0], cajas: data.cajasEntregadas }] }
+              : {}),
+          }
+        : {}),
       liquidacion: {
+        ...(cajasTransferidas > 0
+          ? {
+              cajasTransferidas,
+              transferidasA: receptores.map((v) => String(v.id)),
+              motivoTransferencia: motivoTransferencia || undefined,
+            }
+          : {}),
         guiasExitosas: data.guiasExitosas,
         guiasRechazadas: data.guiasRechazadas,
         cajasEntregadas: data.cajasEntregadas,
@@ -4259,6 +4342,7 @@ export default function App() {
               const r = routes.find((item) => routeMatchesKey(item, id, fecha));
               if (r) setRevertSplitTarget(r);
             }}
+            resumenGrupoDe={resumenGrupoDe}
             onOpenRepartirCajas={(id, fecha) => {
               const r = routes.find((item) => routeMatchesKey(item, id, fecha));
               if (r) openRepartirCajas(r);
@@ -4486,6 +4570,8 @@ export default function App() {
         route={liquidateTarget}
         defaultAuditor={currentUser?.nombre || currentUser?.username || ''}
         onConfirmLiquidation={handleConfirmLiquidation}
+        viajesPendientesGrupo={liquidateTarget ? viajesQueRecibenCajas(routes, liquidateTarget) : []}
+        resumenGrupo={liquidateTarget ? resumenGrupo([...historicalRoutes, ...routes], liquidateTarget) : null}
       />
 
       <AbonosCajaModal
