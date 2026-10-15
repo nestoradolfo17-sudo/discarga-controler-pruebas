@@ -36,6 +36,7 @@ import { exportRoutesToExcel, exportRutasPrioridadesToExcel } from './utils/exce
 import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate, parseFlexibleDate } from './utils/date';
 import { getRouteKey, routeMatchesKey, isSameSplitGroup } from './utils/routeKey';
 import { esJornadaFutura } from './utils/jornada';
+import { isDemoMode } from './services/demoMode';
 import {
   getSessionUserId,
   touchLastLogin,
@@ -3869,7 +3870,12 @@ export default function App() {
   }
 
   if (!currentUser) {
-    return <LoginScreen onLogin={handleLogin} notice={loginNotice} />;
+    return (
+      <LoginScreen
+        onLogin={handleLogin}
+        notice={loginNotice || (isDemoMode ? 'VERSIÓN DEMO: muestra los datos reales, pero nada de lo que hagas aquí se guarda.' : undefined)}
+      />
+    );
   }
 
   if (isSupabaseConfigured && !isRemoteReady) {
@@ -3899,6 +3905,13 @@ export default function App() {
 
   return (
     <div className="bg-gradient-to-b from-slate-100 to-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
+      {/* Versión DEMO (rama "demo" en Netlify: demo--...netlify.app). Muestra
+          los datos reales pero no guarda nada (ver services/demoMode.ts). */}
+      {isDemoMode && (
+        <div className="sticky top-0 z-[60] bg-amber-400 text-amber-950 text-center text-xs sm:text-sm font-bold py-1.5 px-4 shadow">
+          VERSIÓN DEMO · Práctica y presentaciones — nada de lo que hagas aquí se guarda en los datos reales. Recarga la página para volver a los datos actuales.
+        </div>
+      )}
       <Navbar
         agencies={boardAgencies}
         selectedAgency={selectedAgency}
