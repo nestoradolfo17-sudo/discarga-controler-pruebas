@@ -15,6 +15,7 @@ import { jornadaDeRuta } from './jornada';
 import { AGENCIA_LOCATION_OPTIONS } from '../data/agencies';
 import { ALL_MOTIVO_DEVOLUCION_REASONS, MOTIVO_REVISITA } from '../data/motivosDevolucion';
 import { CAJA_ABIERTA_OPTIONS } from '../data/motivosCajaAbierta';
+import { toNum } from './number';
 
 // --- Plan de contingencia: carga de los formatos de Excel ---
 // Cuando la app no estuvo disponible, la operación registra en papel/Excel
@@ -193,8 +194,10 @@ export function cellToHora(v: unknown): string {
 const cellToNum = (v: unknown): number | null => {
   if (v === null || v === undefined || String(v).trim() === '') return null;
   if (typeof v === 'number') return isFinite(v) ? v : NaN;
-  const n = Number(String(v).replace(/[Qq\s,]/g, (c) => (c === ',' ? '.' : '')).trim());
-  return isFinite(n) ? n : NaN;
+  // Acepta "8,561.000" (coma de miles), "8,5" (coma decimal) y "Q 1,000.50".
+  const t = String(v).replace(/[Qq\s]/g, '');
+  if (!/^-?[\d.,]+$/.test(t)) return NaN;
+  return toNum(t);
 };
 const cellToTxt = (v: unknown): string => (v === null || v === undefined ? '' : String(v).trim());
 const cellToId = (v: unknown): string => {
