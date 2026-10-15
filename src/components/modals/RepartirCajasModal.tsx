@@ -4,6 +4,7 @@ import { getRouteKey } from '../../utils/routeKey';
 import { Button, IconButton } from '../ui/Button';
 import { ModalFooter } from '../ui/ModalFooter';
 import { ACTION_ICONS } from '../ui/actionIcons';
+import { toNum } from '../../utils/number';
 
 // --- Repartir cajas entre los viajes de una ruta partida ---
 // Para rutas de UN solo cliente que se partieron en varios viajes: aun ya
@@ -32,7 +33,7 @@ export const RepartirCajasModal: React.FC<RepartirCajasModalProps> = ({ isOpen, 
   useEffect(() => {
     if (isOpen) {
       const v: Record<string, string> = {};
-      ordered.forEach((t) => (v[getRouteKey(t)] = String(r3(Number(t.cajasFisicas) || 0))));
+      ordered.forEach((t) => (v[getRouteKey(t)] = String(r3(toNum(t.cajasFisicas) || 0))));
       setValues(v);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -40,7 +41,7 @@ export const RepartirCajasModal: React.FC<RepartirCajasModalProps> = ({ isOpen, 
 
   if (!isOpen || ordered.length === 0) return null;
 
-  const total = r3(ordered.reduce((acc, t) => acc + (Number(t.cajasFisicas) || 0), 0));
+  const total = r3(ordered.reduce((acc, t) => acc + (toNum(t.cajasFisicas) || 0), 0));
   const nums = ordered.map((t) => {
     const n = parseFloat(values[getRouteKey(t)] ?? '');
     return Number.isFinite(n) ? n : NaN;
@@ -48,7 +49,7 @@ export const RepartirCajasModal: React.FC<RepartirCajasModalProps> = ({ isOpen, 
   const suma = r3(nums.reduce((acc, n) => acc + (Number.isFinite(n) ? n : 0), 0));
   const invalidos = ordered.filter((_, i) => !(nums[i] > 0)).map((t) => t.id);
   const descuadre = Math.abs(suma - total) > 0.01;
-  const sinCambios = ordered.every((t, i) => Math.abs((Number(t.cajasFisicas) || 0) - (nums[i] || 0)) < 0.0005);
+  const sinCambios = ordered.every((t, i) => Math.abs((toNum(t.cajasFisicas) || 0) - (nums[i] || 0)) < 0.0005);
   const bloqueado = invalidos.length > 0 || descuadre || sinCambios;
   const cliente = ordered[0]?.clientesRuta?.[0];
 
@@ -86,7 +87,7 @@ export const RepartirCajasModal: React.FC<RepartirCajasModalProps> = ({ isOpen, 
           <div className="space-y-2">
             {ordered.map((t, i) => {
               const key = getRouteKey(t);
-              const antes = r3(Number(t.cajasFisicas) || 0);
+              const antes = r3(toNum(t.cajasFisicas) || 0);
               const ahora = nums[i];
               return (
                 <div key={key} className="bg-slate-50 p-3 rounded-xl border border-slate-200 grid grid-cols-[1fr_auto] gap-3 items-center">
