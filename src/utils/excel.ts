@@ -38,6 +38,7 @@ const sheetUtils = {
 import { Route, Staff, StaffPuesto, ResourceStatus, StaffEstatus, Truck, RouteClientEntry } from '../types';
 import { formatDateToSpanish, formatDateToGuatemala, formatDateTimeToGuatemala, getGuatemalaDateForInput, parseFlexibleDate } from './date';
 import { AGENCIA_LOCATION_OPTIONS } from '../data/agencies';
+import { toNum, limpiarNumeroTexto } from './number';
 
 // Corrección: las cargas masivas de Excel (Personal, Camiones, Rutas) descartaban
 // filas silenciosamente cuando les faltaba un dato clave (nombre, placa, ID de
@@ -471,8 +472,9 @@ export function parseRoutesFromSheet(ws: XLSXTypes.WorkSheet, dateOverride?: str
       ? formatDateToGuatemala(rawDate)
       : dateOverride || formatDateToGuatemala(new Date());
 
-    const cajas12Val = getVal(colMap.cajas12Oz, 'general') || '0';
-    let cajasFisicasVal = getVal(colMap.cajasFisicas, 'general');
+    // Sin separador de miles: "8,561.000" se guarda como "8561.000" (ver utils/number.ts).
+    const cajas12Val = limpiarNumeroTexto(getVal(colMap.cajas12Oz, 'general')) || '0';
+    let cajasFisicasVal = limpiarNumeroTexto(getVal(colMap.cajasFisicas, 'general'));
     if (!cajasFisicasVal && cajas12Val && cajas12Val !== '0') {
       cajasFisicasVal = cajas12Val;
     }
@@ -490,12 +492,12 @@ export function parseRoutesFromSheet(ws: XLSXTypes.WorkSheet, dateOverride?: str
       servicio: getVal(colMap.servicio, 'time') || '00:00',
       descanso: getVal(colMap.descanso, 'time') || '00:00',
       total: getVal(colMap.total, 'time') || '00:00',
-      distancia: getVal(colMap.distancia, 'general') || '0',
+      distancia: limpiarNumeroTexto(getVal(colMap.distancia, 'general')) || '0',
       paradas: parseInt(String(getVal(colMap.paradas, 'general')).replace(/[^0-9]/g, '')) || 0,
       equipoFrio: parseInt(String(getVal(colMap.equipoFrio, 'general')).replace(/[^0-9]/g, '')) || 0,
       capacidadPorc: getVal(colMap.capacidad, 'percent') || '0 %',
       cajas12Oz: cajas12Val,
-      pesoKg: getVal(colMap.peso, 'general') || '0',
+      pesoKg: limpiarNumeroTexto(getVal(colMap.peso, 'general')) || '0',
       cajasFisicas: cajasFisicasVal || '0',
       estado: 'Pendiente',
       asignacion: null,
@@ -819,14 +821,14 @@ export async function exportRoutesToExcel(routes: Route[], staffList: Staff[], f
       parseInt(String(r.paradas)) || 0,
       liq?.guiasExitosas !== undefined ? liq.guiasExitosas : "-",
       liq?.guiasRechazadas !== undefined ? liq.guiasRechazadas : "-",
-      parseFloat(String(r.cajasFisicas)) || 0,
+      toNum(r.cajasFisicas) || 0,
       liq?.cajasEntregadas !== undefined ? liq.cajasEntregadas : "-",
       liq?.cajasDevueltas !== undefined ? liq.cajasDevueltas : "-",
       (parseFloat(String(liq?.cajasDevueltas || 0)) === 0 && (liq?.guiasRechazadas === 0 || liq?.guiasRechazadas === undefined))
         ? "-"
         : (liq?.motivoDevolucion || r.motivoDevolucion || "-"),
-      parseFloat(String(r.cajas12Oz)) || 0,
-      parseFloat(String(r.pesoKg)) || 0,
+      toNum(r.cajas12Oz) || 0,
+      toNum(r.pesoKg) || 0,
       parseInt(String(r.equipoFrio)) || 0,
       liq?.auditor || "-"
     ];
@@ -925,13 +927,13 @@ export async function exportHistoricalToExcel(historicalRoutes: Route[], staffLi
       parseInt(String(r.paradas)) || 0,
       liq?.guiasExitosas !== undefined ? liq.guiasExitosas : "-",
       liq?.guiasRechazadas !== undefined ? liq.guiasRechazadas : "-",
-      parseFloat(String(r.cajasFisicas)) || 0,
+      toNum(r.cajasFisicas) || 0,
       liq?.cajasEntregadas !== undefined ? liq.cajasEntregadas : "-",
       liq?.cajasDevueltas !== undefined ? liq.cajasDevueltas : "-",
       (parseFloat(String(liq?.cajasDevueltas || 0)) === 0 && (liq?.guiasRechazadas === 0 || liq?.guiasRechazadas === undefined))
         ? "-"
         : (liq?.motivoDevolucion || r.motivoDevolucion || "-"),
-      parseFloat(String(r.cajas12Oz)) || 0,
+      toNum(r.cajas12Oz) || 0,
       liq?.auditor || "-"
     ];
   });
