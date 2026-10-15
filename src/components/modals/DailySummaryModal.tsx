@@ -360,12 +360,13 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   // la vez para no desplazarse por todo el reporte. Solo se dibuja la sección
   // abierta; al imprimir se muestran todas (ver handlePrint).
   type SummarySection = 'todo' | 'totales' | 'recursos' | 'detalle' | 'segmento' | 'liqsegmot';
-  const [section, setSection] = useState<SummarySection>('detalle');
+  // Inicio de Día ya no muestra el detalle ruta por ruta: abre en "Por segmento".
+  const [section, setSection] = useState<SummarySection>('segmento');
   const showSection = (k: SummarySection) => section === 'todo' || section === k;
   useEffect(() => {
     // Fin de Día (cierre): solo "Liquidación por segmento y motivo", "Totales" y "Todo".
     if (mode === 'fin' && (section === 'recursos' || section === 'detalle' || section === 'segmento')) setSection('liqsegmot');
-    if (mode === 'inicio' && section === 'liqsegmot') setSection('detalle');
+    if (mode === 'inicio' && (section === 'liqsegmot' || section === 'detalle')) setSection('segmento');
   }, [mode, section]);
   const [inicioFilter, setInicioFilter] = useState<InicioFilter>('todas');
   const [finFilter, setFinFilter] = useState<FinFilter>('todas');
@@ -1822,10 +1823,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           >
             {([
               ...(mode === 'inicio'
-                ? [
-                    { k: 'detalle', label: 'Detalle por ruta' },
-                    { k: 'segmento', label: 'Por segmento' },
-                  ]
+                ? [{ k: 'segmento', label: 'Por segmento' }]
                 : [{ k: 'liqsegmot', label: 'Liquidación por segmento y motivo' }]),
               { k: 'totales', label: 'Totales' },
               ...(mode === 'inicio' ? [{ k: 'recursos', label: 'Recursos no asignados' }] : []),
@@ -3206,7 +3204,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           {/* ============================================================== */}
           {/* TABLA DETALLADA DE RUTAS (El resto se mantiene exactamente igual) */}
           {/* ============================================================== */}
-          {showSection('detalle') && (
+          {mode !== 'inicio' && showSection('detalle') && (
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden print:border print:border-slate-400 print:shadow-none print:rounded-lg">
             <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 print:bg-slate-100 print:text-slate-900">
               <div className="flex items-center space-x-2">
