@@ -1,4 +1,4 @@
-// --- Versión DEMO (presentaciones, prácticas y capacitación) ---
+// --- Versión DEMO (presentaciones, prácticas y capacitación) · rama "demo" ---
 //
 // La versión DEMO se publica desde la rama "demo" de GitHub y Netlify la sirve
 // en https://demo--discargacontroler.netlify.app. Muestra los datos reales (lee
