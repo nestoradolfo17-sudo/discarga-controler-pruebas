@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
+import { isDemoMode, demoFetch } from './demoMode';
 import type { AppUser, TablePermissions } from '../types';
 
 // --- Inicio de sesión y gestión de usuarios con Supabase Auth ---
@@ -123,6 +124,7 @@ export async function verifyAdminCredentials(
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
   const temp = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'dc-verificacion-admin' },
+    ...(isDemoMode ? { global: { fetch: demoFetch } } : {}),
   });
   try {
     const { data, error } = await temp.auth.signInWithPassword({ email: usernameToEmail(username), password });
@@ -199,6 +201,7 @@ export function subscribeToProfiles(onChange: (updater: (prev: AppUser[]) => App
 
 async function callAdmin<T = any>(body: Record<string, unknown>): Promise<T> {
   if (!supabase) throw new Error('La base de datos no está configurada.');
+  if (isDemoMode) throw new Error('Versión DEMO: aquí no se crean ni modifican usuarios reales.');
   const { data, error } = await supabase.functions.invoke('admin-users', { body });
   if (error) {
     // La función devuelve { error: "mensaje" }; intentar mostrar ese mensaje.
@@ -260,6 +263,7 @@ export async function adminUpdateProfile(
   if (updates.agencyAccess !== undefined) row.agency_access = updates.agencyAccess;
   if (updates.activo !== undefined) row.activo = updates.activo;
   if (Object.keys(row).length === 0) return;
+  if (isDemoMode) throw new Error('Versión DEMO: aquí no se modifican usuarios reales.');
   const { error } = await supabase.from('app_users').update(row).eq('id', userId);
   if (error) throw new Error(error.message);
 }
