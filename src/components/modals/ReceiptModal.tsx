@@ -5,6 +5,7 @@ import { getRouteAssignmentType } from '../../utils/excel';
 import { X, Printer } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
+import { toNum } from '../../utils/number';
 
 interface ReceiptModalProps {
   isOpen: boolean;
@@ -159,7 +160,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 0
               );
               const sumCajasSalida = siblings.reduce(
-                (acc, r) => acc + (parseFloat(String(r.cajasFisicas)) || 0),
+                (acc, r) => acc + (toNum(r.cajasFisicas) || 0),
                 0
               );
               const sumCajasEntregadas = siblings.reduce(
@@ -321,7 +322,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             (() => {
               const liq = route.liquidacion || {
                 cajasDevueltas: 0,
-                cajasEntregadas: route.cajasFisicas,
+                cajasEntregadas: toNum(route.cajasFisicas),
                 guiasExitosas: route.paradas,
                 guiasRechazadas: 0,
                 auditor: 'Auditor de Agencia',
@@ -487,7 +488,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-slate-600 font-sans">Cajas Físicas Salida:</td>
                           <td className="py-1 font-bold text-right text-slate-800">
-                            {parseFloat(String(route.cajasFisicas || 0)).toFixed(3)}
+                            {toNum(route.cajasFisicas).toFixed(3)}
                           </td>
                         </tr>
                         <tr className="border-b border-slate-100">
