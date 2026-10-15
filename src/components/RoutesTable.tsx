@@ -28,6 +28,7 @@ import { Button } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 import { getRouteKey, isSameSplitGroup } from '../utils/routeKey';
 import { toNum } from '../utils/number';
+import type { ResumenGrupo } from '../utils/splitGroup';
 
 interface RoutesTableProps {
   // Rediseño tablet: el tablero ocupa toda la altura disponible de la pantalla
@@ -46,6 +47,8 @@ interface RoutesTableProps {
   onOpenRevertSplitModal: (routeId: string, fecha: string) => void;
   // Repartir cajas entre viajes de una ruta partida (un solo cliente).
   onOpenRepartirCajas?: (routeId: string, fecha: string) => void;
+  // Control de cajas del grupo de una ruta partida (pendiente de entregar).
+  resumenGrupoDe?: (r: Route) => ResumenGrupo | null;
   onViewSettlementReceipt: (routeId: string, fecha: string) => void;
   onViewConsolidatedReceipt: (parentRouteId: string, ref?: Route) => void;
   onOpenNewRouteModal: () => void;
@@ -88,6 +91,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   onOpenSplitRouteModal,
   onOpenRevertSplitModal,
   onOpenRepartirCajas,
+  resumenGrupoDe,
   onViewSettlementReceipt,
   onViewConsolidatedReceipt,
   onOpenNewRouteModal,
@@ -577,6 +581,19 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                       <div className="text-[11px] md:text-xs font-mono text-slate-700 whitespace-nowrap">
                         Cajas: <b className="text-blue-700 font-bold">{route.cajasFisicas || 0}</b>
                       </div>
+                      {(() => {
+                        const g = resumenGrupoDe ? resumenGrupoDe(route) : null;
+                        if (!g) return null;
+                        const f = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 1 });
+                        return (
+                          <div
+                            className="text-[10px] font-semibold text-purple-800 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 whitespace-nowrap"
+                            title={`Ruta ${g.padre}: total ${f(g.total)} cajas · entregadas ${f(g.entregado)} · devueltas ${f(g.devuelto)} · pendientes de entregar ${f(g.pendiente)} en ${g.viajesPendientes} viaje(s)`}
+                          >
+                            Grupo: pend. {f(g.pendiente)} de {f(g.total)}
+                          </div>
+                        );
+                      })()}
                       <div className="text-[10px] md:text-[11px] font-mono text-slate-500 whitespace-nowrap">
                         12 Oz: <b className="text-slate-700 font-bold">{route.cajas12Oz || 0}</b>
                       </div>
