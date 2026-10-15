@@ -14,6 +14,10 @@ interface SplitRouteModalProps {
   onConfirmSplit: (originalRoute: Route, childRoutes: Route[]) => void;
 }
 
+// Máximo de viajes en que se puede partir una ruta (lista desplegable 2..30).
+const MAX_VIAJES = 30;
+const OPCIONES_VIAJES = Array.from({ length: MAX_VIAJES - 1 }, (_, i) => i + 2);
+
 interface TripSplitInput {
   tripNumber: number;
   paradas: number;
@@ -39,9 +43,11 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
   // Reparte los clientes en orden (secuencia del archivo) en partes iguales.
   const distributeClients = (tripsCount: number, currentRoute: Route) => {
     const list = currentRoute.clientesRuta || [];
-    const per = Math.ceil(list.length / tripsCount) || 1;
+    // Reparto parejo: con 40 clientes y 30 viajes quedan viajes de 1 y 2
+    // clientes (antes, redondeando hacia arriba, los últimos viajes quedaban vacíos).
+    const n = list.length || 1;
     const map = new Map<string, number>();
-    list.forEach((c, i) => map.set(c.codigo, Math.min(tripsCount, Math.floor(i / per) + 1)));
+    list.forEach((c, i) => map.set(c.codigo, Math.min(tripsCount, Math.floor((i * tripsCount) / n) + 1)));
     setClientTrip(map);
   };
 
@@ -88,22 +94,22 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
 
   if (!isOpen || !route) return null;
 
-  const clientes = route.clientesRuta || [];
+  const totalParadasRuta = parseInt(String(route.paradas)) || 0;
+  // Ruta de UN solo cliente (o de una sola parada sin lista de clientes): no se
+  // reparten clientes sino las CAJAS. Cada viaje visita al mismo cliente
+  // (1 parada) y lleva la cantidad de cajas que se indique.
+  const clientesRaw = route.clientesRuta || [];
+  const singleClient = clientesRaw.length === 1 || (clientesRaw.length === 0 && totalParadasRuta <= 1);
+  const clientes = singleClient ? [] : clientesRaw;
   const hasClients = clientes.length > 0;
 
   const handleNumTripsChange = (newCount: number) => {
-    const clamped = Math.min(Math.max(newCount, 2), 6);
+    const clamped = Math.min(Math.max(newCount, 2), MAX_VIAJES);
     setNumTrips(clamped);
     recalculateTripInputs(clamped, route);
-    if (hasClients) {
-      // Se conserva lo ya asignado; los clientes de viajes que dejan de existir
-      // pasan al último viaje.
-      setClientTrip((prev) => {
-        const next = new Map<string, number>();
-        prev.forEach((t, k) => next.set(k, Math.min(t, clamped)));
-        return next;
-      });
-    }
+    // Al cambiar la cantidad de viajes, los clientes se vuelven a repartir en
+    // partes iguales (en el orden del archivo); luego se pueden mover a mano.
+    if (hasClients) distributeClients(clamped, route);
   };
 
   const setTripForClient = (codigo: string, trip: number) => {
@@ -125,6 +131,8 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
           cajas: parseFloat(own.reduce((acc, c) => acc + (Number(c.cajas) || 0), 0).toFixed(3)),
         };
       })
+    : singleClient
+    ? tripInputs.map((t) => ({ ...t, paradas: 1 }))
     : tripInputs;
   const emptyTrips = hasClients ? effectiveTrips.filter((t) => t.paradas === 0).map((t) => t.tripNumber) : [];
 
@@ -142,7 +150,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
     // Corrección: antes se podía confirmar la partición aunque la suma de cajas o
     // paradas de los viajes no cuadrara con el total de la ruta original, y ese
     // descuadre quedaba permanente (la ruta original desaparece al confirmar).
-    if (sumParadasMismatch || sumCajasMismatch || emptyTrips.length > 0) {
+    if (hasMismatch) {
       return;
     }
 
@@ -165,6 +173,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
         total: route.total || '05:30',
         distancia: (parseFloat(String(route.distancia || 0)) / numTrips).toFixed(2),
         paradas: ti.paradas,
+        ...(singleClient ? { paradasOriginales: totalParadasRuta || 1 } : {}),
         equipoFrio: Math.round((parseInt(String(route.equipoFrio)) || 0) / numTrips),
         capacidadPorc: route.capacidadPorc || '100%',
         cajas12Oz: ((parseFloat(String(route.cajas12Oz)) || 0) / numTrips).toFixed(3),
@@ -173,6 +182,8 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
         // Cada viaje se lleva solo los clientes que le tocan.
         ...(hasClients
           ? { clientesRuta: clientes.filter((c) => (clientTrip.get(c.codigo) || 1) === ti.tripNumber) }
+          : singleClient && clientesRaw.length === 1
+          ? { clientesRuta: [{ ...clientesRaw[0], cajas: ti.cajas }] }
           : {}),
         estado: 'Pendiente',
         asignacion: null,
@@ -199,9 +210,12 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
   const refCajas = hasClients
     ? parseFloat(clientes.reduce((acc, c) => acc + (Number(c.cajas) || 0), 0).toFixed(3))
     : totalCajas;
-  const sumParadasMismatch = sumParadas !== refParadas;
+  // Un solo cliente: cada viaje es 1 parada al mismo cliente; solo se cuadran
+  // las cajas y ningún viaje puede quedar en 0 cajas.
+  const sumParadasMismatch = singleClient ? false : sumParadas !== refParadas;
   const sumCajasMismatch = Math.abs(sumCajas - refCajas) > 0.01;
-  const hasMismatch = sumParadasMismatch || sumCajasMismatch || emptyTrips.length > 0;
+  const zeroCajasTrips = singleClient ? effectiveTrips.filter((t) => !(t.cajas > 0)).map((t) => t.tripNumber) : [];
+  const hasMismatch = sumParadasMismatch || sumCajasMismatch || emptyTrips.length > 0 || zeroCajasTrips.length > 0;
 
   return (
     <div className={`fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center ${isMaximized ? 'p-0' : 'p-3 sm:p-4'}`}>
@@ -250,26 +264,35 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
             </p>
           </div>
 
+          {singleClient && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-950 space-y-1">
+              <p className="font-bold">
+                Ruta de un solo cliente
+                {clientesRaw[0] ? `: ${clientesRaw[0].codigo} ${clientesRaw[0].nombre || ''}` : ''}
+              </p>
+              <p className="text-[11px] text-amber-900 leading-relaxed">
+                Se reparten las <strong>cajas</strong> entre los viajes; cada viaje entrega al mismo cliente (1 parada).
+                Escribe las cajas de cada viaje. Ya asignadas, puedes volver a repartirlas con{' '}
+                <strong>"Repartir cajas"</strong> si cambian las cajas reales a entregar.
+              </p>
+            </div>
+          )}
+
           <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
             <span id="numTripsLabel" className="font-bold text-slate-700">Cantidad de viajes:</span>
-            {/* Botones grandes (tablet) en lugar de un campo numérico. */}
-            <div role="radiogroup" aria-labelledby="numTripsLabel" className="flex items-center gap-1.5">
-              {[2, 3, 4, 5, 6].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  role="radio"
-                  aria-checked={numTrips === n}
-                  aria-label={`${n} viajes`}
-                  onClick={() => handleNumTripsChange(n)}
-                  className={`min-w-[44px] min-h-[44px] rounded-xl border-2 text-sm font-bold cursor-pointer active:scale-95 outline-none focus-visible:ring-4 focus-visible:ring-blue-200 ${
-                    numTrips === n ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-blue-300'
-                  }`}
-                >
-                  {n}
-                </button>
+            {/* Lista desplegable (▼) de 2 a 30 viajes. */}
+            <select
+              aria-labelledby="numTripsLabel"
+              value={numTrips}
+              onChange={(e) => handleNumTripsChange(parseInt(e.target.value, 10) || 2)}
+              className="min-h-[44px] min-w-[150px] px-3 rounded-xl border-2 border-blue-600 bg-white text-sm font-bold text-blue-700 cursor-pointer outline-none focus-visible:ring-4 focus-visible:ring-blue-200"
+            >
+              {OPCIONES_VIAJES.map((n) => (
+                <option key={n} value={n}>
+                  {n} viajes
+                </option>
               ))}
-            </div>
+            </select>
           </div>
 
           <div className="space-y-2">
@@ -292,6 +315,8 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
               <span>
                 {emptyTrips.length > 0
                   ? `⚠ Viaje ${emptyTrips.join(', ')} sin clientes`
+                  : zeroCajasTrips.length > 0
+                  ? `⚠ Viaje ${zeroCajasTrips.join(', ')} sin cajas`
                   : hasMismatch
                   ? '⚠ No cuadra con el total original'
                   : '✓ Cuadra con el total original'}
@@ -315,11 +340,11 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                       type="number"
                       min="1"
                       value={trip.paradas}
-                      readOnly={hasClients}
+                      readOnly={hasClients || singleClient}
                       onChange={(e) =>
                         handleInputChange(idx, 'paradas', parseInt(e.target.value) || 1)
                       }
-                      className={`w-full min-h-[40px] p-1.5 border border-slate-300 rounded-lg font-semibold text-sm outline-none ${hasClients ? 'bg-slate-100' : ''}`}
+                      className={`w-full min-h-[40px] p-1.5 border border-slate-300 rounded-lg font-semibold text-sm outline-none ${hasClients || singleClient ? 'bg-slate-100' : ''}`}
                     />
                   </div>
                   <div>
@@ -388,6 +413,20 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                           <span className="font-semibold text-slate-800">{c.nombre || '-'}</span>{' '}
                           <span className="text-slate-400">({Number(c.cajas || 0).toFixed(3)} cajas)</span>
                         </div>
+                        {numTrips > 6 ? (
+                          <select
+                            value={t}
+                            onChange={(e) => setTripForClient(c.codigo, parseInt(e.target.value, 10) || 1)}
+                            aria-label={`Viaje del cliente ${c.codigo}`}
+                            className="shrink-0 min-h-[44px] min-w-[96px] px-2 rounded-lg border border-slate-300 bg-white text-xs font-bold text-blue-700 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500"
+                          >
+                            {Array.from({ length: numTrips }, (_, i) => i + 1).map((n) => (
+                              <option key={n} value={n}>
+                                Viaje {n}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
                         <div className="flex items-center gap-1 shrink-0">
                           {Array.from({ length: numTrips }, (_, i) => i + 1).map((n) => (
                             <button
@@ -406,6 +445,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                             </button>
                           ))}
                         </div>
+                        )}
                       </div>
                     );
                   })}
@@ -427,7 +467,11 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
             info={
               hasMismatch ? (
                 <span className="text-rose-600 font-semibold">
-                  {emptyTrips.length > 0 ? `Viaje ${emptyTrips.join(', ')} sin clientes` : 'No cuadra con el total original'}
+                  {emptyTrips.length > 0
+                    ? `Viaje ${emptyTrips.join(', ')} sin clientes`
+                    : zeroCajasTrips.length > 0
+                    ? `Viaje ${zeroCajasTrips.join(', ')} sin cajas`
+                    : 'No cuadra con el total original'}
                 </span>
               ) : (
                 <span className="text-emerald-700 font-semibold">✓ Cuadra: {sumCajas} cajas · {sumParadas} paradas</span>
