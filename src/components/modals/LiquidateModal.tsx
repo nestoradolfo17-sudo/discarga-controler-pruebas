@@ -8,6 +8,7 @@ import { ACTION_ICONS } from '../ui/actionIcons';
 import { useMaximized } from '../ui/useMaximized';
 import { MOTIVO_DEVOLUCION_OPTIONS, MOTIVO_REVISITA, MOTIVOS_RUTA_ABIERTA } from '../../data/motivosDevolucion';
 import { CAJA_ABIERTA_OPTIONS } from '../../data/motivosCajaAbierta';
+import { toNum } from '../../utils/number';
 
 interface LiquidateModalProps {
   isOpen: boolean;
@@ -95,7 +96,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       // Ruta Bolsón: no salió, se liquida como rechazo total (se puede ajustar).
       setGuiasExitosas(bolson ? 0 : paradasCount);
       setGuiasRechazadas(bolson ? paradasCount : 0);
-      setCajasDevueltas(bolson ? (parseFloat(String(route.cajasFisicas)) || 0).toFixed(3) : '0.000');
+      setCajasDevueltas(bolson ? (toNum(route.cajasFisicas) || 0).toFixed(3) : '0.000');
       setMotivoGeneral(bolson ? MOTIVO_BOLSON : '');
       setMotivoGeneralError('');
       setAuditor(defaultAuditor?.trim() || 'Operador de Agencia');
@@ -147,7 +148,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   if (!isOpen || !route) return null;
 
   const totalParadas = parseInt(String(route.paradas)) || 0;
-  const totalCajasSalida = parseFloat(String(route.cajasFisicas)) || 0;
+  const totalCajasSalida = toNum(route.cajasFisicas) || 0;
   const devueltasNum = parseFloat(String(cajasDevueltas)) || 0;
   const cajasEntregadas = Math.max(0, totalCajasSalida - devueltasNum);
 
