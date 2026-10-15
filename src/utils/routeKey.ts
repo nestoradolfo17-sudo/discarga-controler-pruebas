@@ -58,3 +58,20 @@ export function isSameSplitGroup(
   if (!ref) return true;
   return String(r.fecha ?? '') === String(ref.fecha ?? '') && String(r.agencia ?? '') === String(ref.agencia ?? '');
 }
+
+/**
+ * Claves para el filtro de seguridad de la carga de Excel: misma ruta
+ * (número, sin importar mayúsculas/espacios) + misma fecha + misma agencia.
+ * Se toma tanto la fecha actual como la fecha original de la ruta (una ruta
+ * enviada "a Piso" cambia de fecha, pero sigue siendo la ruta de ese día).
+ */
+export function clavesDuplicado(route: { id: string; fecha?: string; fechaOriginalRuta?: string; agencia?: string }): string[] {
+  const id = String(route.id ?? '').trim().toUpperCase();
+  const ag = String(route.agencia ?? '').trim().toUpperCase();
+  const norm = (f?: string) => {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(f ?? '').trim());
+    return m ? `${m[1].padStart(2, '0')}/${m[2].padStart(2, '0')}/${m[3]}` : String(f ?? '').trim();
+  };
+  const fechas = Array.from(new Set([norm(route.fecha), norm(route.fechaOriginalRuta)].filter(Boolean)));
+  return fechas.map((f) => `${id}|${f}|${ag}`);
+}
