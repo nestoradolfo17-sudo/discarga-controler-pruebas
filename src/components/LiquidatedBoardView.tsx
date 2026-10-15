@@ -7,6 +7,7 @@ import { Button } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 import { ClientesRutaList } from './ClientesRutaList';
 import { getRouteKey, isSameSplitGroup } from '../utils/routeKey';
+import { toNum } from '../utils/number';
 
 // Indicadores del módulo de Rutas Liquidadas. Se calculan con los filtros
 // aplicados (búsqueda, agencia, fechas) y se muestran arriba, en la barra de
@@ -150,7 +151,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
 
   const totalCajasSalida = useMemo(() => {
     return filteredList.reduce(
-      (acc, r) => acc + (parseFloat(String(r.cajasFisicas)) || 0),
+      (acc, r) => acc + (toNum(r.cajasFisicas) || 0),
       0
     );
   }, [filteredList]);
@@ -443,7 +444,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
               const driverObj = staff.find((s) => s.nombre === asig.conductor);
               const helpers = [asig.auxiliar1, asig.auxiliar2, asig.auxiliar3, asig.auxiliar4].filter(Boolean);
 
-              const cajasSalida = parseFloat(String(r.cajasFisicas)) || 0;
+              const cajasSalida = toNum(r.cajasFisicas) || 0;
               const cajasEntregadas = parseFloat(String(liq.cajasEntregadas)) || 0;
               const cajasDevueltas = parseFloat(String(liq.cajasDevueltas)) || 0;
 
