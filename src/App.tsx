@@ -4402,8 +4402,9 @@ export default function App() {
             railCollapsed={railCollapsed}
             onToggleRail={toggleRail}
             onFullscreen={activeTab === 'board' ? enterBoardFullscreen : undefined}
-            onOpenDailySummary={handleOpenDailySummary}
-            onNewRoute={() => setIsRouteTypeSelectModalOpen(true)}
+            // Inicio / Fin de Día y Nueva Ruta: solo en el Tablero de Rutas.
+            onOpenDailySummary={activeTab === 'board' ? handleOpenDailySummary : undefined}
+            onNewRoute={activeTab === 'board' ? () => setIsRouteTypeSelectModalOpen(true) : undefined}
             leading={
               // Indicadores según la sección: los principales (pendientes, tránsito,
               // etc.) en el Tablero de Rutas; los de liquidación en Rutas Liquidadas.
