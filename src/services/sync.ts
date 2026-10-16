@@ -359,48 +359,92 @@ export async function deleteSharedRecords(table: SyncableTable, keys: string[]):
  *
  * Devuelve una función para cancelar la suscripción.
  */
+// --- Tiempo real por agencia (Fase 7) ---
+// Cada fila de las tablas compartidas lleva "agencia_key" (la agencia en minúsculas
+// y sin espacios ni signos, la llena la base con un trigger, ver
+// supabase/fase7_tiempo_real_por_agencia.sql). Un usuario limitado a ciertas
+// agencias solo recibe en vivo los cambios de ESAS agencias, en vez de los de
+// todas: muchos menos mensajes y menos tráfico cuando hay muchos usuarios.
+
+/** Misma regla que public.dc_agencia_key() en la base. */
+export const agenciaKey = (agencia: string | undefined | null): string =>
+  String(agencia ?? '').replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+
+let filtroAgenciaDisponible: Promise<boolean> | null = null;
+/** ¿Ya se corrió la Fase 7 (existe la columna agencia_key)? Si no, se usa el modo de siempre. */
+export function soportaFiltroAgencia(): Promise<boolean> {
+  if (!supabase) return Promise.resolve(false);
+  if (!filtroAgenciaDisponible) {
+    filtroAgenciaDisponible = (async () => {
+      try {
+        const { error } = await supabase!.from('app_routes').select('agencia_key').limit(1);
+        return !error;
+      } catch {
+        return false;
+      }
+    })();
+  }
+  return filtroAgenciaDisponible;
+}
+
 export function subscribeToSharedCollection<T>(
   table: SyncableTable,
   onChange: (updater: (prev: T[]) => T[]) => void,
-  getKey: SyncKeyFn<T>
+  getKey: SyncKeyFn<T>,
+  // Agencias de las que este usuario recibe cambios en vivo. null / vacío =
+  // todas (administradores y usuarios con acceso a todas las agencias).
+  agencias?: string[] | null
 ): () => void {
   if (!supabase) return () => {};
 
-  const channel = supabase
-    .channel(`${table}-changes`)
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table },
-      (payload: any) => {
-        if (payload.eventType === 'DELETE') {
-          const deletedKey = payload.old?.id;
-          if (!deletedKey) return;
-          onChange((prev) => prev.filter((item) => getKey(item) !== deletedKey));
-        } else {
-          const newItem = payload.new?.data as T | undefined;
-          if (!newItem) return;
-          const newKey = getKey(newItem);
-          onChange((prev) => {
-            const idx = prev.findIndex((item) => getKey(item) === newKey);
-            if (idx === -1) return [...prev, newItem];
-            const next = [...prev];
-            next[idx] = newItem;
-            return next;
-          });
-        }
-      }
-    )
-    .subscribe((status) => {
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        reportSyncError(
-          `Se interrumpió la actualización en vivo de ${tableLabel(table)}. Se reconecta sola; si en 2 minutos no ves los cambios de otros usuarios, recarga la página.`,
-          status
-        );
-      }
+  const keys = Array.from(new Set((agencias || []).map(agenciaKey).filter(Boolean))).slice(0, 100);
+  const filter =
+    keys.length === 0 ? undefined : keys.length === 1 ? `agencia_key=eq.${keys[0]}` : `agencia_key=in.(${keys.join(',')})`;
+
+  const onUpsert = (payload: any) => {
+    const newItem = payload.new?.data as T | undefined;
+    if (!newItem) return;
+    const newKey = getKey(newItem);
+    onChange((prev) => {
+      const idx = prev.findIndex((item) => getKey(item) === newKey);
+      if (idx === -1) return [...prev, newItem];
+      const next = [...prev];
+      next[idx] = newItem;
+      return next;
     });
+  };
+  const onDelete = (payload: any) => {
+    const deletedKey = payload.old?.id;
+    if (!deletedKey) return;
+    onChange((prev) => prev.filter((item) => getKey(item) !== deletedKey));
+  };
+
+  let channel = supabase.channel(`${table}-changes${filter ? '-ag' : ''}`);
+  if (filter) {
+    // Altas y cambios: solo de las agencias del usuario. Los borrados no se
+    // pueden filtrar en Supabase (son pocos): llegan todos y solo se quita de
+    // la pantalla lo que coincida.
+    channel = channel
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter }, onUpsert)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter }, onUpsert)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table }, onDelete);
+  } else {
+    channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, (payload: any) =>
+      payload.eventType === 'DELETE' ? onDelete(payload) : onUpsert(payload)
+    );
+  }
+
+  channel.subscribe((status) => {
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      reportSyncError(
+        `Se interrumpió la actualización en vivo de ${tableLabel(table)}. Se reconecta sola; si en 2 minutos no ves los cambios de otros usuarios, recarga la página.`,
+        status
+      );
+    }
+  });
 
   return () => {
-    supabase.removeChannel(channel);
+    supabase!.removeChannel(channel);
   };
 }
 
