@@ -5,6 +5,7 @@ import { Button, IconButton } from '../ui/Button';
 import { ModalFooter } from '../ui/ModalFooter';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { ResourcePicker, PickerItem } from '../ResourcePicker';
+import { formatoCorrelativo } from '../../services/recargas';
 import { getGuatemalaDateForInput, parseFlexibleDate } from '../../utils/date';
 
 // --- Nueva recarga / Editar recarga ---
@@ -65,6 +66,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
 }) => {
   const [fecha, setFecha] = useState('');
   const [rutaId, setRutaId] = useState('');
+  const [sinRuta, setSinRuta] = useState(false);
   const [agencia, setAgencia] = useState('');
   const [tipo, setTipo] = useState<TipoRecarga>('Simple');
   const [conductor, setConductor] = useState('');
@@ -77,6 +79,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
     if (!isOpen) return;
     setFecha(inicial?.fecha || getGuatemalaDateForInput());
     setRutaId(inicial?.rutaId || '');
+    setSinRuta(!!inicial?.sinRuta);
     setAgencia(inicial?.agencia || agenciaPorDefecto || (agencias.length === 1 ? agencias[0] : ''));
     setTipo(inicial?.tipo || 'Simple');
     setConductor(inicial?.conductor || '');
@@ -91,9 +94,9 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
   const rutasDelDia = useMemo(() => rutas.filter((r) => fechaRutaISO(r) === fecha), [rutas, fecha]);
   const coincidencias = useMemo(() => {
     const id = rutaId.trim();
-    if (!id) return [] as Route[];
+    if (!id || sinRuta) return [] as Route[];
     return rutasDelDia.filter((r) => String(r.id).trim() === id);
-  }, [rutasDelDia, rutaId]);
+  }, [rutasDelDia, rutaId, sinRuta]);
   const rutaEncontrada = useMemo(
     () => coincidencias.find((r) => !agencia || r.agencia === agencia) || (coincidencias.length === 1 ? coincidencias[0] : undefined),
     [coincidencias, agencia]
@@ -143,13 +146,13 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
 
   if (!isOpen) return null;
 
-  const idLimpio = rutaId.trim();
-  const duplicada = existentes.find(
+  const idLimpio = sinRuta ? '' : rutaId.trim();
+  const duplicada = !idLimpio ? undefined : existentes.find(
     (x) => x.id !== inicial?.id && x.fecha === fecha && x.agencia === agencia && String(x.rutaId).trim() === idLimpio
   );
   const faltan: string[] = [];
   if (!fecha) faltan.push('fecha');
-  if (!idLimpio) faltan.push('número de ruta');
+  if (!idLimpio && !sinRuta) faltan.push('número de ruta (o marca "Sin ruta")');
   if (!agencia) faltan.push('agencia');
   if (!conductor) faltan.push('piloto');
   const valido = faltan.length === 0;
@@ -163,6 +166,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
     onGuardar({
       fecha,
       rutaId: idLimpio,
+      sinRuta: sinRuta || undefined,
       agencia,
       segmento: rutaEncontrada?.segmento || inicial?.segmento,
       tipo,
@@ -170,7 +174,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
       conductorId: staffId(conductor),
       auxiliares,
       auxiliarIds: auxiliares.map((n) => staffId(n) || null),
-      camionPlaca: asig?.camionPlaca || inicial?.camionPlaca,
+      camionPlaca: sinRuta ? inicial?.camionPlaca : asig?.camionPlaca || inicial?.camionPlaca,
       comentario: comentario.trim() || undefined,
     });
   };
@@ -191,7 +195,10 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
               <Repeat className="w-5 h-5" />
             </span>
             <div>
-              <h3 className="font-bold text-sm">{inicial ? 'Editar recarga' : 'Nueva recarga'}</h3>
+              <h3 className="font-bold text-sm">
+                {inicial ? 'Editar recarga' : 'Nueva recarga'}
+                {inicial?.correlativo ? <span className="ml-2 font-mono text-violet-300">{formatoCorrelativo(inicial.correlativo)}</span> : null}
+              </h3>
               <p className="text-[11px] text-slate-400">Ruta, tripulación que la sacó y fecha de la recarga</p>
             </div>
           </div>
@@ -205,16 +212,29 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
               <input id="recFecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={input} />
             </div>
             <div>
-              <label htmlFor="recRuta" className={label}>Número de ruta *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="recRuta" className={label.replace('mb-1', 'mb-0')}>Número de ruta {sinRuta ? '' : '*'}</label>
+                <label className="flex items-center gap-1 text-[11px] font-bold text-violet-700 cursor-pointer select-none">
+                  <input
+                    id="recSinRuta"
+                    type="checkbox"
+                    checked={sinRuta}
+                    onChange={(e) => setSinRuta(e.target.checked)}
+                    className="w-4 h-4 cursor-pointer accent-violet-600"
+                  />
+                  Sin ruta
+                </label>
+              </div>
               <input
                 id="recRuta"
                 list="recRutasDia"
                 inputMode="numeric"
                 autoComplete="off"
-                placeholder="Ej. 2105"
-                value={rutaId}
+                placeholder={sinRuta ? 'Recarga sin ruta' : 'Ej. 2105'}
+                disabled={sinRuta}
+                value={sinRuta ? '' : rutaId}
                 onChange={(e) => setRutaId(e.target.value)}
-                className={`${input} font-mono font-bold ${intentado && !idLimpio ? 'border-rose-400' : ''}`}
+                className={`${input} font-mono font-bold disabled:bg-slate-100 disabled:text-slate-400 ${intentado && !idLimpio && !sinRuta ? 'border-rose-400' : ''}`}
               />
               <datalist id="recRutasDia">
                 {Array.from(new Set(rutasDelDia.filter((r) => !agencia || r.agencia === agencia).map((r) => String(r.id)))).map((id) => (
@@ -396,7 +416,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
 
           <ModalFooter
             bleed="p-6"
-            info={idLimpio ? `Ruta ${idLimpio} · ${tipo}${conductor ? ` · ${conductor}` : ''}` : undefined}
+            info={idLimpio || sinRuta ? `${sinRuta ? 'Sin ruta' : `Ruta ${idLimpio}`} · ${tipo}${conductor ? ` · ${conductor}` : ''}` : undefined}
             secondary={
               <Button variant="secondary" size="lg" onClick={onClose}>
                 Cancelar
