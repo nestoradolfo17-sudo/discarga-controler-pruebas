@@ -836,6 +836,7 @@ export default function App() {
     permissions: TablePermissions;
     canDelete: boolean;
     agencyAccess: 'all' | string[];
+    adminAgencies?: string[];
   }): boolean | Promise<boolean> => {
     if (isSupabaseConfigured) {
       return adminCreateUser(data)
@@ -854,6 +855,7 @@ export default function App() {
       username: data.username,
       nombre: data.nombre,
       password: data.password,
+      adminAgencies: data.adminAgencies || [],
       isAdmin: data.isAdmin,
       permissions: data.permissions,
       canDelete: data.canDelete,
@@ -871,7 +873,7 @@ export default function App() {
   const handleUpdateUser = (
     userId: string,
     updates: Partial<
-      Pick<AppUser, 'permissions' | 'canDelete' | 'isAdmin' | 'agencyAccess' | 'username' | 'nombre'>
+      Pick<AppUser, 'permissions' | 'canDelete' | 'isAdmin' | 'agencyAccess' | 'username' | 'nombre' | 'adminAgencies'>
     >
   ) => {
     if (isSupabaseConfigured) {
@@ -891,7 +893,7 @@ export default function App() {
               u.id === userId ? { ...u, ...profilePatch, ...(newUsername ? { username: newUsername } : {}) } : u
             )
           );
-          if (requestedUsername !== undefined || 'nombre' in updates) {
+          if (requestedUsername !== undefined || 'nombre' in updates || updates.adminAgencies !== undefined) {
             showToast('Datos de usuario actualizados.', 'success');
           }
         } catch (e) {
@@ -934,7 +936,7 @@ export default function App() {
       }
     }
 
-    if (finalUpdates.username || finalUpdates.nombre !== undefined) {
+    if (finalUpdates.username || finalUpdates.nombre !== undefined || updates.adminAgencies !== undefined) {
       showToast('Datos de usuario actualizados.', 'success');
     }
   };
@@ -1062,7 +1064,16 @@ export default function App() {
   // Pantalla Usuarios: administradores, o usuarios con el permiso "Crear usuarios"
   // (estos solo ven el formulario de creación, con permisos limitados a los suyos).
   const canManageUsers = !!currentUser && (currentUser.isAdmin || currentUser.permissions.canCreateUsers === true);
-  const canDeleteData = !!currentUser && (currentUser.isAdmin || currentUser.canDelete);
+  // Administrador de agencias: en SUS agencias puede eliminar, revertir y
+  // aprobar (recargas, préstamos, segmento, estatus de camión).
+  const adminAgenciasSesion = currentUser && !currentUser.isAdmin ? currentUser.adminAgencies || [] : [];
+  const esAdminDe = (agencia?: string | null) =>
+    !!currentUser && (currentUser.isAdmin || (!!agencia && adminAgenciasSesion.includes(agencia)));
+  const esAdminDeAlguna = !!currentUser && (currentUser.isAdmin || adminAgenciasSesion.length > 0);
+  const canDeleteData = !!currentUser && (currentUser.isAdmin || currentUser.canDelete || adminAgenciasSesion.length > 0);
+  // ¿Puede eliminar un registro de esta agencia? (admin, "Puede eliminar" o admin de esa agencia)
+  const puedeEliminarEn = (agencia?: string | null) =>
+    !!currentUser && (currentUser.isAdmin || currentUser.canDelete || esAdminDe(agencia));
   // Corrección: la carga masiva de Excel (Camiones/Personal) se controla con un
   // permiso independiente, pero AGREGAR MANUALMENTE ya no es un permiso aparte:
   // si el usuario puede visualizar Camiones/Personal (permiso "trucks"/"staff"),
@@ -2158,14 +2169,25 @@ export default function App() {
     showToast(`Camión ${placa}: estatus cambiado a ${nuevo} (autorizó ${autorizadoPor}).`, 'success');
   };
 
+  // Autorización de administrador: general, o administrador de la agencia
+  // del registro (ruta o camión).
   const handleVerifyAdminForSegment = async (
     username: string,
-    password: string
+    password: string,
+    agencia?: string
   ): Promise<{ ok: boolean; nombre?: string; error?: string }> => {
-    if (isSupabaseConfigured) return verifyAdminCredentials(username, password);
+    if (isSupabaseConfigured) return verifyAdminCredentials(username, password, agencia);
     const u = users.find((x) => x.username.toLowerCase() === username.toLowerCase());
     if (!u || u.password !== password) return { ok: false, error: 'Usuario o contraseña de administrador incorrectos.' };
-    if (!u.isAdmin || u.activo === false) return { ok: false, error: 'Ese usuario no es un administrador activo.' };
+    const deAgencia = !!agencia && (u.adminAgencies || []).includes(agencia);
+    if (!(u.isAdmin || deAgencia) || u.activo === false) {
+      return {
+        ok: false,
+        error: agencia
+          ? `Ese usuario no es administrador general ni administrador de la agencia ${agencia}.`
+          : 'Ese usuario no es un administrador activo.',
+      };
+    }
     return { ok: true, nombre: u.nombre || u.username };
   };
 
@@ -2997,7 +3019,21 @@ export default function App() {
   // src/utils/routeKey.ts), no solo el ID — el mismo ID de ruta puede repetirse en
   // fechas distintas, así que filtrar solo por ID podía eliminar también otra fila
   // con el mismo ID pero de otra fecha.
-  const handleConfirmDeleteRoutes = (routeIdsToDelete: string[]) => {
+  const handleConfirmDeleteRoutes = (routeIdsPedidas: string[]) => {
+    // Un administrador de agencia solo elimina rutas de SUS agencias.
+    const routeIdsToDelete = routeIdsPedidas.filter((k) =>
+      puedeEliminarEn(deleteModalRoutes.find((r) => getRouteKey(r) === k)?.agencia)
+    );
+    if (routeIdsToDelete.length < routeIdsPedidas.length) {
+      showToast(
+        `${routeIdsPedidas.length - routeIdsToDelete.length} ruta(s) no se eliminaron: son de agencias que no administras.`,
+        'error'
+      );
+    }
+    if (routeIdsToDelete.length === 0) {
+      setDeleteRoutesTargetIds(null);
+      return;
+    }
     const keysSet = new Set(routeIdsToDelete);
 
     // Rutas que se van a eliminar
@@ -3986,8 +4022,13 @@ export default function App() {
     });
   };
 
-  const handleDeleteTrucks = (truckIds: string[]) => {
-    if (!truckIds || truckIds.length === 0) return;
+  const handleDeleteTrucks = (truckIdsPedidos: string[]) => {
+    if (!truckIdsPedidos || truckIdsPedidos.length === 0) return;
+    const truckIds = truckIdsPedidos.filter((id) => puedeEliminarEn(trucks.find((t) => t.id === id)?.agencia));
+    if (truckIds.length < truckIdsPedidos.length) {
+      showToast(`${truckIdsPedidos.length - truckIds.length} camión(es) no se eliminaron: son de agencias que no administras.`, 'error');
+    }
+    if (truckIds.length === 0) return;
     const idSet = new Set(truckIds);
     const removed = trucks.filter((t) => idSet.has(t.id));
     setTrucks((prev) => prev.filter((t) => !idSet.has(t.id)));
@@ -4001,8 +4042,13 @@ export default function App() {
     }
   };
 
-  const handleDeleteStaffMembers = (staffIds: string[]) => {
-    if (!staffIds || staffIds.length === 0) return;
+  const handleDeleteStaffMembers = (staffIdsPedidos: string[]) => {
+    if (!staffIdsPedidos || staffIdsPedidos.length === 0) return;
+    const staffIds = staffIdsPedidos.filter((id) => puedeEliminarEn(staff.find((x) => x.id === id)?.agencia));
+    if (staffIds.length < staffIdsPedidos.length) {
+      showToast(`${staffIdsPedidos.length - staffIds.length} colaborador(es) no se eliminaron: son de agencias que no administras.`, 'error');
+    }
+    if (staffIds.length === 0) return;
     const idSet = new Set(staffIds);
     const removed = staff.filter((s) => idSet.has(s.id));
     setStaff((prev) => prev.filter((s) => !idSet.has(s.id)));
@@ -4330,6 +4376,7 @@ export default function App() {
         onSelectAgency={setSelectedAgency}
         currentUsername={currentUser.nombre || currentUser.username}
         isAdmin={currentUser.isAdmin}
+        adminAgencias={adminAgenciasSesion}
         onLogout={handleLogout}
         saveIndicator={
           isSupabaseConfigured ? (
@@ -4589,6 +4636,7 @@ export default function App() {
             }}
             onBulkMoveToFloor={handleBulkMoveToFloor}
             onOpenDeleteModal={canDeleteData ? (ids) => setDeleteRoutesTargetIds(ids) : undefined}
+            puedeEliminarRuta={(r) => puedeEliminarEn(r.agencia)}
           />
           </div>
           </div>
@@ -4611,7 +4659,7 @@ export default function App() {
             onOpenFinalizeCajaAbierta={(routeObj) => setFinalizeCajaAbiertaTarget(routeObj)}
             onOpenAbonosCaja={(routeObj) => setAbonosCajaTarget(routeObj)}
             onShowToast={showToast}
-            onDeleteRoutes={currentUser?.isAdmin ? (keys) => setDeleteRoutesTargetIds(keys) : undefined}
+            onDeleteRoutes={esAdminDeAlguna ? (keys) => setDeleteRoutesTargetIds(keys) : undefined}
           />
         )}
 
@@ -4700,7 +4748,8 @@ export default function App() {
             agenciaGeneral={selectedAgency}
             usuario={currentUser.nombre || currentUser.username}
             isAdmin={currentUser.isAdmin}
-            canDelete={canDeleteData}
+            canDelete={!!currentUser.canDelete || !!currentUser.isAdmin}
+            adminAgencias={adminAgenciasSesion}
             onShowToast={showToast}
             prestamos={prestamos}
           />
@@ -4731,7 +4780,8 @@ export default function App() {
             agenciaGeneral={selectedAgency}
             usuario={currentUser.nombre || currentUser.username}
             isAdmin={currentUser.isAdmin}
-            canDelete={canDeleteData}
+            canDelete={!!currentUser.canDelete || !!currentUser.isAdmin}
+            adminAgencias={adminAgenciasSesion}
             onShowToast={showToast}
           />
         )}
@@ -4784,15 +4834,15 @@ export default function App() {
       <ChangeSegmentModal
         route={segmentTarget}
         splitCount={segmentSplitGroup(segmentTarget).length}
-        defaultAdminUser={currentUser?.isAdmin ? currentUser.username : ''}
-        onVerifyAdmin={handleVerifyAdminForSegment}
+        defaultAdminUser={esAdminDe(segmentTarget?.agencia) ? currentUser.username : ''}
+        onVerifyAdmin={(u, p) => handleVerifyAdminForSegment(u, p, segmentTarget?.agencia)}
         onConfirm={handleConfirmSegmentChange}
         onClose={() => setSegmentTarget(null)}
       />
       <ChangeTruckStatusModal
         truck={truckStatusTarget}
-        defaultAdminUser={currentUser?.isAdmin ? currentUser.username : ''}
-        onVerifyAdmin={handleVerifyAdminForSegment}
+        defaultAdminUser={esAdminDe(truckStatusTarget?.agencia) ? currentUser.username : ''}
+        onVerifyAdmin={(u, p) => handleVerifyAdminForSegment(u, p, truckStatusTarget?.agencia)}
         onConfirm={handleConfirmTruckStatus}
         onClose={() => setTruckStatusTarget(null)}
       />
