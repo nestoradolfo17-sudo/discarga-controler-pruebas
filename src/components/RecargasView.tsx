@@ -66,7 +66,7 @@ const ESTADO_STYLE: Record<EstadoRecarga, string> = {
 
 // Campos que, si cambian, obligan a una nueva autorización.
 const contenido = (r: Partial<Recarga>) =>
-  JSON.stringify([r.fecha, r.rutaId, !!r.sinRuta, r.agencia, r.tipo, r.conductor, r.auxiliares, r.camionPlaca, r.comentario || '']);
+  JSON.stringify([r.solicitadoPor || '', r.fecha, r.rutaId, !!r.sinRuta, r.agencia, r.tipo, r.conductor, r.auxiliares, r.camionPlaca, r.comentario || '']);
 
 export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agencias, agenciaGeneral, usuario, isAdmin, canDelete, onShowToast }) => {
   const [recargas, setRecargas] = useState<Recarga[]>([]);
@@ -291,6 +291,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
         'Fecha autorización': fmtHora(r.autorizadoEn),
         'Motivo de rechazo': r.motivoRechazo || '',
         Origen: r.origen === 'asignacion' ? 'Automática (Tablero)' : 'Manual',
+        'Solicitado por': r.solicitadoPor || r.creadoPor,
         'Registrado por': r.creadoPor,
         'Registrado el': fmtHora(r.creadoEn),
         'Editado por': r.editadoPor || '',
@@ -678,7 +679,8 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                               <Zap className="w-3 h-3" /> Automática
                             </span>
                           )}
-                          <span className="block">{r.creadoPor}</span>
+                          <span className="block">Solicitó: <b className="text-slate-700">{r.solicitadoPor || r.creadoPor}</b></span>
+                          <span className="block">Registró: {r.creadoPor}</span>
                           <span className="block text-slate-400">{fmtHora(r.creadoEn)}</span>
                           {r.editadoPor && <span className="block text-slate-400">Editó: {r.editadoPor}</span>}
                         </td>
@@ -816,6 +818,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
         staff={staff}
         agencias={agenciasVisibles}
         agenciaPorDefecto={agencia || (agenciaGeneral !== 'TODAS' ? agenciaGeneral : '')}
+        solicitantePorDefecto={usuario}
         existentes={recargas}
         guardando={guardando}
         avisoReautorizar={!!modal.recarga && !isAdmin && estadoDe(modal.recarga) !== 'Pendiente'}
