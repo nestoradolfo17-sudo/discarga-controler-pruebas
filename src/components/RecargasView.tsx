@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Repeat, Plus, Download, Search, Pencil, Trash2, AlertTriangle, RefreshCw, Zap, ShieldCheck, Check, X, Clock } from 'lucide-react';
+import { Repeat, Plus, Download, Search, Pencil, Trash2, AlertTriangle, RefreshCw, Zap, ShieldCheck, Check, X, Clock, Printer } from 'lucide-react';
 import { EstadoRecarga, Recarga, Route, Staff, TipoRecarga } from '../types';
 import { RecargaModal, TIPOS_RECARGA } from './modals/RecargaModal';
-import { leerRecargas, guardarRecarga, guardarRecargas, eliminarRecarga, suscribirRecargas, nuevoIdRecarga } from '../services/recargas';
+import { leerRecargas, guardarRecarga, guardarRecargas, eliminarRecarga, suscribirRecargas, nuevoIdRecarga, formatoCorrelativo } from '../services/recargas';
+import { imprimirBoletaRecarga } from '../utils/boletaRecarga';
 import { getGuatemalaDateForInput } from '../utils/date';
 import { loadXLSX } from '../utils/excel';
 import { isDemoMode } from '../services/demoMode';
@@ -25,7 +26,7 @@ interface RecargasViewProps {
   usuario: string;
   isAdmin: boolean;
   canDelete: boolean;
-  onShowToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  onShowToast: (msg: string, type?: 'success' | 'error' | 'info', action?: { label: string; onClick: () => void }) => void;
 }
 
 const VIAJES: Record<TipoRecarga, number> = { Simple: 1, Doble: 2, Triple: 3 };
@@ -47,6 +48,8 @@ const norm = (s: unknown) =>
 const primeroDeMes = () => getGuatemalaDateForInput().slice(0, 8) + '01';
 
 export const estadoDe = (r: Recarga): EstadoRecarga => r.estado || 'Pendiente';
+// Cómo se nombra una recarga en botones y avisos.
+const etq = (r: Recarga) => (r.sinRuta || !r.rutaId ? formatoCorrelativo(r.correlativo) || 'sin ruta' : `ruta ${r.rutaId}`);
 
 const badgeTipo = (t: TipoRecarga) =>
   t === 'Triple'
@@ -63,7 +66,7 @@ const ESTADO_STYLE: Record<EstadoRecarga, string> = {
 
 // Campos que, si cambian, obligan a una nueva autorización.
 const contenido = (r: Partial<Recarga>) =>
-  JSON.stringify([r.fecha, r.rutaId, r.agencia, r.tipo, r.conductor, r.auxiliares, r.camionPlaca, r.comentario || '']);
+  JSON.stringify([r.fecha, r.rutaId, !!r.sinRuta, r.agencia, r.tipo, r.conductor, r.auxiliares, r.camionPlaca, r.comentario || '']);
 
 export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agencias, agenciaGeneral, usuario, isAdmin, canDelete, onShowToast }) => {
   const [recargas, setRecargas] = useState<Recarga[]>([]);
@@ -74,7 +77,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
   const [hasta, setHasta] = useState(() => getGuatemalaDateForInput());
   const [agencia, setAgencia] = useState('');
   const [tipo, setTipo] = useState<'' | TipoRecarga>('');
-  const [estado, setEstado] = useState<'' | EstadoRecarga>('');
+  const [estado, setEstado] = useState<'' | EstadoRecarga>('Pendiente');
   const [busca, setBusca] = useState('');
   const [modal, setModal] = useState<{ abierto: boolean; recarga: Recarga | null }>({ abierto: false, recarga: null });
   const [guardando, setGuardando] = useState(false);
@@ -119,18 +122,34 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
     const q = norm(busca.trim());
     return delUsuario
       .filter((r) => !agencia || r.agencia === agencia)
-      .filter((r) => (!desde || r.fecha >= desde) && (!hasta || r.fecha <= hasta))
+      .filter((r) => estado === 'Pendiente' || ((!desde || r.fecha >= desde) && (!hasta || r.fecha <= hasta)))
       .filter((r) => !tipo || r.tipo === tipo)
       .filter((r) => !estado || estadoDe(r) === estado)
       .filter(
         (r) =>
           !q ||
-          norm([r.rutaId, r.conductor, ...(r.auxiliares || []), r.camionPlaca, r.comentario, r.segmento, r.agencia].join(' ')).includes(q)
+          norm([formatoCorrelativo(r.correlativo), r.sinRuta ? 'sin ruta' : '', r.rutaId, r.conductor, ...(r.auxiliares || []), r.camionPlaca, r.comentario, r.segmento, r.agencia].join(' ')).includes(q)
       )
       .sort((a, b) => (b.fecha + b.creadoEn).localeCompare(a.fecha + a.creadoEn));
   }, [delUsuario, agencia, desde, hasta, tipo, estado, busca]);
 
+  // Indicadores: todo lo del rango y filtros (sin importar la pestaña elegida);
+  // las pendientes se cuentan siempre completas.
+  const baseKpi = useMemo(() => {
+    const q = norm(busca.trim());
+    return delUsuario
+      .filter((r) => !agencia || r.agencia === agencia)
+      .filter((r) => !tipo || r.tipo === tipo)
+      .filter((r) => estadoDe(r) === 'Pendiente' || ((!desde || r.fecha >= desde) && (!hasta || r.fecha <= hasta)))
+      .filter(
+        (r) =>
+          !q ||
+          norm([formatoCorrelativo(r.correlativo), r.sinRuta ? 'sin ruta' : '', r.rutaId, r.conductor, ...(r.auxiliares || []), r.camionPlaca, r.comentario, r.segmento, r.agencia].join(' ')).includes(q)
+      );
+  }, [delUsuario, agencia, tipo, desde, hasta, busca]);
+
   const kpi = useMemo(() => {
+    const filtradas = baseKpi;
     const por = (e: EstadoRecarga) => filtradas.filter((r) => estadoDe(r) === e);
     const aut = por('Autorizada');
     return {
@@ -145,7 +164,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       viajesPend: por('Pendiente').reduce((a, r) => a + (VIAJES[r.tipo] || 1), 0),
       auto: filtradas.filter((r) => r.origen === 'asignacion').length,
     };
-  }, [filtradas]);
+  }, [baseKpi]);
 
   const pendientesVisibles = useMemo(() => filtradas.filter((r) => estadoDe(r) === 'Pendiente'), [filtradas]);
   // La selección solo guarda pendientes que siguen visibles.
@@ -177,12 +196,13 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       }
     }
     setGuardando(true);
-    const err = await guardarRecarga(r);
+    const { error: err, guardada } = await guardarRecarga(r);
     setGuardando(false);
     if (err) {
       onShowToast(err, 'error');
       return;
     }
+    r = guardada;
     aplicar([r]);
     setModal({ abierto: false, recarga: null });
     const volvio = previa && estadoDe(previa) !== 'Pendiente' && estadoDe(r) === 'Pendiente';
@@ -190,11 +210,12 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       isDemoMode
         ? 'Versión DEMO: la recarga se ve aquí pero no se guarda.'
         : !previa
-        ? `Recarga ${r.tipo} de la ruta ${r.rutaId} registrada. Queda pendiente de autorización.`
+        ? `Recarga ${formatoCorrelativo(r.correlativo)} (${r.sinRuta ? 'sin ruta' : `ruta ${r.rutaId}`}) registrada. Queda pendiente de autorización.`
         : volvio
-        ? `Recarga de la ruta ${r.rutaId} actualizada. Volvió a Pendiente: necesita nueva autorización.`
-        : `Recarga de la ruta ${r.rutaId} actualizada.`,
-      isDemoMode ? 'info' : 'success'
+        ? `Recarga ${etq(r)} actualizada. Volvió a Por autorizar: necesita nueva autorización.`
+        : `Recarga ${etq(r)} actualizada.`,
+      isDemoMode ? 'info' : 'success',
+      { label: 'Imprimir boleta', onClick: () => imprimirBoletaRecarga(r) }
     );
   };
 
@@ -209,22 +230,22 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       motivoRechazo: nuevo === 'Rechazada' ? motivo : undefined,
     }));
     setProcesando(true);
-    const err = await guardarRecargas(cambios);
+    const { error: err, guardadas } = await guardarRecargas(cambios);
     setProcesando(false);
     if (err) {
       onShowToast(err, 'error');
       return;
     }
-    aplicar(cambios);
+    aplicar(guardadas);
     setSeleccion(new Set());
     setRechazo(null);
     const n = cambios.length;
     onShowToast(
       nuevo === 'Autorizada'
-        ? `${n} recarga(s) autorizada(s). Ya cuentan para pago.`
+        ? `${n} recarga(s) autorizada(s): pasaron a la pestaña Autorizadas y ya cuentan para pago.`
         : nuevo === 'Rechazada'
-        ? `Recarga de la ruta ${cambios[0].rutaId} rechazada.`
-        : `${n} recarga(s) regresada(s) a Pendiente.`,
+        ? `Recarga ${etq(cambios[0])} rechazada.`
+        : `${n} recarga(s) regresada(s) a Por autorizar.`,
       'success'
     );
   };
@@ -237,7 +258,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       return;
     }
     setRecargas((prev) => prev.filter((x) => x.id !== r.id));
-    onShowToast(`Recarga de la ruta ${r.rutaId} eliminada.`, 'success');
+    onShowToast(`Recarga ${etq(r)} eliminada.`, 'success');
   };
 
   const descargarExcel = async () => {
@@ -250,8 +271,9 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
     const detalle = filtradas.map((r) => {
       const e = estadoDe(r);
       return {
+        Correlativo: formatoCorrelativo(r.correlativo),
         Fecha: fmt(r.fecha),
-        Ruta: r.rutaId,
+        Ruta: r.sinRuta || !r.rutaId ? 'SIN RUTA' : r.rutaId,
         Agencia: r.agencia,
         Segmento: r.segmento || '',
         Tipo: r.tipo,
@@ -276,7 +298,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       };
     });
     const wsD = XLSX.utils.json_to_sheet(detalle);
-    wsD['!cols'] = [10, 8, 16, 16, 8, 10, 11, 10, 26, 22, 22, 22, 22, 10, 40, 22, 17, 30, 18, 16, 17, 16, 17].map((wch) => ({ wch }));
+    wsD['!cols'] = [12, 10, 9, 16, 16, 8, 10, 11, 10, 26, 22, 22, 22, 22, 10, 40, 22, 17, 30, 18, 16, 17, 16, 17].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, wsD, 'Recargas');
 
     const porAg = new Map<string, { p: number; a: number; r: number; v: number }>();
@@ -410,15 +432,6 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
               ))}
             </select>
           </div>
-          <div>
-            <label htmlFor="recFiltroEstado" className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Estado</label>
-            <select id="recFiltroEstado" value={estado} onChange={(e) => setEstado(e.target.value as '' | EstadoRecarga)} className={input}>
-              <option value="">Todos</option>
-              <option value="Pendiente">Pendiente</option>
-              <option value="Autorizada">Autorizada</option>
-              <option value="Rechazada">Rechazada</option>
-            </select>
-          </div>
           <div className="relative flex-1 min-w-[180px]">
             <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
@@ -468,10 +481,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
           {estado !== 'Pendiente' && (
             <button
               type="button"
-              onClick={() => {
-                setEstado('Pendiente');
-                setDesde('');
-              }}
+              onClick={() => setEstado('Pendiente')}
               className="min-h-[36px] px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold cursor-pointer"
             >
               Ver pendientes
@@ -493,7 +503,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
             type="button"
             onClick={() => setEstado(estado === k.f ? '' : k.f)}
             aria-pressed={!!k.f && estado === k.f}
-            className={`text-left bg-white border rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow ${k.c} ${k.f && estado === k.f ? 'ring-2 ring-slate-800' : ''}`}
+            className={`text-left bg-white border rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow ${k.c} ${k.f && estado === k.f && k.l !== 'Viajes para pago' ? 'ring-2 ring-slate-800' : ''}`}
           >
             <p className="text-[10.5px] font-semibold uppercase tracking-wide">{k.l}</p>
             <p className="text-2xl font-bold text-slate-900 tabular-nums">{k.v}</p>
@@ -504,9 +514,35 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
 
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-bold text-slate-800">Recargas registradas ({filtradas.length})</h3>
-          <span className="text-[11px] text-slate-400 mr-auto">
-            {desde ? fmt(desde) : 'Desde el inicio'} a {fmt(hasta)}
+          <div className="flex flex-wrap gap-1 mr-auto" role="tablist" aria-label="Estado de las recargas">
+            {(
+              [
+                { k: 'Pendiente', l: 'Por autorizar', n: kpi.pendientes, on: 'bg-amber-500 text-white border-amber-500' },
+                { k: 'Autorizada', l: 'Autorizadas', n: kpi.autorizadas, on: 'bg-emerald-600 text-white border-emerald-600' },
+                { k: 'Rechazada', l: 'Rechazadas', n: kpi.rechazadas, on: 'bg-rose-600 text-white border-rose-600' },
+                { k: '', l: 'Todas', n: kpi.total, on: 'bg-slate-800 text-white border-slate-800' },
+              ] as { k: '' | EstadoRecarga; l: string; n: number; on: string }[]
+            ).map((t) => (
+              <button
+                key={t.l}
+                type="button"
+                role="tab"
+                aria-selected={estado === t.k}
+                onClick={() => {
+                  setEstado(t.k);
+                  setSeleccion(new Set());
+                }}
+                className={`min-h-[40px] px-3.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                  estado === t.k ? t.on : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                {t.l}
+                <span className={`px-1.5 rounded-md text-[10.5px] tabular-nums ${estado === t.k ? 'bg-white/25' : 'bg-slate-100'}`}>{t.n}</span>
+              </button>
+            ))}
+          </div>
+          <span className="text-[11px] text-slate-400">
+            {estado === 'Pendiente' ? 'Todas las pendientes, sin importar la fecha' : `${desde ? fmt(desde) : 'Desde el inicio'} a ${fmt(hasta)}`}
             {kpi.auto > 0 ? ` · ${kpi.auto} automática(s) desde el Tablero` : ''}
           </span>
           {isAdmin && seleccionadas.length > 0 && (
@@ -547,7 +583,8 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                       />
                     </th>
                   )}
-                  <th className="text-left px-4 py-2.5">Fecha</th>
+                  <th className="text-left px-4 py-2.5">No.</th>
+                  <th className="text-left px-3 py-2.5">Fecha</th>
                   <th className="text-left px-3 py-2.5">Ruta</th>
                   <th className="text-left px-3 py-2.5">Agencia</th>
                   <th className="text-left px-3 py-2.5">Tipo</th>
@@ -564,7 +601,9 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                 {filtradas.map((r) => {
                   const e = estadoDe(r);
                   const pend = e === 'Pendiente';
-                  const puedeEliminar = canDelete && (e !== 'Autorizada' || isAdmin);
+                  // Autorizadas: solo un administrador las modifica o elimina.
+                  const puedeEditar = isAdmin || e !== 'Autorizada';
+                  const puedeEliminar = isAdmin || (canDelete && e !== 'Autorizada');
                   return (
                     <React.Fragment key={r.id}>
                       <tr className={`align-top ${pend ? 'bg-amber-50/30' : ''} hover:bg-slate-50/70`}>
@@ -573,7 +612,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                             {pend && (
                               <input
                                 type="checkbox"
-                                aria-label={`Seleccionar recarga de la ruta ${r.rutaId}`}
+                                aria-label={`Seleccionar recarga ${etq(r)}`}
                                 checked={seleccion.has(r.id)}
                                 onChange={() =>
                                   setSeleccion((prev) => {
@@ -588,8 +627,15 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                             )}
                           </td>
                         )}
-                        <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">{fmt(r.fecha)}</td>
-                        <td className="px-3 py-3 font-mono font-bold text-slate-900">{r.rutaId}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-rose-700 whitespace-nowrap">{formatoCorrelativo(r.correlativo) || '—'}</td>
+                        <td className="px-3 py-3 font-semibold text-slate-700 whitespace-nowrap">{fmt(r.fecha)}</td>
+                        <td className="px-3 py-3 font-mono font-bold text-slate-900 whitespace-nowrap">
+                          {r.sinRuta || !r.rutaId ? (
+                            <span className="inline-flex px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10.5px] font-sans font-bold text-slate-600">Sin ruta</span>
+                          ) : (
+                            r.rutaId
+                          )}
+                        </td>
                         <td className="px-3 py-3">
                           <span className="font-semibold text-blue-700">{r.agencia}</span>
                           {r.segmento && <span className="block text-[10px] text-slate-400">{r.segmento}</span>}
@@ -636,7 +682,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                                 type="button"
                                 disabled={procesando}
                                 onClick={() => void cambiarEstado([r], 'Autorizada')}
-                                aria-label={`Autorizar recarga de la ruta ${r.rutaId}`}
+                                aria-label={`Autorizar recarga ${etq(r)}`}
                                 className="min-h-[36px] px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-60"
                               >
                                 <Check className="w-3.5 h-3.5" /> Autorizar
@@ -647,7 +693,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                                 type="button"
                                 disabled={procesando}
                                 onClick={() => setRechazo({ id: r.id, motivo: '' })}
-                                aria-label={`Rechazar recarga de la ruta ${r.rutaId}`}
+                                aria-label={`Rechazar recarga ${etq(r)}`}
                                 className="min-h-[36px] px-2.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-[11px] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-60"
                               >
                                 <X className="w-3.5 h-3.5" /> Rechazar
@@ -655,13 +701,22 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                             )}
                             <button
                               type="button"
+                              onClick={() => imprimirBoletaRecarga(r)}
+                              aria-label={`Imprimir boleta ${etq(r)}`}
+                              title="Imprimir boleta"
+                              className="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 flex items-center justify-center cursor-pointer"
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                            {puedeEditar && (<button
+                              type="button"
                               onClick={() => setModal({ abierto: true, recarga: r })}
-                              aria-label={`Editar recarga de la ruta ${r.rutaId}`}
+                              aria-label={`Editar recarga ${etq(r)}`}
                               title="Editar"
                               className="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 flex items-center justify-center cursor-pointer"
                             >
                               <Pencil className="w-4 h-4" />
-                            </button>
+                            </button>)}
                             {puedeEliminar && porEliminar === r.id ? (
                               <span className="flex items-center gap-1">
                                 <span className="text-[11px] font-semibold text-rose-700">¿Eliminar?</span>
@@ -685,7 +740,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                                 <button
                                   type="button"
                                   onClick={() => setPorEliminar(r.id)}
-                                  aria-label={`Eliminar recarga de la ruta ${r.rutaId}`}
+                                  aria-label={`Eliminar recarga ${etq(r)}`}
                                   title="Eliminar"
                                   className="w-9 h-9 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 flex items-center justify-center cursor-pointer"
                                 >
@@ -698,7 +753,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                       </tr>
                       {rechazo?.id === r.id && (
                         <tr className="bg-rose-50/60">
-                          <td colSpan={isAdmin ? 12 : 11} className="px-4 py-3">
+                          <td colSpan={isAdmin ? 13 : 12} className="px-4 py-3">
                             <form
                               className="flex flex-wrap items-center gap-2"
                               onSubmit={(ev) => {
@@ -708,7 +763,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                               }}
                             >
                               <label htmlFor={`motivoRechazo-${r.id}`} className="text-[11px] font-bold text-rose-800">
-                                Motivo del rechazo (ruta {r.rutaId}):
+                                Motivo del rechazo ({etq(r)}):
                               </label>
                               <input
                                 id={`motivoRechazo-${r.id}`}
