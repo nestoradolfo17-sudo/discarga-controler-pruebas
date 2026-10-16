@@ -74,55 +74,58 @@ export async function leerRecargas(): Promise<ResultadoLectura> {
   }
 }
 
-/** Crea o actualiza una recarga. Devuelve un mensaje de error o null si se guardó. */
-export async function guardarRecarga(r: Recarga): Promise<string | null> {
-  if (!isSupabaseConfigured || !supabase) {
-    const list = leerLocal();
-    const i = list.findIndex((x) => x.id === r.id);
-    if (i === -1) list.push(r);
-    else list[i] = r;
-    escribirLocal(list);
-    return null;
-  }
-  try {
-    const { error } = await supabase
-      .from(TABLE)
-      .upsert([{ id: r.id, data: r, updated_at: new Date().toISOString() }], { onConflict: 'id' });
-    if (error) throw error;
-    return null;
-  } catch (e) {
-    if (esTablaFaltante(e)) return 'Falta crear la tabla de Recargas en la base de datos (supabase/fase8_recargas.sql).';
-    const msg = String((e as { message?: string })?.message || '');
-    if (msg.includes('RECARGA_')) return msg.replace(/^.*RECARGA_[A-Z_]+:\s*/, '');
-    return String((e as { message?: string })?.message || 'No se pudo guardar la recarga.');
-  }
-}
+export const formatoCorrelativo = (n?: number) => (typeof n === 'number' && n > 0 ? `REC-${String(n).padStart(6, '0')}` : '');
 
-/** Guarda varias recargas de una vez (autorización en bloque). */
-export async function guardarRecargas(list: Recarga[]): Promise<string | null> {
-  if (list.length === 0) return null;
+const mensajeError = (e: unknown, def: string) => {
+  if (esTablaFaltante(e)) return 'Falta crear la tabla de Recargas en la base de datos (supabase/fase8_recargas.sql).';
+  const msg = String((e as { message?: string })?.message || '');
+  if (msg.includes('RECARGA_')) return msg.replace(/^.*RECARGA_[A-Z_]+:\s*/, '');
+  return msg || def;
+};
+
+export type ResultadoGuardado = { error: string | null; guardadas: Recarga[] };
+
+/**
+ * Crea o actualiza recargas. Devuelve las recargas tal como quedaron guardadas
+ * (con el correlativo que asigna la base). En modo local el correlativo se
+ * calcula aquí.
+ */
+export async function guardarRecargas(list: Recarga[]): Promise<ResultadoGuardado> {
+  if (list.length === 0) return { error: null, guardadas: [] };
   if (!isSupabaseConfigured || !supabase) {
     const all = leerLocal();
-    list.forEach((r) => {
+    let max = all.reduce((m, x) => Math.max(m, x.correlativo || 0), 0);
+    const guardadas = list.map((r) => {
+      const previa = all.find((x) => x.id === r.id);
+      const correlativo = previa?.correlativo || r.correlativo || ++max;
+      const g = { ...r, correlativo };
       const i = all.findIndex((x) => x.id === r.id);
-      if (i === -1) all.push(r);
-      else all[i] = r;
+      if (i === -1) all.push(g);
+      else all[i] = g;
+      return g;
     });
     escribirLocal(all);
-    return null;
+    return { error: null, guardadas };
   }
   try {
     const now = new Date().toISOString();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from(TABLE)
-      .upsert(list.map((r) => ({ id: r.id, data: r, updated_at: now })), { onConflict: 'id' });
+      .upsert(list.map((r) => ({ id: r.id, data: r, updated_at: now })), { onConflict: 'id' })
+      .select('id, data');
     if (error) throw error;
-    return null;
+    const rows = (Array.isArray(data) ? data : []) as { id: string; data: Recarga }[];
+    const byId = new Map(rows.map((x) => [x.id, { ...x.data, id: x.id }]));
+    return { error: null, guardadas: list.map((r) => byId.get(r.id) || r) };
   } catch (e) {
-    const msg = String((e as { message?: string })?.message || '');
-    if (msg.includes('RECARGA_')) return msg.replace(/^.*RECARGA_[A-Z_]+:\s*/, '');
-    return msg || 'No se pudieron guardar las recargas.';
+    return { error: mensajeError(e, 'No se pudieron guardar las recargas.'), guardadas: [] };
   }
+}
+
+/** Crea o actualiza una recarga. */
+export async function guardarRecarga(r: Recarga): Promise<{ error: string | null; guardada: Recarga }> {
+  const res = await guardarRecargas([r]);
+  return { error: res.error, guardada: res.guardadas[0] || r };
 }
 
 export async function eliminarRecarga(id: string): Promise<string | null> {
@@ -131,11 +134,15 @@ export async function eliminarRecarga(id: string): Promise<string | null> {
     return null;
   }
   try {
-    const { error } = await supabase.from(TABLE).delete().eq('id', id);
+    const { data, error } = await supabase.from(TABLE).delete().eq('id', id).select('id');
     if (error) throw error;
+    // La base no borra (sin error) cuando no hay permiso: se avisa.
+    if (!isDemoMode && Array.isArray(data) && data.length === 0) {
+      return 'No tienes permiso para eliminar esta recarga (las autorizadas solo las elimina un administrador).';
+    }
     return null;
   } catch (e) {
-    return String((e as { message?: string })?.message || 'No se pudo eliminar la recarga.');
+    return mensajeError(e, 'No se pudo eliminar la recarga.');
   }
 }
 
@@ -157,6 +164,9 @@ export async function registrarRecargaAuto(base: Omit<Recarga, 'tipo' | 'origen'
       if (error) return; // tabla aún no creada u otro problema: se omite
       previa = (data?.[0] as { data?: Recarga } | undefined)?.data;
     }
+    // Una recarga ya autorizada no se toca desde el Tablero (solo un
+    // administrador la modifica, desde Recargas).
+    if (previa && previa.estado === 'Autorizada') return;
     const ahora = new Date().toISOString();
     // Si cambió la tripulación de una recarga ya revisada, vuelve a quedar
     // Pendiente: el administrador debe autorizarla otra vez.
