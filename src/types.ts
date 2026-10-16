@@ -437,3 +437,40 @@ export interface AppUser {
   // Con Supabase: un usuario desactivado no puede entrar ni ver datos.
   activo?: boolean;
 }
+
+// --- Módulo de Recargas ---
+// Registro de cada recarga que sale (número de ruta, tripulación y fecha).
+// "Simple", "Doble" o "Triple" = cuántas recargas hizo esa tripulación con la
+// ruta ese día. Se guarda en la tabla compartida "app_recargas" (ver
+// supabase/fase8_recargas.sql). Las de origen 'asignacion' se crean solas al
+// asignar una ruta como "Recarga" en el Tablero (tipo Simple, editable).
+export type TipoRecarga = 'Simple' | 'Doble' | 'Triple';
+// Toda recarga nace "Pendiente" y solo cuenta para pago cuando un
+// administrador la pasa a "Autorizada". "Rechazada" lleva su motivo.
+export type EstadoRecarga = 'Pendiente' | 'Autorizada' | 'Rechazada';
+
+export interface Recarga {
+  id: string;
+  // Fecha de la recarga en formato del control de fecha: AAAA-MM-DD.
+  fecha: string;
+  rutaId: string;
+  agencia: string;
+  segmento?: string;
+  tipo: TipoRecarga;
+  conductor: string;
+  conductorId?: string;
+  auxiliares: string[];
+  auxiliarIds?: (string | null)[];
+  camionPlaca?: string;
+  comentario?: string;
+  origen: 'manual' | 'asignacion';
+  creadoPor: string;
+  creadoEn: string;
+  editadoPor?: string;
+  editadoEn?: string;
+  // Autorización del administrador. Registros sin "estado" = Pendiente.
+  estado?: EstadoRecarga;
+  autorizadoPor?: string;
+  autorizadoEn?: string;
+  motivoRechazo?: string;
+}
