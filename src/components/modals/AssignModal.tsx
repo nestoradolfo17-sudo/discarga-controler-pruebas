@@ -1,6 +1,6 @@
 import { getRouteKey } from '../../utils/routeKey';
 import React, { useState, useEffect } from 'react';
-import { Route, Truck, Staff, AssignmentType } from '../../types';
+import { Route, Truck, Staff, AssignmentType, Prestamo } from '../../types';
 import {
   X,
   Send,
@@ -26,6 +26,7 @@ import { ModalFooter } from '../ui/ModalFooter';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { formatDateToGuatemala, getTomorrowGuatemalaDate } from '../../utils/date';
 import { ResourcePicker, PickerItem, PickerStatus } from '../ResourcePicker';
+import { prestamosVigentes, fechaRutaISO } from '../../utils/prestamos';
 import { suggestCrewForRoute } from '../../utils/crewSuggestion';
 import { mismaJornada, esJornadaFutura } from '../../utils/jornada';
 import { toNum } from '../../utils/number';
@@ -60,6 +61,9 @@ interface AssignModalProps {
   route: Route | null;
   trucks: Truck[];
   staff: Staff[];
+  // Préstamos entre agencias: en la fecha de la ruta, lo prestado A esta agencia
+  // aparece para asignar y lo prestado POR esta agencia a otra no aparece.
+  prestamos?: Prestamo[];
   activeRoutes?: Route[];
   // Histórico de rutas liquidadas: junto con activeRoutes se usa para sugerir
   // la tripulación más frecuente de esta misma ruta (ver utils/crewSuggestion).
@@ -102,6 +106,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   route,
   trucks,
   staff,
+  prestamos = [] as Prestamo[],
   activeRoutes = [],
   historyRoutes = [],
   onConfirmAssignment,
@@ -276,10 +281,19 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   // pertenezcan a la misma agencia de la ruta. Un camión/colaborador que todavía
   // no tenga agencia asignada (registros antiguos) no aparece aquí hasta que se
   // corrija por Carga Masiva de Excel (Camiones / Personal).
-  const availableTrucks = trucks.filter((t) => t.agencia === route.agencia);
+  // Préstamos vigentes en la FECHA DE LA RUTA: cuenta la agencia donde trabaja
+  // ese día (la que lo recibe si está prestado).
+  const prestamosRuta = prestamosVigentes(prestamos, fechaRutaISO(route));
+  const agenciaDeTruck = (t: Truck) => prestamosRuta.get(`t:${t.id}`)?.agenciaDestino || t.agencia;
+  const agenciaDeStaff = (s: Staff) => prestamosRuta.get(`s:${s.id}`)?.agenciaDestino || s.agencia;
+  const prestadoDe = (tipo: 't' | 's', id: string) => {
+    const p = prestamosRuta.get(`${tipo}:${id}`);
+    return p && p.agenciaDestino === route.agencia ? `Prestado de ${p.agenciaOrigen}` : undefined;
+  };
+  const availableTrucks = trucks.filter((t) => agenciaDeTruck(t) === route.agencia);
 
   const availableDrivers = staff.filter((s) => {
-    if (s.agencia !== route.agencia) return false;
+    if (agenciaDeStaff(s) !== route.agencia) return false;
     if (s.estado === 'Baja') return false;
     const isDriverRole = s.puesto === 'VPP' || s.puesto === 'VPPB' || s.rol === 'Conductor';
     if (!isDriverRole) return false;
@@ -287,7 +301,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   });
 
   const availableHelpers = staff.filter((s) => {
-    if (s.agencia !== route.agencia) return false;
+    if (agenciaDeStaff(s) !== route.agencia) return false;
     if (s.estado === 'Baja') return false;
     const isStandardHelper = s.puesto === 'APP' || s.rol === 'Auxiliar';
     const isPilot = s.puesto === 'VPP' || s.puesto === 'VPPB' || s.rol === 'Conductor';
@@ -491,7 +505,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       statusLabel: label,
       disabled: isBaja,
       hidden: unavailable,
-      extraBadge: isSug && status !== 'sugerido' ? 'Sugerido' : undefined,
+      extraBadge: prestadoDe('t', t.id) || (isSug && status !== 'sugerido' ? 'Sugerido' : undefined),
     };
   });
 
@@ -527,7 +541,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       status,
       statusLabel: label,
       hidden: unavailable,
-      extraBadge: isSug && status !== 'sugerido' ? 'Sugerido' : undefined,
+      extraBadge: prestadoDe('s', d.id) || (isSug && status !== 'sugerido' ? 'Sugerido' : undefined),
     };
   });
 
@@ -562,7 +576,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
         status,
         statusLabel: label,
         hidden: unavailable,
-        extraBadge: isPilotStaff(h) ? 'Piloto como auxiliar' : isSug && status !== 'sugerido' ? 'Sugerido' : undefined,
+        extraBadge: prestadoDe('s', h.id) || (isPilotStaff(h) ? 'Piloto como auxiliar' : isSug && status !== 'sugerido' ? 'Sugerido' : undefined),
       };
     });
 
@@ -601,22 +615,30 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     if (!suggestion) return;
     // No se cargan recursos que ya están asignados a otra ruta en tránsito.
     const skipped: string[] = [];
+    // Prestado a otra agencia en esta fecha = no disponible aquí.
+    const prestadoFuera = (nombre: string) => {
+      const st = staff.find((x) => x.nombre === nombre && x.agencia === route.agencia);
+      return !!st && agenciaDeStaff(st) !== route.agencia;
+    };
+    const truckSug = suggestion.truckId ? trucks.find((t) => t.id === suggestion.truckId) : undefined;
     if (suggestion.truckId) {
       if (isBusyTruck(suggestion.truckId)) skipped.push('camión');
+      else if (truckSug && agenciaDeTruck(truckSug) !== route.agencia) skipped.push('camión (prestado a otra agencia)');
       else setTruckId(suggestion.truckId);
     }
     if (suggestion.driverName) {
       if (isBusyPerson(suggestion.driverName)) skipped.push('piloto');
+      else if (prestadoFuera(suggestion.driverName)) skipped.push('piloto (prestado a otra agencia)');
       else setDriverName(suggestion.driverName);
     }
     const helpersSug = suggestion.helpers.filter((h) => h !== suggestion.driverName);
-    const helpersFree = helpersSug.filter((h) => !isBusyPerson(h));
+    const helpersFree = helpersSug.filter((h) => !isBusyPerson(h) && !prestadoFuera(h));
     if (helpersFree.length < helpersSug.length) skipped.push(`${helpersSug.length - helpersFree.length} auxiliar(es)`);
     setHelpersList(helpersFree);
     if (staff.some((x) => helpersFree.includes(x.nombre) && isPilotStaff(x))) setAllowPilotsAsHelpers(true);
     onShowToast(
       skipped.length > 0
-        ? `Se cargó la tripulación sugerida, excepto ${skipped.join(', ')} ya asignado(s) a otra ruta en tránsito.`
+        ? `Se cargó la tripulación sugerida, excepto ${skipped.join(', ')} (ocupado(s) en otra ruta o prestado(s)).`
         : 'Se cargó la tripulación más frecuente de esta ruta. Revísala y confirma.',
       'info'
     );
