@@ -36,6 +36,8 @@ interface RecargaModalProps {
   staff: Staff[];
   agencias: string[];
   agenciaPorDefecto: string;
+  // Nombre que se propone como "Solicitado por" en una recarga nueva.
+  solicitantePorDefecto?: string;
   existentes: Recarga[];
   guardando: boolean;
   // Quien edita no es administrador y la recarga ya fue revisada: al guardar
@@ -59,6 +61,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
   staff,
   agencias,
   agenciaPorDefecto,
+  solicitantePorDefecto = '',
   existentes,
   guardando,
   avisoReautorizar = false,
@@ -72,6 +75,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
   const [conductor, setConductor] = useState('');
   const [auxiliares, setAuxiliares] = useState<string[]>([]);
   const [comentario, setComentario] = useState('');
+  const [solicitadoPor, setSolicitadoPor] = useState('');
   const [picker, setPicker] = useState<'piloto' | 'aux' | null>(null);
   const [intentado, setIntentado] = useState(false);
 
@@ -85,6 +89,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
     setConductor(inicial?.conductor || '');
     setAuxiliares(inicial?.auxiliares || []);
     setComentario(inicial?.comentario || '');
+    setSolicitadoPor(inicial ? inicial.solicitadoPor || inicial.creadoPor || '' : solicitantePorDefecto);
     setPicker(null);
     setIntentado(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,6 +159,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
   if (!fecha) faltan.push('fecha');
   if (!idLimpio && !sinRuta) faltan.push('número de ruta (o marca "Sin ruta")');
   if (!agencia) faltan.push('agencia');
+  if (!solicitadoPor.trim()) faltan.push('quién solicita la recarga');
   // Basta con piloto O al menos un auxiliar (puede ir solo uno de los dos).
   if (!conductor && auxiliares.length === 0) faltan.push('piloto o al menos un auxiliar');
   const sinTripulacion = intentado && !conductor && auxiliares.length === 0;
@@ -178,6 +184,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
       auxiliarIds: auxiliares.map((n) => staffId(n) || null),
       camionPlaca: sinRuta ? inicial?.camionPlaca : asig?.camionPlaca || inicial?.camionPlaca,
       comentario: comentario.trim() || undefined,
+      solicitadoPor: solicitadoPor.trim().toUpperCase(),
     });
   };
 
@@ -392,6 +399,19 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
             </div>
           </div>
 
+          </div>
+
+          <div>
+            <label htmlFor="recSolicitadoPor" className={label}>Solicitado por *</label>
+            <input
+              id="recSolicitadoPor"
+              value={solicitadoPor}
+              maxLength={80}
+              onChange={(e) => setSolicitadoPor(e.target.value)}
+              placeholder="Nombre de quien solicita la recarga"
+              className={`${input} ${intentado && !solicitadoPor.trim() ? 'border-rose-400' : ''}`}
+            />
+            <p className="mt-1 text-[10.5px] text-slate-400">Firma en la boleta junto con la tripulación.</p>
           </div>
 
           <div>
