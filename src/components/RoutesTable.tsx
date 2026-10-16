@@ -62,6 +62,9 @@ interface RoutesTableProps {
   // routeIds aquí son claves compuestas ID+Fecha (ver getRouteKey), no solo el ID.
   onBulkMoveToFloor?: (routeIds: string[]) => void;
   onOpenDeleteModal?: (routeIds: string[]) => void;
+  // Si se indica, solo se ofrece "Eliminar ruta" en las rutas que devuelve true
+  // (administrador de agencias: solo las de sus agencias).
+  puedeEliminarRuta?: (route: Route) => boolean;
 }
 
 type SortKey =
@@ -102,6 +105,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   onVisibleRoutesChange,
   onBulkMoveToFloor,
   onOpenDeleteModal,
+  puedeEliminarRuta,
 }) => {
   const [activeDropdownId, setActiveDropdownId] = React.useState<string | null>(null);
   const [sortKey, setSortKey] = React.useState<SortKey | null>(null);
@@ -660,7 +664,10 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                           allSettled && route.parentRouteId
                             ? () => onViewConsolidatedReceipt(route.parentRouteId!, route)
                             : undefined,
-                        onDelete: onOpenDeleteModal ? () => onOpenDeleteModal([routeKey]) : undefined,
+                        onDelete:
+                          onOpenDeleteModal && (!puedeEliminarRuta || puedeEliminarRuta(route))
+                            ? () => onOpenDeleteModal([routeKey])
+                            : undefined,
                       }}
                     />
                   </td>
