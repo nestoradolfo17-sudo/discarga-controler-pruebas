@@ -23,6 +23,7 @@ import {
   fetchSharedCollection,
   pushSharedCollection,
   subscribeToSharedCollection,
+  soportaFiltroAgencia,
   deleteSharedRecords,
   setSyncErrorHandler,
   fetchSharedRowsByKeys,
@@ -715,44 +716,59 @@ export default function App() {
 
   // Suscripción en tiempo real: refleja cambios hechos por otros usuarios de
   // prueba (en otra computadora) sin necesidad de recargar la página.
+  // Tiempo real por agencia: un usuario limitado a ciertas agencias solo recibe
+  // los cambios de esas agencias (si ya se corrió la Fase 7 en Supabase).
+  // Administradores y usuarios con acceso a todas reciben todo, como siempre.
+  const agenciasTiempoReal =
+    currentUser && !currentUser.isAdmin && Array.isArray(currentUser.agencyAccess) && currentUser.agencyAccess.length > 0
+      ? [...currentUser.agencyAccess].sort().join('|')
+      : '';
   useEffect(() => {
     if (!isSupabaseConfigured || !isRemoteReady) return;
+    let cancelado = false;
+    let unsubscribers: (() => void)[] = [];
 
-    const unsubscribers = [
+    void (async () => {
+      const usarFiltro = agenciasTiempoReal !== '' && (await soportaFiltroAgencia());
+      if (cancelado) return;
+      const agencias = usarFiltro ? agenciasTiempoReal.split('|') : null;
+      unsubscribers = [
       subscribeToSharedCollection<Route>('app_routes', (updater) => {
         setRoutes((prev) => {
           const next = updater(prev);
           markRemoteApplied(routesSyncRef, prev, next, routeSyncKey);
           return next;
         });
-      }, routeSyncKey),
+      }, routeSyncKey, agencias),
       subscribeToSharedCollection<Route>('app_historical_routes', (updater) => {
         setHistoricalRoutes((prev) => {
           const next = updater(prev);
           markRemoteApplied(historySyncRef, prev, next, routeSyncKey);
           return next;
         });
-      }, routeSyncKey),
+      }, routeSyncKey, agencias),
       subscribeToSharedCollection<Truck>('app_trucks', (updater) => {
         setTrucks((prev) => {
           const next = updater(prev);
           markRemoteApplied(trucksSyncRef, prev, next, defaultSyncKey);
           return next;
         });
-      }, defaultSyncKey),
+      }, defaultSyncKey, agencias),
       subscribeToSharedCollection<Staff>('app_staff', (updater) => {
         setStaff((prev) => {
           const next = updater(prev);
           markRemoteApplied(staffSyncRef, prev, next, defaultSyncKey);
           return next;
         });
-      }, defaultSyncKey),
-    ];
+      }, defaultSyncKey, agencias),
+      ];
+    })();
 
     return () => {
+      cancelado = true;
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [isRemoteReady]);
+  }, [isRemoteReady, agenciasTiempoReal]);
 
   useEffect(() => {
     // Con Supabase, los perfiles se guardan en "app_users" mediante las
