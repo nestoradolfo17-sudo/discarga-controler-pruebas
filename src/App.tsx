@@ -72,6 +72,7 @@ import { NewTrasladoRouteModal } from './components/modals/NewTrasladoRouteModal
 import { RouteTypeSelectModal } from './components/modals/RouteTypeSelectModal';
 import { SplitRouteModal } from './components/modals/SplitRouteModal';
 import { ChangeSegmentModal } from './components/modals/ChangeSegmentModal';
+import { ChangeTruckStatusModal } from './components/modals/ChangeTruckStatusModal';
 import { RevertSplitModal } from './components/modals/RevertSplitModal';
 import { RepartirCajasModal } from './components/modals/RepartirCajasModal';
 import { AssignModal } from './components/modals/AssignModal';
@@ -1680,14 +1681,18 @@ export default function App() {
     });
     return { truckIds, people };
   }, [routes]);
+  // Día de hoy (Guatemala), para los estatus de camión puestos a mano.
+  const hoyGT = formatDateToGuatemala(new Date());
   const trucksLive = useMemo(
     () =>
       trucks.map((t) => {
         if (t.estado === 'Baja') return t;
-        const estado = busyResources.truckIds.has(t.id) ? 'En Ruta' : 'Disponible';
+        // Estatus puesto a mano (con autorización) para HOY: manda sobre el cálculo.
+        const manual = t.estadoManual && t.estadoManual.fecha === hoyGT ? t.estadoManual.estado : null;
+        const estado = manual || (busyResources.truckIds.has(t.id) ? 'En Ruta' : 'Disponible');
         return t.estado === estado ? t : { ...t, estado };
       }),
-    [trucks, busyResources]
+    [trucks, busyResources, hoyGT]
   );
   const staffLive = useMemo(
     () =>
@@ -2026,6 +2031,35 @@ export default function App() {
       : r
       ? [r]
       : [];
+
+  // Cambio manual del estatus de un camión (con autorización de administrador).
+  const [truckStatusTarget, setTruckStatusTarget] = useState<Truck | null>(null);
+  const handleConfirmTruckStatus = (truckId: string, nuevo: ResourceStatus, motivo: string, autorizadoPor: string) => {
+    const fecha = formatDateTimeToGuatemala(new Date());
+    const por = currentUser?.nombre || currentUser?.username || '';
+    const tr = trucks.find((t) => t.id === truckId);
+    const placa = tr ? `${tr.idCamion ? tr.idCamion + ' · ' : ''}${tr.placa}` : truckId;
+    setTrucks((prev) =>
+      prev.map((t) => {
+        if (t.id !== truckId) return t;
+        // Disponible / En Ruta se calculan solos con las rutas activas; si lo que
+        // se pide es distinto de ese cálculo, se deja fijo por HOY.
+        const calculado = busyResources.truckIds.has(t.id) ? 'En Ruta' : 'Disponible';
+        const estadoManual =
+          nuevo === 'Baja' || nuevo === calculado ? null : { estado: nuevo as 'Disponible' | 'En Ruta', fecha: hoyGT };
+        return {
+          ...t,
+          estado: nuevo,
+          estadoManual,
+          // Disponible o Baja: ya no está en ninguna ruta.
+          rutaActual: nuevo === 'En Ruta' ? t.rutaActual : null,
+          historialEstado: [...(t.historialEstado || []), { fecha, de: t.estado, a: nuevo, motivo, por, autorizadoPor }],
+        };
+      })
+    );
+    setTruckStatusTarget(null);
+    showToast(`Camión ${placa}: estatus cambiado a ${nuevo} (autorizó ${autorizadoPor}).`, 'success');
+  };
 
   const handleVerifyAdminForSegment = async (
     username: string,
@@ -4445,6 +4479,7 @@ export default function App() {
           <ResourcesView
             mode="trucks"
             trucks={visibleTrucks}
+            onRequestTruckStatusChange={(t) => setTruckStatusTarget(t)}
             staff={visibleStaff}
             defaultAgencia={effectiveAgencyForCreation}
             onOpenNewTruckModal={() => setIsNewTruckModalOpen(true)}
@@ -4569,6 +4604,13 @@ export default function App() {
         onVerifyAdmin={handleVerifyAdminForSegment}
         onConfirm={handleConfirmSegmentChange}
         onClose={() => setSegmentTarget(null)}
+      />
+      <ChangeTruckStatusModal
+        truck={truckStatusTarget}
+        defaultAdminUser={currentUser?.isAdmin ? currentUser.username : ''}
+        onVerifyAdmin={handleVerifyAdminForSegment}
+        onConfirm={handleConfirmTruckStatus}
+        onClose={() => setTruckStatusTarget(null)}
       />
       <SplitRouteModal
         isOpen={!!splitRouteTarget}
