@@ -131,6 +131,12 @@ export interface Truck {
   motivoNoAsignado?: TruckUnavailableReason | null;
   motivoNoAsignadoFecha?: string | null;
   remuneraNoAsignado?: RemuneraStatus | null;
+  // Estatus puesto a mano para el día indicado (Disponible / En Ruta): manda
+  // sobre el cálculo automático por rutas solo ese día. "Baja" no lo usa
+  // (queda en "estado" hasta que se cambie).
+  estadoManual?: { estado: 'Disponible' | 'En Ruta'; fecha: string } | null;
+  // Cambios manuales de estatus (con autorización de administrador).
+  historialEstado?: { fecha: string; de: ResourceStatus; a: ResourceStatus; motivo: string; por: string; autorizadoPor?: string }[];
 }
 
 export interface Staff {
