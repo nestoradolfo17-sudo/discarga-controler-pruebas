@@ -34,6 +34,7 @@ interface AppUserRow {
   created_at: string;
   created_by: string | null;
   last_login: string | null;
+  admin_agencies?: string[] | null;
 }
 
 export const rowToAppUser = (row: AppUserRow): AppUser => ({
@@ -48,6 +49,7 @@ export const rowToAppUser = (row: AppUserRow): AppUser => ({
   createdAt: row.created_at,
   createdBy: row.created_by || undefined,
   lastLogin: row.last_login || undefined,
+  adminAgencies: Array.isArray(row.admin_agencies) ? row.admin_agencies : [],
 });
 
 /** Devuelve el id del usuario con sesión activa (o null). */
@@ -117,7 +119,9 @@ export async function verifyOwnPassword(username: string, password: string): Pro
  */
 export async function verifyAdminCredentials(
   username: string,
-  password: string
+  password: string,
+  // Si se indica, también se acepta al ADMINISTRADOR DE ESA AGENCIA.
+  agencia?: string
 ): Promise<{ ok: boolean; nombre?: string; error?: string }> {
   if (!supabase) return { ok: false, error: 'La base de datos no está configurada.' };
   const url = import.meta.env.VITE_SUPABASE_URL as string;
@@ -136,11 +140,18 @@ export async function verifyAdminCredentials(
     }
     const { data: prof } = await temp
       .from('app_users')
-      .select('username, nombre, is_admin, activo')
+      .select('*')
       .eq('id', data.user.id)
       .maybeSingle();
-    if (!prof || !prof.is_admin || prof.activo === false) {
-      return { ok: false, error: 'Ese usuario no es un administrador activo.' };
+    const adminDeAgencia =
+      !!agencia && Array.isArray(prof?.admin_agencies) && (prof!.admin_agencies as string[]).includes(agencia);
+    if (!prof || prof.activo === false || !(prof.is_admin || adminDeAgencia)) {
+      return {
+        ok: false,
+        error: agencia
+          ? `Ese usuario no es administrador general ni administrador de la agencia ${agencia}.`
+          : 'Ese usuario no es un administrador activo.',
+      };
     }
     return { ok: true, nombre: prof.nombre || prof.username };
   } catch (e) {
@@ -232,6 +243,7 @@ export async function adminCreateUser(input: {
   permissions: TablePermissions;
   canDelete: boolean;
   agencyAccess: 'all' | string[];
+  adminAgencies?: string[];
 }): Promise<AppUser> {
   const res = await callAdmin<{ user: AppUserRow }>({ action: 'create', ...input });
   return rowToAppUser(res.user);
@@ -252,7 +264,7 @@ export async function adminDeleteUser(userId: string): Promise<void> {
 /** Permisos, nombre, administrador, eliminar, agencias, activo. */
 export async function adminUpdateProfile(
   userId: string,
-  updates: Partial<Pick<AppUser, 'nombre' | 'isAdmin' | 'canDelete' | 'permissions' | 'agencyAccess' | 'activo'>>
+  updates: Partial<Pick<AppUser, 'nombre' | 'isAdmin' | 'canDelete' | 'permissions' | 'agencyAccess' | 'activo' | 'adminAgencies'>>
 ): Promise<void> {
   if (!supabase) throw new Error('La base de datos no está configurada.');
   const row: Record<string, unknown> = {};
@@ -262,8 +274,14 @@ export async function adminUpdateProfile(
   if (updates.permissions !== undefined) row.permissions = updates.permissions;
   if (updates.agencyAccess !== undefined) row.agency_access = updates.agencyAccess;
   if (updates.activo !== undefined) row.activo = updates.activo;
+  if (updates.adminAgencies !== undefined) row.admin_agencies = updates.adminAgencies;
   if (Object.keys(row).length === 0) return;
   if (isDemoMode) throw new Error('Versión DEMO: aquí no se modifican usuarios reales.');
   const { error } = await supabase.from('app_users').update(row).eq('id', userId);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (/admin_agencies/i.test(error.message) && /column|schema cache/i.test(error.message)) {
+      throw new Error('Falta correr en Supabase el script fase10_admin_agencias.sql (administrador de agencias).');
+    }
+    throw new Error(error.message);
+  }
 }
