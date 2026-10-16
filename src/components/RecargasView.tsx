@@ -27,6 +27,8 @@ interface RecargasViewProps {
   usuario: string;
   isAdmin: boolean;
   canDelete: boolean;
+  // Administrador de agencias: autoriza, edita y elimina recargas de estas agencias.
+  adminAgencias?: string[];
   onShowToast: (msg: string, type?: 'success' | 'error' | 'info', action?: { label: string; onClick: () => void }) => void;
   // Préstamos entre agencias: las recargas hechas en préstamo solo se pagan
   // con el préstamo autorizado y devuelto.
@@ -76,7 +78,10 @@ const ESTADO_STYLE: Record<EstadoRecarga, string> = {
 const contenido = (r: Partial<Recarga>) =>
   JSON.stringify([r.solicitadoPor || '', r.fecha, r.rutaId, !!r.sinRuta, r.agencia, r.tipo, r.conductor, r.auxiliares, r.camionPlaca, r.comentario || '']);
 
-export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agencias, agenciaGeneral, usuario, isAdmin, canDelete, onShowToast, prestamos = [] as Prestamo[] }) => {
+export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agencias, agenciaGeneral, usuario, isAdmin, canDelete, onShowToast, prestamos = [] as Prestamo[], adminAgencias = [] as string[] }) => {
+  // ¿Puede autorizar / modificar las recargas de esta agencia?
+  const adminDe = (ag?: string) => isAdmin || (!!ag && adminAgencias.includes(ag));
+  const aprobador = isAdmin || adminAgencias.length > 0;
   const [recargas, setRecargas] = useState<Recarga[]>([]);
   const [cargando, setCargando] = useState(true);
   const [tablaFalta, setTablaFalta] = useState(false);
@@ -124,7 +129,11 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
 
   const delUsuario = useMemo(() => recargas.filter((r) => agenciasVisibles.includes(r.agencia)), [recargas, agenciasVisibles]);
   // Pendientes de autorizar en TODO el historial (no solo en el rango elegido).
-  const pendientesTotales = useMemo(() => delUsuario.filter((r) => estadoDe(r) === 'Pendiente').length, [delUsuario]);
+  const pendientesTotales = useMemo(
+    () => delUsuario.filter((r) => estadoDe(r) === 'Pendiente' && adminDe(r.agencia)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [delUsuario, isAdmin, adminAgencias]
+  );
 
   const filtradas = useMemo(() => {
     const q = norm(busca.trim());
@@ -174,7 +183,12 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
     };
   }, [baseKpi]);
 
-  const pendientesVisibles = useMemo(() => filtradas.filter((r) => estadoDe(r) === 'Pendiente'), [filtradas]);
+  // Pendientes que el usuario en sesión puede autorizar (selección masiva).
+  const pendientesVisibles = useMemo(
+    () => filtradas.filter((r) => estadoDe(r) === 'Pendiente' && adminDe(r.agencia)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtradas, isAdmin, adminAgencias]
+  );
   // La selección solo guarda pendientes que siguen visibles.
   const seleccionadas = useMemo(() => pendientesVisibles.filter((r) => seleccion.has(r.id)), [pendientesVisibles, seleccion]);
 
@@ -199,7 +213,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
     } else {
       r = { ...previa, ...datos, solicitadoPor: previa.solicitadoPor || previa.creadoPor, editadoPor: usuario, editadoEn: ahora };
       // Un cambio real hecho por alguien que no es administrador vuelve a Pendiente.
-      if (!isAdmin && contenido(previa) !== contenido(r)) {
+      if (!(adminDe(previa.agencia) && adminDe(r.agencia)) && contenido(previa) !== contenido(r)) {
         r = { ...r, estado: 'Pendiente', autorizadoPor: undefined, autorizadoEn: undefined, motivoRechazo: undefined };
       }
     }
@@ -228,7 +242,8 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
   };
 
   const cambiarEstado = async (list: Recarga[], nuevo: EstadoRecarga, motivo?: string) => {
-    if (!isAdmin || list.length === 0) return;
+    list = list.filter((r) => adminDe(r.agencia));
+    if (!aprobador || list.length === 0) return;
     const ahora = new Date().toISOString();
     const cambios = list.map<Recarga>((r) => ({
       ...r,
@@ -578,7 +593,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
         </div>
       )}
 
-      {isAdmin && pendientesTotales > 0 && (
+      {aprobador && pendientesTotales > 0 && (
         <div id="avisoPendientesRecarga" className="flex flex-wrap items-center gap-2 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-4 py-3 text-xs">
           <ShieldCheck className="w-4 h-4 shrink-0" />
           <span className="flex-1">
@@ -651,7 +666,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
             {estado === 'Pendiente' ? 'Todas las pendientes, sin importar la fecha' : `${desde ? fmt(desde) : 'Desde el inicio'} a ${fmt(hasta)}`}
             {kpi.auto > 0 ? ` · ${kpi.auto} automática(s) por liquidación` : ''}
           </span>
-          {isAdmin && seleccionadas.length > 0 && (
+          {aprobador && seleccionadas.length > 0 && (
             <button
               id="btnAutorizarSeleccion"
               type="button"
@@ -676,7 +691,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
             <table className="w-full text-xs">
               <thead className="bg-slate-50 text-[10.5px] uppercase text-slate-500">
                 <tr>
-                  {isAdmin && (
+                  {aprobador && (
                     <th className="pl-4 py-2.5 w-8">
                       <input
                         type="checkbox"
@@ -708,14 +723,15 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                   const e = estadoDe(r);
                   const pend = e === 'Pendiente';
                   // Autorizadas: solo un administrador las modifica o elimina.
-                  const puedeEditar = isAdmin || e !== 'Autorizada';
-                  const puedeEliminar = isAdmin || (canDelete && e !== 'Autorizada');
+                  const esAdminAqui = adminDe(r.agencia);
+                  const puedeEditar = esAdminAqui || e !== 'Autorizada';
+                  const puedeEliminar = esAdminAqui || (canDelete && e !== 'Autorizada');
                   return (
                     <React.Fragment key={r.id}>
                       <tr className={`align-top ${pend ? 'bg-amber-50/30' : ''} hover:bg-slate-50/70`}>
-                        {isAdmin && (
+                        {aprobador && (
                           <td className="pl-4 py-3">
-                            {pend && (
+                            {pend && esAdminAqui && (
                               <input
                                 type="checkbox"
                                 aria-label={`Seleccionar recarga ${etq(r)}`}
@@ -784,7 +800,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex justify-end items-center gap-1.5 flex-wrap">
-                            {isAdmin && e !== 'Autorizada' && (
+                            {esAdminAqui && e !== 'Autorizada' && (
                               <button
                                 type="button"
                                 disabled={procesando}
@@ -795,7 +811,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                                 <Check className="w-3.5 h-3.5" /> Autorizar
                               </button>
                             )}
-                            {isAdmin && e !== 'Rechazada' && (
+                            {esAdminAqui && e !== 'Rechazada' && (
                               <button
                                 type="button"
                                 disabled={procesando}
@@ -860,7 +876,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                       </tr>
                       {rechazo?.id === r.id && (
                         <tr className="bg-rose-50/60">
-                          <td colSpan={isAdmin ? 13 : 12} className="px-4 py-3">
+                          <td colSpan={aprobador ? 13 : 12} className="px-4 py-3">
                             <form
                               className="flex flex-wrap items-center gap-2"
                               onSubmit={(ev) => {
@@ -920,7 +936,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
         solicitantePorDefecto={usuario}
         existentes={recargas}
         guardando={guardando}
-        avisoReautorizar={!!modal.recarga && !isAdmin && estadoDe(modal.recarga) !== 'Pendiente'}
+        avisoReautorizar={!!modal.recarga && !adminDe(modal.recarga.agencia) && estadoDe(modal.recarga) !== 'Pendiente'}
         onGuardar={(d) => void handleGuardar(d)}
       />
     </div>
