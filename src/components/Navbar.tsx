@@ -1,13 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Building2, Sun, Moon, User, LogOut, ChevronDown, Download, RefreshCw } from 'lucide-react';
+import { Building2, User, LogOut, ChevronDown, Download, RefreshCw } from 'lucide-react';
 import logoDiscarga from '../assets/logo-discarga.png';
-import { Button } from './ui/Button';
-import { ACTION_ICONS } from './ui/actionIcons';
 
 // Barra superior organizada por niveles (análisis de botones, punto 10):
 //   1. Identidad + agencia (el selector de agencia ahora se ve también en
 //      tablet vertical y teléfono; antes se ocultaba debajo de 768 px).
-//   2. Reportes del día (Inicio / Fin de Día) y "Nueva Ruta" (acción principal).
+//   2. (Inicio / Fin de Día y "Nueva Ruta" se movieron a la barra del Tablero.)
 //   3. Estado de guardado.
 //   4. Menú del usuario: nombre, respaldo (admin), datos de prueba (solo modo
 //      local) y "Cerrar sesión" — acciones poco frecuentes fuera de la vista.
@@ -16,8 +14,6 @@ interface NavbarProps {
   agencies: string[];
   selectedAgency: string;
   onSelectAgency: (agency: string) => void;
-  onOpenNewRouteModal: () => void;
-  onOpenDailySummaryModal: (mode?: 'inicio' | 'fin') => void;
   currentUsername?: string;
   isAdmin?: boolean;
   onLogout?: () => void;
@@ -30,8 +26,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   agencies,
   selectedAgency,
   onSelectAgency,
-  onOpenNewRouteModal,
-  onOpenDailySummaryModal,
   currentUsername,
   isAdmin,
   onLogout,
@@ -98,44 +92,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Reportes del día: siempre visibles; en pantallas angostas solo el ícono. */}
-            <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1 border border-white/10">
-              <button
-                id="btnNavbarResumenInicio"
-                type="button"
-                onClick={() => onOpenDailySummaryModal('inicio')}
-                aria-label="Reporte de Inicio de Día (planificado)"
-                title="Reporte de Inicio de Día (planificado)"
-                className="inline-flex items-center justify-center gap-1.5 min-h-[40px] min-w-[40px] px-2.5 lg:px-3 text-amber-200 hover:bg-white/10 text-xs font-semibold rounded-lg transition cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
-              >
-                <Sun className="w-4 h-4" aria-hidden />
-                <span className="hidden lg:inline text-white">Inicio de Día</span>
-              </button>
-              <button
-                id="btnNavbarResumenFin"
-                type="button"
-                onClick={() => onOpenDailySummaryModal('fin')}
-                aria-label="Reporte de Fin de Día (real ejecutado)"
-                title="Reporte de Fin de Día (real ejecutado)"
-                className="inline-flex items-center justify-center gap-1.5 min-h-[40px] min-w-[40px] px-2.5 lg:px-3 text-indigo-200 hover:bg-white/10 text-xs font-semibold rounded-lg transition cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-              >
-                <Moon className="w-4 h-4" aria-hidden />
-                <span className="hidden lg:inline text-white">Fin de Día</span>
-              </button>
-            </div>
-
-            <Button
-              variant="primary"
-              size="md"
-              icon={ACTION_ICONS.nuevo}
-              onClick={onOpenNewRouteModal}
-              aria-label="Nueva Ruta"
-              title="Crear una nueva ruta"
-              className="shrink-0 px-3 sm:px-4"
-            >
-              <span className="hidden sm:inline">Nueva Ruta</span>
-            </Button>
-
             {saveIndicator && <div className="hidden sm:block">{saveIndicator}</div>}
 
             {currentUsername && (
