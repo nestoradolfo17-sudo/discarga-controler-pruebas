@@ -18,6 +18,7 @@ import {
   Eye,
   EyeOff,
   Download,
+  Building2,
 } from 'lucide-react';
 import { Button } from './ui/Button';
 
@@ -32,11 +33,12 @@ interface UsersViewProps {
     permissions: TablePermissions;
     canDelete: boolean;
     agencyAccess: 'all' | string[];
+    adminAgencies?: string[];
   }) => boolean | Promise<boolean>;
   onUpdateUser: (
     userId: string,
     updates: Partial<
-      Pick<AppUser, 'permissions' | 'canDelete' | 'isAdmin' | 'agencyAccess' | 'username' | 'nombre'>
+      Pick<AppUser, 'permissions' | 'canDelete' | 'isAdmin' | 'agencyAccess' | 'username' | 'nombre' | 'adminAgencies'>
     >
   ) => void;
   onResetPassword: (userId: string, newPassword: string) => void;
@@ -125,6 +127,11 @@ export const UsersView: React.FC<UsersViewProps> = ({
   onVerifyPassword,
   onDownloadBackup,
 }) => {
+  // Agencias de las que el nuevo usuario será administrador.
+  const [adminAgencies, setAdminAgencies] = useState<string[]>([]);
+  const [adminAgEditingId, setAdminAgEditingId] = useState<string | null>(null);
+  const [adminAgDraft, setAdminAgDraft] = useState<string[]>([]);
+
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -226,11 +233,18 @@ export const UsersView: React.FC<UsersViewProps> = ({
           })
         ) as unknown as TablePermissions);
     if (!isAdminSession) permisosFinales.canCreateUsers = false;
+    // Solo puede administrar agencias que también puede ver.
+    const agenciasVisibles = agencyAll && canGrantAllAgencies ? null : agencySelection;
+    const adminAgFinal =
+      isAdminSession && !isAdmin
+        ? adminAgencies.filter((a) => !agenciasVisibles || agenciasVisibles.includes(a))
+        : [];
     setIsCreating(true);
     const created = await onCreateUser({
       username: trimmed,
       password,
       nombre: nombre.trim() || undefined,
+      adminAgencies: adminAgFinal,
       isAdmin: isAdminSession && isAdmin,
       permissions: isAdminSession && isAdmin
         ? {
@@ -258,6 +272,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
     setIsCreating(false);
     if (!created) return;
     setUsername('');
+    setAdminAgencies([]);
     setPassword('');
     setConfirmPassword('');
     setShowPassword(false);
@@ -399,9 +414,31 @@ export const UsersView: React.FC<UsersViewProps> = ({
   };
 
   const saveAgencyEdit = (userId: string) => {
-    onUpdateUser(userId, { agencyAccess: agencyDraftAll ? 'all' : agencyDraftList });
+    const u = users.find((x) => x.id === userId);
+    const admin = u?.adminAgencies || [];
+    // Si deja de ver una agencia, también deja de administrarla.
+    const adminPodado = agencyDraftAll ? admin : admin.filter((a) => agencyDraftList.includes(a));
+    onUpdateUser(userId, {
+      agencyAccess: agencyDraftAll ? 'all' : agencyDraftList,
+      ...(adminPodado.length !== admin.length ? { adminAgencies: adminPodado } : {}),
+    });
     setAgencyEditingId(null);
   };
+
+  // Administrador de agencias (solo lo asigna el administrador general).
+  const startAdminAgEdit = (user: AppUser) => {
+    setAdminAgEditingId(user.id);
+    setAdminAgDraft(user.adminAgencies || []);
+  };
+  const saveAdminAgEdit = (user: AppUser) => {
+    const visibles = user.agencyAccess === 'all' || !user.agencyAccess ? null : user.agencyAccess;
+    const lista = adminAgDraft.filter((a) => !visibles || visibles.includes(a));
+    onUpdateUser(user.id, { adminAgencies: lista });
+    setAdminAgEditingId(null);
+  };
+  // Opciones de "Administrador de agencias" para el formulario de creación:
+  // solo agencias que el nuevo usuario podrá ver.
+  const adminAgChoices = agencyAll && canGrantAllAgencies ? AGENCIA_LOCATION_OPTIONS : agencySelection;
 
   return (
     <div className="space-y-6">
@@ -433,7 +470,6 @@ export const UsersView: React.FC<UsersViewProps> = ({
               placeholder="Ej: Juan Pérez (opcional, se muestra al iniciar sesión)"
             />
           </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Usuario *</label>
@@ -576,6 +612,41 @@ export const UsersView: React.FC<UsersViewProps> = ({
                   </div>
                 )}
               </div>
+
+              {isAdminSession && (
+                <div className="pt-3 border-t border-slate-200 space-y-2">
+                  <p className="text-xs font-bold text-violet-800 flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4" aria-hidden />
+                    Administrador de agencias (opcional)
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    En las agencias marcadas podrá eliminar, revertir y aprobar todo lo que requiere aprobación
+                    (recargas, préstamos, cambio de segmento y de estatus de camión). No podrá gestionar usuarios.
+                  </p>
+                  {adminAgChoices.length === 0 ? (
+                    <p className="text-[11px] italic text-slate-400">Primero selecciona las agencias que podrá ver.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto border border-violet-200 rounded-lg p-2 bg-white">
+                      {adminAgChoices.map((ag) => (
+                        <label
+                          key={ag}
+                          className="flex items-center gap-1 text-[11px] font-medium text-slate-700 cursor-pointer px-1.5 py-0.5 rounded hover:bg-violet-50"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={adminAgencies.includes(ag)}
+                            onChange={(e) =>
+                              setAdminAgencies((prev) => (e.target.checked ? [...prev, ag] : prev.filter((a) => a !== ag)))
+                            }
+                            className="cursor-pointer"
+                          />
+                          {ag}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -620,6 +691,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 <th className="py-3 px-4">Rol</th>
                 <th className="py-3 px-4">Permisos de acceso</th>
                 <th className="py-3 px-4">Agencias</th>
+                <th className="py-3 px-4 whitespace-nowrap">Admin. de agencias</th>
                 <th className="py-3 px-4">Eliminar datos</th>
                 <th className="py-3 px-4">Contraseña</th>
                 <th className="py-3 px-4 text-right">Acciones</th>
@@ -715,6 +787,11 @@ export const UsersView: React.FC<UsersViewProps> = ({
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
                           <ShieldCheck className="w-3 h-3" />
                           Administrador
+                        </span>
+                      ) : (u.adminAgencies || []).length > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-violet-800 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                          <Building2 className="w-3 h-3" />
+                          Admin. de agencia
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
@@ -815,6 +892,76 @@ export const UsersView: React.FC<UsersViewProps> = ({
                             : `${(u.agencyAccess as string[]).length} agencia${
                                 (u.agencyAccess as string[]).length === 1 ? '' : 's'
                               }`}
+                        </button>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 max-w-[240px]">
+                      {u.isAdmin ? (
+                        <span className="text-[11px] text-slate-400 italic">Todas (admin. general)</span>
+                      ) : adminAgEditingId === u.id ? (
+                        <div className="space-y-2">
+                          {(() => {
+                            const opciones = u.agencyAccess === 'all' || !u.agencyAccess ? AGENCIA_LOCATION_OPTIONS : u.agencyAccess;
+                            return opciones.length === 0 ? (
+                              <p className="text-[11px] italic text-slate-400">Primero asígnale agencias que pueda ver.</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto border border-violet-200 rounded-lg p-1.5 bg-violet-50/40">
+                                {opciones.map((ag) => (
+                                  <button
+                                    key={ag}
+                                    type="button"
+                                    onClick={() =>
+                                      setAdminAgDraft((prev) => (prev.includes(ag) ? prev.filter((a) => a !== ag) : [...prev, ag]))
+                                    }
+                                    aria-pressed={adminAgDraft.includes(ag)}
+                                    className={`min-h-[36px] text-[11px] font-semibold px-2 rounded-lg border transition cursor-pointer ${
+                                      adminAgDraft.includes(ag)
+                                        ? 'bg-violet-100 text-violet-800 border-violet-300'
+                                        : 'bg-white text-slate-400 border-slate-200'
+                                    }`}
+                                  >
+                                    {adminAgDraft.includes(ag) ? '✓ ' : ''}
+                                    {ag}
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => saveAdminAgEdit(u)}
+                              className="min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                              title="Guardar"
+                              aria-label="Guardar"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAdminAgEditingId(null)}
+                              className="min-w-[40px] min-h-[40px] inline-flex items-center justify-center rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 cursor-pointer"
+                              title="Cancelar"
+                              aria-label="Cancelar"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => startAdminAgEdit(u)}
+                          title={(u.adminAgencies || []).join(', ') || 'No administra agencias'}
+                          aria-label={`Administrador de agencias de ${u.username}`}
+                          className={`min-h-[40px] px-2.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 cursor-pointer text-left ${
+                            (u.adminAgencies || []).length > 0
+                              ? 'border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100'
+                              : 'border-slate-200 text-slate-500 hover:text-violet-700 hover:border-violet-300 hover:bg-violet-50'
+                          }`}
+                        >
+                          <Building2 className="w-3.5 h-3.5 shrink-0" />
+                          {(u.adminAgencies || []).length > 0 ? (u.adminAgencies || []).join(', ') : 'Ninguna'}
                         </button>
                       )}
                     </td>
