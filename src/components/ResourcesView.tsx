@@ -53,6 +53,9 @@ interface ResourcesViewProps {
   canManualAddTrucks?: boolean;
   canBulkUploadStaff?: boolean;
   canManualAddStaff?: boolean;
+  // Cambio manual del estatus de un camión (abre la ventana con autorización
+  // de administrador; ver ChangeTruckStatusModal).
+  onRequestTruckStatusChange?: (truck: Truck) => void;
 }
 
 export const ResourcesView: React.FC<ResourcesViewProps> = ({
@@ -75,6 +78,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
   canManualAddTrucks = true,
   canBulkUploadStaff = true,
   canManualAddStaff = true,
+  onRequestTruckStatusChange,
 }) => {
   const [isBatchStaffModalOpen, setIsBatchStaffModalOpen] = useState(false);
   const [isBatchTruckModalOpen, setIsBatchTruckModalOpen] = useState(false);
@@ -364,6 +368,33 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                       {t.estado === 'Disponible' && t.motivoNoAsignado && (
                         <span className="text-[10px] text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 font-semibold">
                           {t.motivoNoAsignado}
+                        </span>
+                      )}
+                      {onRequestTruckStatusChange && (
+                        <button
+                          type="button"
+                          onClick={() => onRequestTruckStatusChange(t)}
+                          title="Cambiar el estatus a mano (requiere contraseña de administrador)"
+                          aria-label={`Cambiar estatus del camión ${t.placa}`}
+                          className="min-h-[32px] px-2 text-[11px] font-semibold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 cursor-pointer"
+                        >
+                          Cambiar estatus
+                        </button>
+                      )}
+                      {t.estadoManual && t.estadoManual.fecha === formatDateToGuatemala(new Date()) && (
+                        <span className="text-[10px] font-semibold text-violet-800 bg-violet-50 border border-violet-200 px-1.5 rounded">
+                          Puesto a mano (hoy)
+                        </span>
+                      )}
+                      {t.historialEstado && t.historialEstado.length > 0 && (
+                        <span
+                          className="text-[10px] text-slate-400"
+                          title={(() => {
+                            const h = t.historialEstado![t.historialEstado!.length - 1];
+                            return `${h.fecha}: ${h.de} → ${h.a} · ${h.motivo} · por ${h.por}`;
+                          })()}
+                        >
+                          Cambio manual: {t.historialEstado[t.historialEstado.length - 1].fecha.split(' ')[0]}
                         </span>
                       )}
                     </div>
