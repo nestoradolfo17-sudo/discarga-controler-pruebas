@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeftRight, Plus, Download, Search, Pencil, Trash2, AlertTriangle, RefreshCw, ShieldCheck, Check, X, Clock, Undo2, Truck as TruckIcon, UserRound, Users } from 'lucide-react';
+import { ArrowLeftRight, Plus, Download, Search, Pencil, Trash2, AlertTriangle, RefreshCw, ShieldCheck, Check, X, Clock, Undo2, Truck as TruckIcon, UserRound, Users, CalendarPlus } from 'lucide-react';
 import { Prestamo, Route, Staff, Truck } from '../types';
 import { PrestamoModal } from './modals/PrestamoModal';
 import { guardarPrestamos, eliminarPrestamo, nuevoIdPrestamo } from '../services/prestamos';
@@ -59,6 +59,11 @@ const norm = (s: unknown) =>
     .toLowerCase();
 const primeroDeMes = () => getGuatemalaDateForInput().slice(0, 8) + '01';
 const etq = (p: Prestamo) => formatoCorrelativoPrestamo(p.correlativo) || 'préstamo';
+const diaSiguiente = (iso: string) => {
+  const d = new Date(iso + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
 
 const ICONO = { piloto: UserRound, auxiliar: Users, camion: TruckIcon } as const;
 
@@ -89,7 +94,7 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
   const [modal, setModal] = useState<{ abierto: boolean; prestamo: Prestamo | null }>({ abierto: false, prestamo: null });
   const [guardando, setGuardando] = useState(false);
   const [procesando, setProcesando] = useState(false);
-  const [accion, setAccion] = useState<{ id: string; tipo: 'rechazar' | 'devolver' | 'eliminar'; texto: string } | null>(null);
+  const [accion, setAccion] = useState<{ id: string; tipo: 'rechazar' | 'devolver' | 'eliminar' | 'extender'; texto: string; fecha?: string } | null>(null);
 
   const agenciasVisibles = useMemo(
     () => (agenciaGeneral && agenciaGeneral !== 'TODAS' ? agencias.filter((a) => a === agenciaGeneral) : agencias),
@@ -203,6 +208,49 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
       [{ ...p, devuelto: true, devueltoPor: usuario, devueltoEn: new Date().toISOString(), comentarioDevolucion: comentario || undefined, editadoPor: usuario, editadoEn: new Date().toISOString() }],
       `Devolución registrada: ${p.recursos.length} recurso(s) regresan a ${p.agenciaOrigen}.`
     );
+  // Extender: alarga la fecha final. Si no es administrador, vuelve a Pendiente
+  // para que se autorice la extensión (la base de datos aplica la misma regla).
+  const extender = async (p: Prestamo, nueva: string, motivo: string) => {
+    if (!nueva || nueva <= p.fechaFin) {
+      onShowToast('La nueva fecha debe ser posterior a la fecha final actual.', 'error');
+      return;
+    }
+    if (motivo.trim().length < 5) {
+      onShowToast('Escribe el motivo de la extensión (mínimo 5 letras).', 'error');
+      return;
+    }
+    const desdeExt = diaSiguiente(p.fechaFin);
+    const choques = prestamos.filter(
+      (o) =>
+        o.id !== p.id &&
+        estadoPrestamo(o) !== 'Rechazado' &&
+        !(o.devuelto && fechaDevolucionISO(o) && fechaDevolucionISO(o) < desdeExt) &&
+        o.fechaInicio <= nueva &&
+        o.fechaFin >= desdeExt &&
+        o.recursos.some((r) => p.recursos.some((x) => x.tipo === r.tipo && x.id === r.id))
+    );
+    if (choques.length) {
+      const nombres = p.recursos.filter((x) => choques.some((o) => o.recursos.some((r) => r.tipo === x.tipo && r.id === x.id))).map((x) => x.nombre);
+      onShowToast(`No se puede extender: ${nombres.join(', ')} ya tiene(n) otro préstamo en esas fechas (${choques.map(etq).join(', ')}).`, 'error');
+      return;
+    }
+    const ahora = new Date().toISOString();
+    let nuevo: Prestamo = {
+      ...p,
+      fechaFin: nueva,
+      historialExtensiones: [...(p.historialExtensiones || []), { de: p.fechaFin, a: nueva, por: usuario, en: ahora, motivo: motivo.trim() }],
+      editadoPor: usuario,
+      editadoEn: ahora,
+    };
+    if (!isAdmin) nuevo = { ...nuevo, estado: 'Pendiente', autorizadoPor: undefined, autorizadoEn: undefined, motivoRechazo: undefined };
+    await guardar(
+      [nuevo],
+      isAdmin
+        ? `Préstamo ${etq(p)} extendido hasta el ${fmtFecha(nueva)}.`
+        : `Préstamo ${etq(p)} extendido hasta el ${fmtFecha(nueva)}. Queda pendiente de que el administrador autorice la extensión.`
+    );
+  };
+
   const eliminar = async (p: Prestamo) => {
     setProcesando(true);
     const err = await eliminarPrestamo(p.id);
@@ -280,12 +328,15 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
           'Recargas pagables': e === 'Autorizado' && p.devuelto ? 'Sí' : 'No (falta autorización o devolución)',
           'Solicitado por': p.solicitadoPor,
           'Registrado el': fmtHora(p.creadoEn),
+          Extensiones: (p.historialExtensiones || [])
+            .map((x) => `${fmtFecha(x.de)} → ${fmtFecha(x.a)} (${x.por}: ${x.motivo})`)
+            .join('; '),
         });
       });
     });
     const ws = XLSX.utils.json_to_sheet(filas);
-    ws['!cols'] = [13, 9, 30, 16, 8, 18, 18, 11, 11, 9, 12, 40, 34, 11, 20, 17, 26, 9, 18, 17, 26, 22, 20, 17].map((wch) => ({ wch }));
-    if (filas.length) ws['!autofilter'] = { ref: `A1:X${filas.length + 1}` };
+    ws['!cols'] = [13, 9, 30, 16, 8, 18, 18, 11, 11, 9, 12, 40, 34, 11, 20, 17, 26, 9, 18, 17, 26, 22, 20, 17, 50].map((wch) => ({ wch }));
+    if (filas.length) ws['!autofilter'] = { ref: `A1:Y${filas.length + 1}` };
     XLSX.utils.book_append_sheet(wb, ws, 'Préstamos');
     XLSX.writeFile(wb, `Prestamos_${vista}_${desde || 'inicio'}_a_${hasta || 'hoy'}.xlsx`);
     onShowToast(`Reporte de ${filtrados.length} préstamo(s) descargado.`, 'success');
@@ -405,8 +456,8 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
         <div className="flex flex-wrap items-center gap-2 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-4 py-3 text-xs">
           <Clock className="w-4 h-4 shrink-0" />
           <span className="flex-1">
-            <b>{conteo.sinDevolver} préstamo(s) ya vencieron y no tienen devolución registrada.</b> Ya no se pueden asignar en la agencia que recibe; registra la
-            devolución para cerrar el préstamo.
+            <b>{conteo.sinDevolver} préstamo(s) ya vencieron y no tienen devolución registrada.</b> Ya no se pueden asignar en la agencia que recibe: registra la
+            devolución para cerrarlo o usa <b>Extender</b> si siguen apoyando.
           </span>
           {vista !== 'sinDevolver' && (
             <button type="button" onClick={() => setVista('sinDevolver')} className="min-h-[36px] px-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer">
@@ -510,6 +561,14 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
                             {fmtFecha(p.fechaInicio)} – {fmtFecha(p.fechaFin)}
                           </span>
                           <span className="block text-[10px] text-slate-400">{diasEntre(p.fechaInicio, p.fechaFin)} día(s)</span>
+                          {(p.historialExtensiones?.length || 0) > 0 && (
+                            <span
+                              className="inline-flex mt-0.5 mr-1 px-1.5 rounded bg-sky-50 border border-sky-200 text-sky-700 text-[10px] font-bold"
+                              title={p.historialExtensiones!.map((x) => `${fmtFecha(x.de)} → ${fmtFecha(x.a)} · ${x.por} · ${x.motivo}`).join('\n')}
+                            >
+                              Extendido {p.historialExtensiones!.length === 1 ? '1 vez' : `${p.historialExtensiones!.length} veces`}
+                            </span>
+                          )}
                           {k.vigente && <span className="inline-flex mt-0.5 px-1.5 rounded bg-teal-50 border border-teal-200 text-teal-700 text-[10px] font-bold">Vigente hoy</span>}
                           {k.programado && <span className="inline-flex mt-0.5 px-1.5 rounded bg-sky-50 border border-sky-200 text-sky-700 text-[10px] font-bold">Programado</span>}
                         </td>
@@ -589,6 +648,18 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
                                 <Undo2 className="w-3.5 h-3.5" /> Devolver
                               </button>
                             )}
+                            {!p.devuelto && e !== 'Rechazado' && (
+                              <button
+                                type="button"
+                                disabled={procesando}
+                                onClick={() => setAccion({ id: p.id, tipo: 'extender', texto: '', fecha: p.fechaFin < hoy ? hoy : diaSiguiente(p.fechaFin) })}
+                                aria-label={`Extender ${etq(p)}`}
+                                title="Alargar la fecha final"
+                                className="min-h-[36px] px-2.5 rounded-lg border border-sky-300 text-sky-800 hover:bg-sky-50 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <CalendarPlus className="w-3.5 h-3.5" /> Extender
+                              </button>
+                            )}
                             {puedeEditar && (
                               <button
                                 type="button"
@@ -615,7 +686,7 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
                         </td>
                       </tr>
                       {abierta && (
-                        <tr className={abierta.tipo === 'devolver' ? 'bg-teal-50/60' : 'bg-rose-50/60'}>
+                        <tr className={abierta.tipo === 'devolver' ? 'bg-teal-50/60' : abierta.tipo === 'extender' ? 'bg-sky-50/60' : 'bg-rose-50/60'}>
                           <td colSpan={8} className="px-4 py-3">
                             <form
                               className="flex flex-wrap items-center gap-2"
@@ -625,10 +696,37 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
                                   if (abierta.texto.trim().length < 5) return;
                                   void rechazar(p, abierta.texto.trim());
                                 } else if (abierta.tipo === 'devolver') void devolver(p, abierta.texto.trim());
+                                else if (abierta.tipo === 'extender') void extender(p, abierta.fecha || '', abierta.texto);
                                 else void eliminar(p);
                               }}
                             >
-                              {abierta.tipo === 'eliminar' ? (
+                              {abierta.tipo === 'extender' ? (
+                                <>
+                                  <label htmlFor={`preExtFecha-${p.id}`} className="text-[11px] font-bold text-sky-800">
+                                    Extender {etq(p)} (hoy termina el {fmtFecha(p.fechaFin)}) hasta:
+                                  </label>
+                                  <input
+                                    id={`preExtFecha-${p.id}`}
+                                    type="date"
+                                    value={abierta.fecha || ''}
+                                    min={diaSiguiente(p.fechaFin)}
+                                    onChange={(ev) => setAccion({ ...abierta, fecha: ev.target.value })}
+                                    className="min-h-[40px] px-3 border border-slate-300 rounded-lg text-xs bg-white"
+                                  />
+                                  <input
+                                    id={`preAccion-${p.id}`}
+                                    autoFocus
+                                    value={abierta.texto}
+                                    maxLength={200}
+                                    onChange={(ev) => setAccion({ ...abierta, texto: ev.target.value })}
+                                    placeholder="Motivo de la extensión"
+                                    className="flex-1 min-w-[220px] min-h-[40px] px-3 border border-slate-300 rounded-lg text-xs bg-white outline-none focus:ring-2 focus:ring-blue-300"
+                                  />
+                                  {!isAdmin && estadoPrestamo(p) === 'Autorizado' && (
+                                    <span className="w-full text-[10.5px] text-sky-800">Al extenderlo vuelve a Pendiente hasta que el administrador autorice la extensión.</span>
+                                  )}
+                                </>
+                              ) : abierta.tipo === 'eliminar' ? (
                                 <span className="text-[11px] font-bold text-rose-800 flex-1">¿Eliminar el préstamo {etq(p)}? Esta acción no se puede deshacer.</span>
                               ) : (
                                 <>
@@ -648,12 +746,18 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
                               )}
                               <button
                                 type="submit"
-                                disabled={procesando || (abierta.tipo === 'rechazar' && abierta.texto.trim().length < 5)}
+                                disabled={procesando || ((abierta.tipo === 'rechazar' || abierta.tipo === 'extender') && abierta.texto.trim().length < 5)}
                                 className={`min-h-[40px] px-3 rounded-lg text-white text-xs font-bold cursor-pointer disabled:opacity-50 ${
-                                  abierta.tipo === 'devolver' ? 'bg-teal-600' : 'bg-rose-600'
+                                  abierta.tipo === 'devolver' ? 'bg-teal-600' : abierta.tipo === 'extender' ? 'bg-sky-600' : 'bg-rose-600'
                                 }`}
                               >
-                                {abierta.tipo === 'devolver' ? 'Registrar devolución' : abierta.tipo === 'rechazar' ? 'Rechazar préstamo' : 'Sí, eliminar'}
+                                {abierta.tipo === 'devolver'
+                                  ? 'Registrar devolución'
+                                  : abierta.tipo === 'extender'
+                                  ? 'Extender préstamo'
+                                  : abierta.tipo === 'rechazar'
+                                  ? 'Rechazar préstamo'
+                                  : 'Sí, eliminar'}
                               </button>
                               <button
                                 type="button"
