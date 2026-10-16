@@ -16,6 +16,7 @@ import {
   CajaAbiertaReason,
   ClientePendiente,
   RouteClientEntry,
+  Prestamo,
 } from './types';
 import { INITIAL_ROUTES, INITIAL_TRUCKS, INITIAL_STAFF, INITIAL_USERS } from './data/initialData';
 import {
@@ -98,6 +99,9 @@ import { LoginScreen } from './components/auth/LoginScreen';
 import { UsersView } from './components/UsersView';
 import { DashboardView } from './components/DashboardView';
 import { RecargasView } from './components/RecargasView';
+import { PrestamosView } from './components/PrestamosView';
+import { leerPrestamos, suscribirPrestamos } from './services/prestamos';
+import { prestamosVigentes, infoDePrestamo } from './utils/prestamos';
 import { registrarRecargaAuto, idRecargaAuto } from './services/recargas';
 import { toNum } from './utils/number';
 import { viajesQueRecibenCajas, resumenGrupo, repartirParejo } from './utils/splitGroup';
@@ -1667,9 +1671,39 @@ export default function App() {
   // el valor guardado (que podía quedar desactualizado si una acción fallaba a
   // medias). "Baja" se respeta tal cual. Las pantallas usan estas listas; el
   // estado guardado solo se sigue actualizando por compatibilidad.
+  // --- Préstamos de personal y camiones entre agencias ---
+  // Se cargan al entrar (y en vivo). Mientras un préstamo está vigente, el
+  // camión o la persona trabaja para la agencia destino: ahí se puede asignar
+  // y en los reportes del día cuenta para esa agencia (no para la de origen).
+  const [prestamos, setPrestamos] = useState<Prestamo[]>([]);
+  const [prestamosCargando, setPrestamosCargando] = useState(false);
+  const [prestamosTablaFalta, setPrestamosTablaFalta] = useState(false);
+  const cargarPrestamos = useCallback(async () => {
+    setPrestamosCargando(true);
+    const res = await leerPrestamos();
+    setPrestamosCargando(false);
+    if (res.ok) {
+      setPrestamos(res.data);
+      setPrestamosTablaFalta(false);
+    } else {
+      setPrestamosTablaFalta(res.tablaFalta);
+    }
+  }, []);
+  const prestamosUserId = currentUser?.id;
+  useEffect(() => {
+    if (!prestamosUserId) return;
+    void cargarPrestamos();
+    return suscribirPrestamos((updater) => setPrestamos(updater));
+  }, [prestamosUserId, cargarPrestamos]);
+  const hoyISO = getGuatemalaDateForInput();
+  const prestamosHoy = useMemo(() => prestamosVigentes(prestamos, hoyISO), [prestamos, hoyISO]);
+
   const busyResources = useMemo(() => {
     const truckIds = new Set<string>();
     const people = new Set<string>();
+    // Por código de persona: así una persona prestada en ruta en otra agencia
+    // también aparece "En Ruta" en su agencia de origen.
+    const personIds = new Set<string>();
     routes.forEach((r) => {
       if (r.estado !== 'En Tránsito' || !r.asignacion) return;
       // Rutas de fechas futuras ya asignadas (p. ej. las de mañana, asignadas a
@@ -1680,8 +1714,9 @@ export default function App() {
       [a.conductor, a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].forEach((n) => {
         if (n) people.add(`${r.agencia || ''}|${n.trim().toLowerCase()}`);
       });
+      [a.conductorId, ...(a.auxiliarIds || [])].forEach((id) => id && personIds.add(id));
     });
-    return { truckIds, people };
+    return { truckIds, people, personIds };
   }, [routes]);
   // Día de hoy (Guatemala), para los estatus de camión puestos a mano.
   const hoyGT = formatDateToGuatemala(new Date());
@@ -1700,33 +1735,74 @@ export default function App() {
     () =>
       staff.map((s) => {
         if (s.estado === 'Baja') return s;
-        const estado = busyResources.people.has(`${s.agencia || ''}|${(s.nombre || '').trim().toLowerCase()}`)
-          ? 'En Ruta'
-          : 'Disponible';
+        const prestada = prestamosHoy.get(`s:${s.id}`);
+        const estado =
+          busyResources.people.has(`${s.agencia || ''}|${(s.nombre || '').trim().toLowerCase()}`) ||
+          (prestada && busyResources.people.has(`${prestada.agenciaDestino}|${(s.nombre || '').trim().toLowerCase()}`)) ||
+          busyResources.personIds.has(s.id)
+            ? 'En Ruta'
+            : 'Disponible';
         return s.estado === estado ? s : { ...s, estado };
       }),
-    [staff, busyResources]
+    [staff, busyResources, prestamosHoy]
   );
+
+  // Préstamos vigentes hoy: cada camión/persona lleva el dato del préstamo y,
+  // para la operación del día (asignar, reportes, recursos sin asignar), su
+  // agencia pasa a ser la que lo recibe. En Personal/Camiones se conserva su
+  // agencia real.
+  const trucksInfo = useMemo(
+    () =>
+      trucksLive.map((t) => {
+        const p = prestamosHoy.get(`t:${t.id}`);
+        return p ? { ...t, prestamoInfo: infoDePrestamo(p) } : t;
+      }),
+    [trucksLive, prestamosHoy]
+  );
+  const staffInfo = useMemo(
+    () =>
+      staffLive.map((x) => {
+        const p = prestamosHoy.get(`s:${x.id}`);
+        return p ? { ...x, prestamoInfo: infoDePrestamo(p) } : x;
+      }),
+    [staffLive, prestamosHoy]
+  );
+  const trucksOp = useMemo(() => trucksInfo.map((t) => (t.prestamoInfo ? { ...t, agencia: t.prestamoInfo.destino } : t)), [trucksInfo]);
+  const staffOp = useMemo(() => staffInfo.map((x) => (x.prestamoInfo ? { ...x, agencia: x.prestamoInfo.destino } : x)), [staffInfo]);
 
   const visibleTrucks = useMemo(
     () =>
-      trucksLive.filter(
+      trucksOp.filter(
         (t) =>
           (selectedAgency === 'TODAS' || t.agencia === selectedAgency) &&
           (!t.agencia || canViewAgency(t.agencia))
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [trucksLive, selectedAgency, currentUser]
+    [trucksOp, selectedAgency, currentUser]
   );
   const visibleStaff = useMemo(
     () =>
-      staffLive.filter(
+      staffOp.filter(
         (s) =>
           (selectedAgency === 'TODAS' || s.agencia === selectedAgency) &&
           (!s.agencia || canViewAgency(s.agencia))
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [staffLive, selectedAgency, currentUser]
+    [staffOp, selectedAgency, currentUser]
+  );
+  // Listas de las pantallas Camiones / Personal: su agencia real, más los que
+  // hoy están prestados A una agencia del filtro (con su etiqueta de préstamo).
+  const coincideAgenciaLista = (ag?: string) =>
+    !!ag && (selectedAgency === 'TODAS' || ag === selectedAgency) && canViewAgency(ag);
+  const listaTrucks = useMemo(
+    () => trucksInfo.filter((t) => !t.agencia ? selectedAgency === 'TODAS' : coincideAgenciaLista(t.agencia) || coincideAgenciaLista(t.prestamoInfo?.destino)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [trucksInfo, selectedAgency, currentUser]
+  );
+  const listaStaff = useMemo(
+    () => staffInfo.filter((x) => !x.agencia ? selectedAgency === 'TODAS' : coincideAgenciaLista(x.agencia) || coincideAgenciaLista(x.prestamoInfo?.destino)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [staffInfo, selectedAgency, currentUser]
   );
 
   // Módulo de Recargas: rutas (activas y liquidadas) y personal de las agencias
@@ -1737,16 +1813,22 @@ export default function App() {
     [routes, historicalRoutes, currentUser]
   );
   const staffParaRecargas = useMemo(
-    () => staffLive.filter((s) => !s.agencia || canViewAgency(s.agencia)),
+    () =>
+      staffLive.filter(
+        (s) =>
+          !s.agencia ||
+          canViewAgency(s.agencia) ||
+          prestamos.some((p) => canViewAgency(p.agenciaDestino) && p.recursos.some((r) => r.tipo !== 'camion' && r.id === s.id))
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [staffLive, currentUser]
+    [staffLive, currentUser, prestamos]
   );
 
   // Indicadores de Personal: activos por puesto (VPP / VPPB / APP). Respetan el
   // filtro de agencia y los permisos del usuario (visibleStaff).
   const staffPills = useMemo<StatPill[]>(() => {
-    const activos = visibleStaff.filter((s) => s.estado !== 'Baja' && s.estatus !== 'BAJA');
-    const bajas = visibleStaff.length - activos.length;
+    const activos = listaStaff.filter((s) => s.estado !== 'Baja' && s.estatus !== 'BAJA');
+    const bajas = listaStaff.length - activos.length;
     const by = (p: string) => activos.filter((s) => (s.puesto || '').toUpperCase() === p).length;
     const otros = activos.length - by('VPP') - by('VPPB') - by('APP');
     const pills: StatPill[] = [
@@ -1760,14 +1842,14 @@ export default function App() {
     if (otros > 0) pills.push({ label: 'Otro puesto', value: otros, cls: 'bg-slate-50 border-slate-200 text-slate-600', title: 'Activos sin puesto VPP/VPPB/APP' });
     if (bajas > 0) pills.push({ label: 'Baja', value: bajas, cls: 'bg-slate-100 border-slate-300 text-slate-500', title: 'Personal de baja (no se asigna)' });
     return pills;
-  }, [visibleStaff]);
+  }, [listaStaff]);
 
   // Indicadores de Camiones: total activo y cantidad por capacidad (de menor a
   // mayor). Si hay muchas capacidades distintas, se muestran las 8 más comunes
   // y el resto se agrupa en "Otras".
   const truckPills = useMemo<StatPill[]>(() => {
-    const activos = visibleTrucks.filter((t) => t.estado !== 'Baja');
-    const bajas = visibleTrucks.length - activos.length;
+    const activos = listaTrucks.filter((t) => t.estado !== 'Baja');
+    const bajas = listaTrucks.length - activos.length;
     const counts = new Map<string, number>();
     activos.forEach((t) => {
       const raw = String(t.capacidad ?? '').trim();
@@ -1802,7 +1884,7 @@ export default function App() {
     pills.push({ label: 'En ruta', value: activos.filter((t) => t.estado === 'En Ruta').length, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700', title: 'Camiones en ruta ahora' });
     if (bajas > 0) pills.push({ label: 'Baja', value: bajas, cls: 'bg-slate-100 border-slate-300 text-slate-500', title: 'Camiones de baja' });
     return pills;
-  }, [visibleTrucks]);
+  }, [listaTrucks]);
 
   // Rutas activas (no liquidadas) visibles para el usuario SIN aplicar el filtro de
   // agencia seleccionada arriba, usadas para mostrar la distribución entre agencias
@@ -4276,8 +4358,8 @@ export default function App() {
           pendingReasonsCount={pendingReasonsCount}
           activeCount={filteredActiveRoutes.length}
           liquidatedCount={allLiquidatedRoutes.length}
-          trucksCount={visibleTrucks.length}
-          staffCount={visibleStaff.length}
+          trucksCount={listaTrucks.length}
+          staffCount={listaStaff.length}
           usersCount={users.length}
           showDashboard={canView('dashboard')}
           showBoard={canView('board')}
@@ -4302,8 +4384,8 @@ export default function App() {
           pendingReasonsCount={pendingReasonsCount}
           activeCount={filteredActiveRoutes.length}
           liquidatedCount={allLiquidatedRoutes.length}
-          trucksCount={visibleTrucks.length}
-          staffCount={visibleStaff.length}
+          trucksCount={listaTrucks.length}
+          staffCount={listaStaff.length}
           usersCount={users.length}
           showDashboard={canView('dashboard')}
           showBoard={canView('board')}
@@ -4371,8 +4453,8 @@ export default function App() {
           pendingReasonsCount={pendingReasonsCount}
           activeCount={filteredActiveRoutes.length}
           liquidatedCount={allLiquidatedRoutes.length}
-          trucksCount={visibleTrucks.length}
-          staffCount={visibleStaff.length}
+          trucksCount={listaTrucks.length}
+          staffCount={listaStaff.length}
           usersCount={users.length}
           showDashboard={canView('dashboard')}
           showBoard={canView('board')}
@@ -4533,9 +4615,9 @@ export default function App() {
         {activeTab === 'trucks' && (
           <ResourcesView
             mode="trucks"
-            trucks={visibleTrucks}
+            trucks={listaTrucks}
             onRequestTruckStatusChange={(t) => setTruckStatusTarget(t)}
-            staff={visibleStaff}
+            staff={listaStaff}
             defaultAgencia={effectiveAgencyForCreation}
             onOpenNewTruckModal={() => setIsNewTruckModalOpen(true)}
             onOpenNewStaffModal={() => setIsNewStaffModalOpen(true)}
@@ -4558,8 +4640,8 @@ export default function App() {
         {activeTab === 'staff' && (
           <ResourcesView
             mode="staff"
-            trucks={visibleTrucks}
-            staff={visibleStaff}
+            trucks={listaTrucks}
+            staff={listaStaff}
             defaultAgencia={effectiveAgencyForCreation}
             onOpenNewTruckModal={() => setIsNewTruckModalOpen(true)}
             onOpenNewStaffModal={() => setIsNewStaffModalOpen(true)}
@@ -4612,6 +4694,37 @@ export default function App() {
             rutas={rutasParaRecargas}
             staff={staffParaRecargas}
             agencias={importAgencyOptions}
+            agenciaGeneral={selectedAgency}
+            usuario={currentUser.nombre || currentUser.username}
+            isAdmin={currentUser.isAdmin}
+            canDelete={canDeleteData}
+            onShowToast={showToast}
+            prestamos={prestamos}
+          />
+        )}
+
+        {activeTab === 'prestamos' && currentUser && (
+          <PrestamosView
+            prestamos={prestamos}
+            onGuardados={(list) =>
+              setPrestamos((prev) => {
+                const byId = new Map<string, Prestamo>(list.map((x) => [x.id, x] as [string, Prestamo]));
+                const next: Prestamo[] = prev.map((x) => byId.get(x.id) || x);
+                list.forEach((x) => {
+                  if (!prev.some((y) => y.id === x.id)) next.push(x);
+                });
+                return next;
+              })
+            }
+            onEliminado={(id) => setPrestamos((prev) => prev.filter((x) => x.id !== id))}
+            onRecargar={() => void cargarPrestamos()}
+            cargando={prestamosCargando}
+            tablaFalta={prestamosTablaFalta}
+            staff={staffLive}
+            trucks={trucksLive}
+            rutas={rutasParaRecargas}
+            agencias={importAgencyOptions}
+            agenciasTodas={AGENCIA_LOCATION_OPTIONS}
             agenciaGeneral={selectedAgency}
             usuario={currentUser.nombre || currentUser.username}
             isAdmin={currentUser.isAdmin}
@@ -4718,6 +4831,7 @@ export default function App() {
         route={assignTarget}
         trucks={trucksLive}
         staff={staffLive}
+        prestamos={prestamos}
         activeRoutes={routes}
         historyRoutes={historicalRoutes}
         onConfirmAssignment={handleConfirmAssignment}
@@ -4789,8 +4903,8 @@ export default function App() {
         allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia))}
         // Camiones y personal de todas las agencias permitidas: el reporte los
         // filtra con su propio selector de agencia (que abre con el general).
-        staff={staffLive.filter((s) => !s.agencia || canViewAgency(s.agencia))}
-        trucks={trucksLive.filter((t) => !t.agencia || canViewAgency(t.agencia))}
+        staff={staffOp.filter((s) => !s.agencia || canViewAgency(s.agencia))}
+        trucks={trucksOp.filter((t) => !t.agencia || canViewAgency(t.agencia))}
         selectedAgency={selectedAgency}
         agencies={agencies}
         // Abre con la fecha elegida en el filtro del Tablero (o con hoy).
