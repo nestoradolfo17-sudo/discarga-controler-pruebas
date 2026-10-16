@@ -58,7 +58,7 @@ import {
 } from './services/auth';
 import { Navbar } from './components/Navbar';
 import { StatsCards, LiquidatedStatsStrip, StatPills, StatPill } from './components/StatsCards';
-import { TabNav, ActiveTab } from './components/TabNav';
+import { TabNav, ActiveTab, DayReportButtons, NewRouteButton } from './components/TabNav';
 import { RoutesTable } from './components/RoutesTable';
 import { ResourcesView } from './components/ResourcesView';
 import { BatchImportView, BatchImportTarget } from './components/BatchImportView';
@@ -4328,8 +4328,6 @@ export default function App() {
         agencies={boardAgencies}
         selectedAgency={selectedAgency}
         onSelectAgency={setSelectedAgency}
-        onOpenNewRouteModal={() => setIsRouteTypeSelectModalOpen(true)}
-        onOpenDailySummaryModal={handleOpenDailySummary}
         currentUsername={currentUser.nombre || currentUser.username}
         isAdmin={currentUser.isAdmin}
         onLogout={handleLogout}
@@ -4404,6 +4402,8 @@ export default function App() {
             railCollapsed={railCollapsed}
             onToggleRail={toggleRail}
             onFullscreen={activeTab === 'board' ? enterBoardFullscreen : undefined}
+            onOpenDailySummary={handleOpenDailySummary}
+            onNewRoute={() => setIsRouteTypeSelectModalOpen(true)}
             leading={
               // Indicadores según la sección: los principales (pendientes, tránsito,
               // etc.) en el Tablero de Rutas; los de liquidación en Rutas Liquidadas.
@@ -4524,7 +4524,9 @@ export default function App() {
                 aria-label="Buscar ruta, camión o piloto"
                 className="flex-1 min-w-[160px] max-w-xs min-h-[44px] px-3 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                <DayReportButtons onOpen={handleOpenDailySummary} />
+                <NewRouteButton onClick={() => setIsRouteTypeSelectModalOpen(true)} />
                 <Button variant="secondary" icon={ACTION_ICONS.prioridades} onClick={handleExportRutasPrioridades} title="Descargar Excel de Rutas Prioridades" className="text-indigo-700 border-indigo-300">
                   Rutas Prioridades
                 </Button>
