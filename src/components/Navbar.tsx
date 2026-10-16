@@ -16,6 +16,8 @@ interface NavbarProps {
   onSelectAgency: (agency: string) => void;
   currentUsername?: string;
   isAdmin?: boolean;
+  // Agencias de las que es administrador (administrador de agencias).
+  adminAgencias?: string[];
   onLogout?: () => void;
   saveIndicator?: React.ReactNode;
   onDownloadBackup?: () => void | Promise<void>;
@@ -28,6 +30,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectAgency,
   currentUsername,
   isAdmin,
+  adminAgencias = [],
   onLogout,
   saveIndicator,
   onDownloadBackup,
@@ -106,11 +109,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <User className="w-4 h-4 text-slate-300" aria-hidden />
                   <span className="hidden md:inline text-xs font-semibold max-w-[140px] truncate">{currentUsername}</span>
-                  {isAdmin && (
+                  {isAdmin ? (
                     <span className="hidden md:inline text-[9px] font-bold text-indigo-200 bg-indigo-500/20 px-1.5 rounded-full">
                       ADMIN
                     </span>
-                  )}
+                  ) : adminAgencias.length > 0 ? (
+                    <span className="hidden md:inline text-[9px] font-bold text-violet-200 bg-violet-500/25 px-1.5 rounded-full">
+                      ADMIN AGENCIA
+                    </span>
+                  ) : null}
                   <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${menuOpen ? 'rotate-180' : ''}`} aria-hidden />
                 </button>
 
@@ -121,7 +128,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <div className="px-4 py-2.5 border-b border-slate-100">
                       <div className="text-sm font-bold truncate">{currentUsername}</div>
-                      <div className="text-xs text-slate-500">{isAdmin ? 'Administrador' : 'Usuario'}</div>
+                      <div className="text-xs text-slate-500">
+                        {isAdmin
+                          ? 'Administrador'
+                          : adminAgencias.length > 0
+                          ? `Administrador de: ${adminAgencias.join(', ')}`
+                          : 'Usuario'}
+                      </div>
                     </div>
                     {saveIndicator && <div className="sm:hidden px-4 py-2 bg-slate-900 mx-2 my-1.5 rounded-xl">{saveIndicator}</div>}
                     {onDownloadBackup && (
