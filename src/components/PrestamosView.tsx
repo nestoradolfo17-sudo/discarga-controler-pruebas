@@ -41,6 +41,8 @@ interface PrestamosViewProps {
   usuario: string;
   isAdmin: boolean;
   canDelete: boolean;
+  // Administrador de agencias: autoriza los préstamos cuya agencia ORIGEN administra.
+  adminAgencias?: string[];
   onShowToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -83,8 +85,12 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
   usuario,
   isAdmin,
   canDelete,
+  adminAgencias = [] as string[],
   onShowToast,
 }) => {
+  // ¿Puede autorizar / modificar préstamos que salen de esta agencia?
+  const adminDe = (ag?: string) => isAdmin || (!!ag && adminAgencias.includes(ag));
+  const aprobador = isAdmin || adminAgencias.length > 0;
   const hoy = getGuatemalaDateForInput();
   const [vista, setVista] = useState<Vista>('vigentes');
   const [desde, setDesde] = useState(primeroDeMes);
@@ -143,6 +149,8 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
     });
     return c;
   }, [base, desde, hasta]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Pendientes que el usuario en sesión puede autorizar (agencia origen que administra).
+  const porAutorizarMios = base.filter((p) => clasif(p).porAutorizar && adminDe(p.agenciaOrigen)).length;
 
   const filtrados = useMemo(
     () =>
@@ -188,7 +196,7 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
       p = { ...previo, ...datos, editadoPor: usuario, editadoEn: ahora };
       const cambio = JSON.stringify([previo.agenciaOrigen, previo.agenciaDestino, previo.fechaInicio, previo.fechaFin, previo.recursos, previo.motivo]) !==
         JSON.stringify([p.agenciaOrigen, p.agenciaDestino, p.fechaInicio, p.fechaFin, p.recursos, p.motivo]);
-      if (!isAdmin && cambio) p = { ...p, estado: 'Pendiente', autorizadoPor: undefined, autorizadoEn: undefined, motivoRechazo: undefined };
+      if (!(adminDe(previo.agenciaOrigen) && adminDe(p.agenciaOrigen)) && cambio) p = { ...p, estado: 'Pendiente', autorizadoPor: undefined, autorizadoEn: undefined, motivoRechazo: undefined };
     }
     setGuardando(true);
     const ok = await guardar(
@@ -242,10 +250,11 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
       editadoPor: usuario,
       editadoEn: ahora,
     };
-    if (!isAdmin) nuevo = { ...nuevo, estado: 'Pendiente', autorizadoPor: undefined, autorizadoEn: undefined, motivoRechazo: undefined };
+    const adminAqui = adminDe(p.agenciaOrigen);
+    if (!adminAqui) nuevo = { ...nuevo, estado: 'Pendiente', autorizadoPor: undefined, autorizadoEn: undefined, motivoRechazo: undefined };
     await guardar(
       [nuevo],
-      isAdmin
+      adminAqui
         ? `Préstamo ${etq(p)} extendido hasta el ${fmtFecha(nueva)}.`
         : `Préstamo ${etq(p)} extendido hasta el ${fmtFecha(nueva)}. Queda pendiente de que el administrador autorice la extensión.`
     );
@@ -439,11 +448,11 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
         </div>
       )}
 
-      {isAdmin && conteo.porAutorizar > 0 && (
+      {aprobador && porAutorizarMios > 0 && (
         <div className="flex flex-wrap items-center gap-2 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-4 py-3 text-xs">
           <ShieldCheck className="w-4 h-4 shrink-0" />
           <span className="flex-1">
-            <b>{conteo.porAutorizar} préstamo(s) esperan tu autorización.</b> Las recargas hechas en préstamo no se pagan hasta que esté autorizado y devuelto.
+            <b>{porAutorizarMios} préstamo(s) esperan tu autorización.</b> Las recargas hechas en préstamo no se pagan hasta que esté autorizado y devuelto.
           </span>
           {vista !== 'porAutorizar' && (
             <button type="button" onClick={() => setVista('porAutorizar')} className="min-h-[36px] px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold cursor-pointer">
@@ -531,8 +540,9 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
                 {filtrados.map((p) => {
                   const e = estadoPrestamo(p);
                   const k = clasif(p);
-                  const puedeEditar = isAdmin || (e !== 'Autorizado' && !p.devuelto);
-                  const puedeEliminar = isAdmin || (canDelete && e !== 'Autorizado');
+                  const esAdminAqui = adminDe(p.agenciaOrigen);
+                  const puedeEditar = esAdminAqui || (e !== 'Autorizado' && !p.devuelto);
+                  const puedeEliminar = esAdminAqui || (canDelete && e !== 'Autorizado');
                   const abierta = accion?.id === p.id ? accion : null;
                   return (
                     <React.Fragment key={p.id}>
@@ -615,7 +625,7 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex justify-end items-center gap-1.5 flex-wrap">
-                            {isAdmin && e !== 'Autorizado' && (
+                            {esAdminAqui && e !== 'Autorizado' && (
                               <button
                                 type="button"
                                 disabled={procesando}
@@ -626,7 +636,7 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
                                 <Check className="w-3.5 h-3.5" /> Autorizar
                               </button>
                             )}
-                            {isAdmin && e !== 'Rechazado' && !p.devuelto && (
+                            {esAdminAqui && e !== 'Rechazado' && !p.devuelto && (
                               <button
                                 type="button"
                                 disabled={procesando}
@@ -722,7 +732,7 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
                                     placeholder="Motivo de la extensión"
                                     className="flex-1 min-w-[220px] min-h-[40px] px-3 border border-slate-300 rounded-lg text-xs bg-white outline-none focus:ring-2 focus:ring-blue-300"
                                   />
-                                  {!isAdmin && estadoPrestamo(p) === 'Autorizado' && (
+                                  {!adminDe(p.agenciaOrigen) && estadoPrestamo(p) === 'Autorizado' && (
                                     <span className="w-full text-[10.5px] text-sky-800">Al extenderlo vuelve a Pendiente hasta que el administrador autorice la extensión.</span>
                                   )}
                                 </>
@@ -793,7 +803,7 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
         existentes={prestamos}
         usuario={usuario}
         guardando={guardando}
-        avisoReautorizar={!!modal.prestamo && !isAdmin && estadoPrestamo(modal.prestamo) !== 'Pendiente'}
+        avisoReautorizar={!!modal.prestamo && !adminDe(modal.prestamo.agenciaOrigen) && estadoPrestamo(modal.prestamo) !== 'Pendiente'}
         onGuardar={(d) => void handleGuardar(d)}
       />
     </div>
