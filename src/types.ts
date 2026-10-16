@@ -440,6 +440,10 @@ export interface AppUser {
   lastLogin?: string;
   // Con Supabase: un usuario desactivado no puede entrar ni ver datos.
   activo?: boolean;
+  // Administrador de agencias: en estas agencias puede eliminar, revertir y
+  // aprobar (recargas, préstamos de la agencia origen, cambio de segmento y de
+  // estatus de camión). Solo lo asigna el administrador general.
+  adminAgencies?: string[];
 }
 
 // --- Módulo de Recargas ---
