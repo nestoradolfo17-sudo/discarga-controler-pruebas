@@ -7,6 +7,8 @@
 // administrador activo en "app_users". Excepción: un usuario activo con el
 // permiso "Crear usuarios" puede CREAR usuarios normales (sin rango de
 // administrador y solo con sus mismos permisos y agencias).
+// Fase 10: al crear, el administrador general puede marcar al usuario como
+// "Administrador de agencias" (columna admin_agencies).
 //
 // Despliegue: Supabase → Edge Functions → Deploy a new function → Via Editor
 // → nombre "admin-users" → pegar este archivo → Deploy.
@@ -122,6 +124,13 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Administrador de agencias: solo lo asigna el administrador general, y
+        // no aplica a un administrador general (ya lo es de todas).
+        const adminAgenciesNew: string[] =
+          isAdminCaller && !isAdminNew && Array.isArray(body.adminAgencies)
+            ? [...new Set((body.adminAgencies as unknown[]).map((a) => String(a).trim()).filter(Boolean))]
+            : [];
+
         const { data: created, error: createErr } = await admin.auth.admin.createUser({
           email: `${username}@${USER_EMAIL_DOMAIN}`,
           password,
@@ -141,6 +150,9 @@ Deno.serve(async (req) => {
             can_delete: canDeleteNew,
             permissions: permissionsNew,
             agency_access: agencyNew,
+            // Solo se envía si se asignó alguna (así funciona aunque aún no se
+            // haya corrido fase10_admin_agencias.sql).
+            ...(adminAgenciesNew.length ? { admin_agencies: adminAgenciesNew } : {}),
             created_by: callerProfile.nombre || callerProfile.username,
           })
           .select()
