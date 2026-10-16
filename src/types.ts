@@ -451,9 +451,13 @@ export type EstadoRecarga = 'Pendiente' | 'Autorizada' | 'Rechazada';
 
 export interface Recarga {
   id: string;
+  // Número consecutivo único (lo asigna la base). Se muestra como REC-000001.
+  correlativo?: number;
   // Fecha de la recarga en formato del control de fecha: AAAA-MM-DD.
   fecha: string;
+  // Vacío cuando la recarga no lleva ruta (sinRuta = true).
   rutaId: string;
+  sinRuta?: boolean;
   agencia: string;
   segmento?: string;
   tipo: TipoRecarga;
