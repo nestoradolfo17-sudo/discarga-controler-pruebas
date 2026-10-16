@@ -10,3 +10,11 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+
+# Caché de la app: los archivos de /assets/ llevan un código único en el nombre
+# (Vite) que cambia en cada publicación, así que el navegador puede guardarlos
+# un año sin volver a pedirlos. Menos solicitudes y menos créditos de Netlify.
+# index.html NO se guarda (Netlify lo revisa siempre), así cada publicación
+# nueva se ve al recargar.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
