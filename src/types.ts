@@ -468,6 +468,8 @@ export interface Recarga {
   camionPlaca?: string;
   comentario?: string;
   origen: 'manual' | 'asignacion';
+  // Persona que solicita la recarga (firma en la boleta).
+  solicitadoPor?: string;
   creadoPor: string;
   creadoEn: string;
   editadoPor?: string;
