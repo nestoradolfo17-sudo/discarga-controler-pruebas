@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Truck, Staff, ResourceStatus, StaffEstatus } from '../types';
+import { Truck, Staff, ResourceStatus, StaffEstatus, PrestamoInfo } from '../types';
 import { Truck as TruckIcon, UserPlus, Users, ChevronDown, FileSpreadsheet, Download, Trash2, Plus } from 'lucide-react';
 import { BatchStaffModal } from './modals/BatchStaffModal';
 import { BatchTruckModal } from './modals/BatchTruckModal';
@@ -26,6 +26,17 @@ const disponibilidadDe = (
   }
   return 'no_disponibles';
 };
+
+// Etiqueta de préstamo vigente hoy (dato de pantalla, ver App.tsx).
+const PrestamoBadge: React.FC<{ info?: PrestamoInfo }> = ({ info }) =>
+  info ? (
+    <span
+      className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-teal-800 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded"
+      title={`Préstamo ${info.estado.toLowerCase()} de ${info.origen} a ${info.destino} hasta el ${info.hasta.split('-').reverse().join('/')}`}
+    >
+      Prestado: {info.origen} → {info.destino} · hasta {info.hasta.split('-').reverse().join('/')}
+    </span>
+  ) : null;
 
 interface ResourcesViewProps {
   mode: 'trucks' | 'staff';
@@ -336,6 +347,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                         Sin Agencia
                       </span>
                     )}
+                    <PrestamoBadge info={t.prestamoInfo} />
                   </td>
                   <td className="py-3 px-4 text-slate-600">{t.proveedor || '-'}</td>
                   <td className="py-3 px-4">
@@ -574,6 +586,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                           Sin Agencia
                         </span>
                       )}
+                      <PrestamoBadge info={s.prestamoInfo} />
                     </td>
                     <td className="py-3 px-4">
                       <span className={`${puestoBadge} px-2 py-0.5 rounded text-xs font-bold font-mono`}>
