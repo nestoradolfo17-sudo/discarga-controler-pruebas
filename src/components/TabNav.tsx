@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, ShieldCheck, Gauge, PanelLeftClose, PanelLeftOpen, Repeat, ArrowLeftRight } from 'lucide-react';
+import { Search, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, ShieldCheck, Gauge, PanelLeftClose, PanelLeftOpen, Repeat, ArrowLeftRight, Sun, Moon } from 'lucide-react';
 import { Button, IconButton } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 
@@ -59,6 +59,10 @@ interface TabNavProps {
   onToggleRail?: () => void;
   // Abre el Tablero de Rutas a pantalla completa (solo se muestra en el Tablero).
   onFullscreen?: () => void;
+  // Reportes del día (Inicio / Fin de Día) y "Nueva Ruta": antes en la barra
+  // superior, ahora dentro de la barra del Tablero.
+  onOpenDailySummary?: (mode: 'inicio' | 'fin') => void;
+  onNewRoute?: () => void;
 }
 
 interface NavItem {
@@ -103,6 +107,8 @@ export const TabNav: React.FC<TabNavProps> = ({
   railCollapsed = false,
   onToggleRail,
   onFullscreen,
+  onOpenDailySummary,
+  onNewRoute,
 }) => {
   const items: NavItem[] = [
     { key: 'dashboard', label: 'Dashboard', short: 'Dashboard', icon: Gauge, activeClass: 'bg-slate-900 text-white', iconClass: 'text-slate-500', show: showDashboard },
@@ -236,6 +242,8 @@ export const TabNav: React.FC<TabNavProps> = ({
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2 ml-auto max-w-full">
+        {onOpenDailySummary && <DayReportButtons onOpen={onOpenDailySummary} />}
+        {onNewRoute && <NewRouteButton onClick={onNewRoute} />}
         {onFullscreen && (
           <IconButton
             variant="secondary"
@@ -285,3 +293,44 @@ export const TabNav: React.FC<TabNavProps> = ({
     </div>
   );
 };
+
+// Reportes del día: Inicio (planificado) y Fin de Día (real ejecutado).
+export const DayReportButtons: React.FC<{ onOpen: (mode: 'inicio' | 'fin') => void }> = ({ onOpen }) => (
+  <div className="flex items-center gap-1 bg-slate-50 rounded-xl p-1 border border-slate-300">
+    <button
+      id="btnResumenInicio"
+      type="button"
+      onClick={() => onOpen('inicio')}
+      aria-label="Reporte de Inicio de Día (planificado)"
+      title="Reporte de Inicio de Día (planificado)"
+      className="inline-flex items-center justify-center gap-1.5 min-h-[36px] min-w-[36px] px-2.5 text-xs font-semibold text-slate-700 hover:bg-white hover:shadow-sm rounded-lg transition cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+    >
+      <Sun className="w-4 h-4 text-amber-500" aria-hidden />
+      <span className="whitespace-nowrap">Inicio de Día</span>
+    </button>
+    <button
+      id="btnResumenFin"
+      type="button"
+      onClick={() => onOpen('fin')}
+      aria-label="Reporte de Fin de Día (real ejecutado)"
+      title="Reporte de Fin de Día (real ejecutado)"
+      className="inline-flex items-center justify-center gap-1.5 min-h-[36px] min-w-[36px] px-2.5 text-xs font-semibold text-slate-700 hover:bg-white hover:shadow-sm rounded-lg transition cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+    >
+      <Moon className="w-4 h-4 text-indigo-500" aria-hidden />
+      <span className="whitespace-nowrap">Fin de Día</span>
+    </button>
+  </div>
+);
+
+export const NewRouteButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+  <Button
+    id="btnNuevaRuta"
+    variant="primary"
+    icon={ACTION_ICONS.nuevo}
+    onClick={onClick}
+    title="Crear una nueva ruta"
+    className="shrink-0"
+  >
+    <span className="whitespace-nowrap">Nueva Ruta</span>
+  </Button>
+);
