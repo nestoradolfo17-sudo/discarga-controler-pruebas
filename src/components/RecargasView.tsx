@@ -320,28 +320,35 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
     wsR['!cols'] = [20, 11, 12, 11, 15, 28].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, wsR, 'Resumen por agencia');
 
-    // Solo autorizadas: es la base para el pago.
-    const porPiloto = new Map<string, { ag: string; s: number; d: number; t: number; v: number }>();
+    // Solo autorizadas: es la base para el pago. Cada recarga cuenta para el
+    // piloto y para cada auxiliar que la sacó (puede ir solo uno de los dos).
+    const porPersona = new Map<string, { ag: string; nombre: string; rol: string; s: number; d: number; t: number; v: number }>();
     filtradas
-      .filter((r) => estadoDe(r) === 'Autorizada' && r.conductor)
+      .filter((r) => estadoDe(r) === 'Autorizada')
       .forEach((r) => {
-        const k = `${r.agencia}|${r.conductor}`;
-        const p = porPiloto.get(k) || { ag: r.agencia, s: 0, d: 0, t: 0, v: 0 };
-        if (r.tipo === 'Triple') p.t++;
-        else if (r.tipo === 'Doble') p.d++;
-        else p.s++;
-        p.v += VIAJES[r.tipo] || 1;
-        porPiloto.set(k, p);
+        const personas = [
+          ...(r.conductor ? [{ nombre: r.conductor, rol: 'Piloto' }] : []),
+          ...(r.auxiliares || []).filter(Boolean).map((n) => ({ nombre: n, rol: 'Auxiliar' })),
+        ];
+        personas.forEach(({ nombre, rol }) => {
+          const k = `${r.agencia}|${rol}|${nombre}`;
+          const p = porPersona.get(k) || { ag: r.agencia, nombre, rol, s: 0, d: 0, t: 0, v: 0 };
+          if (r.tipo === 'Triple') p.t++;
+          else if (r.tipo === 'Doble') p.d++;
+          else p.s++;
+          p.v += VIAJES[r.tipo] || 1;
+          porPersona.set(k, p);
+        });
       });
     const wsP = XLSX.utils.json_to_sheet(
-      porPiloto.size
-        ? Array.from(porPiloto.entries())
-            .sort((a, b) => b[1].v - a[1].v)
-            .map(([k, p]) => ({ Agencia: p.ag, Piloto: k.split('|')[1], Simple: p.s, Doble: p.d, Triple: p.t, 'Viajes para pago': p.v }))
-        : [{ Agencia: 'Sin recargas autorizadas en este rango', Piloto: '', Simple: 0, Doble: 0, Triple: 0, 'Viajes para pago': 0 }]
+      porPersona.size
+        ? Array.from(porPersona.values())
+            .sort((a, b) => a.ag.localeCompare(b.ag) || a.rol.localeCompare(b.rol) || b.v - a.v)
+            .map((p) => ({ Agencia: p.ag, Nombre: p.nombre, Rol: p.rol, Simple: p.s, Doble: p.d, Triple: p.t, 'Viajes para pago': p.v }))
+        : [{ Agencia: 'Sin recargas autorizadas en este rango', Nombre: '', Rol: '', Simple: 0, Doble: 0, Triple: 0, 'Viajes para pago': 0 }]
     );
-    wsP['!cols'] = [20, 30, 8, 8, 8, 16].map((wch) => ({ wch }));
-    XLSX.utils.book_append_sheet(wb, wsP, 'Pago por piloto');
+    wsP['!cols'] = [20, 30, 10, 8, 8, 8, 16].map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(wb, wsP, 'Pago por persona');
 
     XLSX.writeFile(wb, `Recargas_${desde || 'inicio'}_a_${hasta || 'hoy'}${agencia ? '_' + agencia.replace(/\s+/g, '_') : ''}.xlsx`);
     onShowToast(`Reporte de ${filtradas.length} recarga(s) descargado.`, 'success');
@@ -657,7 +664,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                             <span className="block text-[10px] text-rose-600 max-w-[180px] whitespace-normal">Motivo: {r.motivoRechazo}</span>
                           )}
                         </td>
-                        <td className="px-3 py-3 font-semibold text-slate-800">{r.conductor || '-'}</td>
+                        <td className="px-3 py-3 font-semibold text-slate-800">{r.conductor || <span className="text-[11px] font-normal text-slate-400">Sin piloto</span>}</td>
                         <td className="px-3 py-3 text-slate-600">
                           {r.auxiliares?.length ? r.auxiliares.map((a) => <span key={a} className="block">{a}</span>) : <span className="text-slate-300">-</span>}
                         </td>
