@@ -34,7 +34,7 @@ import {
 } from './services/sync';
 import { TRUCK_REASON_REMUNERA, STAFF_REASON_REMUNERA } from './data/unavailableReasons';
 import { exportRoutesToExcel, exportRutasPrioridadesToExcel } from './utils/excel';
-import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate, parseFlexibleDate } from './utils/date';
+import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate, parseFlexibleDate, getGuatemalaDateForInput } from './utils/date';
 import { getRouteKey, routeMatchesKey, isSameSplitGroup, clavesDuplicado } from './utils/routeKey';
 import { esJornadaFutura } from './utils/jornada';
 import { isDemoMode } from './services/demoMode';
@@ -97,6 +97,8 @@ import { ToastContainer } from './components/ToastContainer';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { UsersView } from './components/UsersView';
 import { DashboardView } from './components/DashboardView';
+import { RecargasView } from './components/RecargasView';
+import { registrarRecargaAuto, idRecargaAuto } from './services/recargas';
 import { toNum } from './utils/number';
 import { viajesQueRecibenCajas, resumenGrupo, repartirParejo } from './utils/splitGroup';
 
@@ -1727,6 +1729,19 @@ export default function App() {
     [staffLive, selectedAgency, currentUser]
   );
 
+  // Módulo de Recargas: rutas (activas y liquidadas) y personal de las agencias
+  // que el usuario puede ver, para buscar la ruta y elegir la tripulación.
+  const rutasParaRecargas = useMemo(
+    () => [...routes, ...historicalRoutes].filter((r) => !r.agencia || canViewAgency(r.agencia)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [routes, historicalRoutes, currentUser]
+  );
+  const staffParaRecargas = useMemo(
+    () => staffLive.filter((s) => !s.agencia || canViewAgency(s.agencia)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [staffLive, currentUser]
+  );
+
   // Indicadores de Personal: activos por puesto (VPP / VPPB / APP). Respetan el
   // filtro de agencia y los permisos del usuario (visibleStaff).
   const staffPills = useMemo<StatPill[]>(() => {
@@ -2450,6 +2465,27 @@ export default function App() {
         return r;
       })
     );
+
+    // Módulo de Recargas: una ruta asignada como "Recarga" queda registrada sola
+    // (tipo Simple, editable en Recargas). Si luego se corrige la tripulación con
+    // Modificar / Reasignar, se actualiza el mismo registro.
+    if (isRecarga && targetRoute) {
+      const fechaRecarga = getGuatemalaDateForInput();
+      const helpers = [assignment.helper1, assignment.helper2, assignment.helper3, assignment.helper4].filter(Boolean) as string[];
+      void registrarRecargaAuto({
+        id: idRecargaAuto(getRouteKey(targetRoute), fechaRecarga),
+        fecha: fechaRecarga,
+        rutaId: String(targetRoute.id),
+        agencia: targetRoute.agencia || '',
+        segmento: targetRoute.segmento,
+        conductor: assignment.driverName || '',
+        conductorId: assignment.driverName ? staffIdByName(targetRoute.agencia, assignment.driverName) : undefined,
+        auxiliares: helpers,
+        auxiliarIds: helpers.map((n) => staffIdByName(targetRoute.agencia, n) || null),
+        camionPlaca: assignment.truckPlaca,
+        creadoPor: currentUser?.nombre || currentUser?.username || 'Tablero',
+      });
+    }
 
     // Update Truck status - Si el camión ya está cargado con otra ruta activa, conservar todas las rutas asignadas
     setTrucks((prev) =>
@@ -4550,6 +4586,19 @@ export default function App() {
               />
             )}
           </div>
+        )}
+
+        {activeTab === 'recargas' && currentUser && (
+          <RecargasView
+            rutas={rutasParaRecargas}
+            staff={staffParaRecargas}
+            agencias={importAgencyOptions}
+            agenciaGeneral={selectedAgency}
+            usuario={currentUser.nombre || currentUser.username}
+            isAdmin={currentUser.isAdmin}
+            canDelete={canDeleteData}
+            onShowToast={showToast}
+          />
         )}
 
         {activeTab === 'users' && canManageUsers && (
