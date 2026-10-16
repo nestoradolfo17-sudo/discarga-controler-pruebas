@@ -34,6 +34,20 @@ const fechaHora = (iso?: string) => {
 
 const VIAJES: Record<string, number> = { Simple: 1, Doble: 2, Triple: 3 };
 
+// Firmas: la tripulación que sacó la recarga (piloto y auxiliares
+// registrados) y quien solicitó la recarga. Nadie más. Cada línea lleva el
+// nombre impreso de la persona que debe firmar.
+function firmas(r: Recarga): string {
+  const lista: { nombre: string; rol: string }[] = [
+    ...(r.conductor ? [{ nombre: r.conductor, rol: 'Piloto' }] : []),
+    ...(r.auxiliares || []).filter(Boolean).map((n, i, arr) => ({ nombre: n, rol: arr.length > 1 ? `Auxiliar ${i + 1}` : 'Auxiliar' })),
+    { nombre: r.solicitadoPor || r.creadoPor || '', rol: 'Solicitó la recarga' },
+  ];
+  return lista
+    .map((f) => `<div><span></span><b>${esc(f.nombre || '_______________')}</b><small>${esc(f.rol)}</small></div>`)
+    .join('');
+}
+
 function copia(r: Recarga, etiqueta: string, logo: string): string {
   const estado = r.estado || 'Pendiente';
   const aut = estado === 'Autorizada';
@@ -62,6 +76,7 @@ function copia(r: Recarga, etiqueta: string, logo: string): string {
       ${fila('Camión', esc(r.camionPlaca || '-'))}
       ${fila('Piloto', r.conductor ? `<b>${esc(r.conductor)}</b>` : 'Sin piloto')}
       ${fila('Auxiliares', aux.length ? aux.map(esc).join('<br/>') : '-')}
+      ${fila('Solicitado por', `<b>${esc(r.solicitadoPor || r.creadoPor || '-')}</b>`)}
       ${fila('Comentarios', esc(r.comentario || '-'))}
     </table>
     <p class="meta">
@@ -71,9 +86,7 @@ function copia(r: Recarga, etiqueta: string, logo: string): string {
     </p>
     ${aut ? '' : '<p class="aviso">Esta boleta NO es válida para pago hasta que un administrador autorice la recarga.</p>'}
     <div class="firmas">
-      <div><span></span>Piloto</div>
-      <div><span></span>Supervisor de agencia</div>
-      <div><span></span>Autorizado por</div>
+      ${firmas(r)}
     </div>
   </section>`;
 }
@@ -100,13 +113,16 @@ export function htmlBoletaRecarga(r: Recarga, logo: string): string {
   .corr em.pend { color: #b45309; border-color: #b45309; }
   .corr em.no { color: #b91c1c; border-color: #b91c1c; }
   table.datos { width: 100%; border-collapse: collapse; }
-  table.datos th { text-align: left; width: 30%; padding: 3.5px 6px; background: #dcecfa; color: #01215b; font-size: 10.5px; border: 1px solid #bfd3ea; vertical-align: top; }
-  table.datos td { padding: 3.5px 6px; border: 1px solid #cbd5e1; vertical-align: top; }
+  table.datos th { text-align: left; width: 30%; padding: 3px 6px; background: #dcecfa; color: #01215b; font-size: 10.5px; border: 1px solid #bfd3ea; vertical-align: top; }
+  table.datos td { padding: 3px 6px; border: 1px solid #cbd5e1; vertical-align: top; }
   .meta { margin: 5px 0 0; font-size: 9.5px; color: #475569; }
   .aviso { margin: 4px 0 0; font-size: 10px; font-weight: 700; color: #b45309; }
-  .firmas { margin-top: auto; display: flex; gap: 16px; padding-top: 22px; }
-  .firmas div { flex: 1; text-align: center; font-size: 10px; color: #334155; }
-  .firmas span { display: block; border-top: 1px solid #0f172a; margin-bottom: 3px; }
+  .firmas { margin-top: auto; display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 18px; row-gap: 4px; padding-top: 20px; }
+  .firmas div { text-align: center; font-size: 9.5px; color: #334155; padding-top: 20px; display: flex; flex-direction: column; line-height: 1.25; }
+  .firmas div:nth-child(-n+3) { padding-top: 0; }
+  .firmas span { display: block; border-top: 1px solid #0f172a; margin-bottom: 2px; }
+  .firmas b { font-size: 10.5px; color: #0f172a; }
+  .firmas small { font-size: 8.5px; color: #64748b; }
   .marca { position: absolute; top: 46%; left: 50%; transform: translate(-50%, -50%) rotate(-18deg); font-size: 34px; font-weight: 800; color: rgba(185, 28, 28, .13); white-space: nowrap; pointer-events: none; }
 </style></head><body>
 ${copia(r, 'ORIGINAL · AGENCIA', logo)}
