@@ -1,9 +1,9 @@
 import React from 'react';
-import { Search, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, ShieldCheck, Gauge, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Search, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, ShieldCheck, Gauge, PanelLeftClose, PanelLeftOpen, Repeat } from 'lucide-react';
 import { Button, IconButton } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 
-export type ActiveTab = 'dashboard' | 'board' | 'liquidated' | 'trucks' | 'staff' | 'batch' | 'users';
+export type ActiveTab = 'dashboard' | 'board' | 'liquidated' | 'recargas' | 'trucks' | 'staff' | 'batch' | 'users';
 
 interface TabNavProps {
   activeTab: ActiveTab;
@@ -35,6 +35,8 @@ interface TabNavProps {
   showDashboard?: boolean;
   showBoard?: boolean;
   showLiquidated?: boolean;
+  // Módulo de Recargas: visible para todos los usuarios con sesión.
+  showRecargas?: boolean;
   showTrucks?: boolean;
   showStaff?: boolean;
   showBatch?: boolean;
@@ -87,6 +89,7 @@ export const TabNav: React.FC<TabNavProps> = ({
   showDashboard = true,
   showBoard = true,
   showLiquidated = true,
+  showRecargas = true,
   showTrucks = true,
   showStaff = true,
   showBatch = true,
@@ -102,6 +105,7 @@ export const TabNav: React.FC<TabNavProps> = ({
     { key: 'dashboard', label: 'Dashboard', short: 'Dashboard', icon: Gauge, activeClass: 'bg-slate-900 text-white', iconClass: 'text-slate-500', show: showDashboard },
     { key: 'board', label: 'Tablero de Rutas', short: 'Tablero', icon: LayoutDashboard, count: activeCount, activeClass: 'bg-slate-900 text-white', iconClass: 'text-slate-600', show: showBoard },
     { key: 'liquidated', label: 'Rutas Liquidadas', short: 'Liquidadas', icon: CheckCircle2, count: liquidatedCount, activeClass: 'bg-emerald-600 text-white', iconClass: 'text-emerald-600', show: showLiquidated },
+    { key: 'recargas', label: 'Recargas', short: 'Recargas', icon: Repeat, activeClass: 'bg-violet-600 text-white', iconClass: 'text-violet-600', show: showRecargas },
     { key: 'trucks', label: 'Camiones', short: 'Camiones', icon: Truck, count: trucksCount, activeClass: 'bg-blue-600 text-white', iconClass: 'text-blue-600', show: showTrucks },
     { key: 'staff', label: 'Personal', short: 'Personal', icon: Users, count: staffCount, activeClass: 'bg-indigo-600 text-white', iconClass: 'text-indigo-600', show: showStaff },
     { key: 'batch', label: 'Carga Masiva Excel', short: 'Carga Excel', icon: FileSpreadsheet, activeClass: 'bg-emerald-600 text-white', iconClass: 'text-emerald-600', show: showBatch },
