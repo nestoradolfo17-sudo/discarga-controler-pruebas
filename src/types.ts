@@ -525,6 +525,8 @@ export interface Prestamo {
   devueltoPor?: string;
   devueltoEn?: string;
   comentarioDevolucion?: string;
+  // Cada vez que se alarga la fecha final (botón "Extender").
+  historialExtensiones?: { de: string; a: string; por: string; en: string; motivo: string }[];
 }
 // Dato de pantalla (no se guarda): préstamo vigente hoy de un camión o persona.
 export interface PrestamoInfo {
