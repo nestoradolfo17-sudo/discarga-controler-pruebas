@@ -6,7 +6,8 @@
 --
 -- Reglas que hace cumplir la base de datos:
 --  • Cualquier usuario activo puede crear un préstamo: siempre nace "Pendiente".
---  • Solo un ADMINISTRADOR lo pasa a "Autorizado" o "Rechazado".
+--  • Solo un ADMINISTRADOR (general o administrador de la agencia ORIGEN, la
+--    que presta) lo pasa a "Autorizado" o "Rechazado".
 --  • Cualquier usuario puede registrar la DEVOLUCIÓN (aunque esté autorizado).
 --  • Un préstamo AUTORIZADO solo lo modifica o elimina un administrador
 --    (salvo registrar la devolución). Cualquier usuario puede EXTENDER la
@@ -16,6 +17,25 @@
 --
 -- Cómo correrlo: Supabase → SQL Editor → New query → pega todo → Run.
 -- Es seguro correrlo más de una vez. NO toca ni borra ninguna otra tabla.
+
+-- 0) Administrador de agencias (Fase 10): un usuario puede ser administrador
+--    solo de ciertas agencias. Si la columna o la función ya existen, no
+--    cambia nada.
+alter table public.app_users add column if not exists admin_agencies jsonb not null default '[]'::jsonb;
+
+-- ¿El usuario en sesión es administrador general, o administrador de ESTA agencia?
+create or replace function public.is_agency_admin(ag text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.app_users u
+    where u.id = auth.uid() and u.activo
+      and (
+        u.is_admin
+        or (coalesce(ag, '') <> '' and jsonb_typeof(u.admin_agencies) = 'array' and u.admin_agencies ? ag)
+      )
+  );
+$$;
+grant execute on function public.is_agency_admin(text) to authenticated;
 
 -- 1) Tabla
 create table if not exists public.app_prestamos (
@@ -46,7 +66,7 @@ begin
   execute format(
     'create policy "Eliminar" on public.app_prestamos for delete to authenticated using (%s and exists (
        select 1 from public.app_users u where u.id = auth.uid() and u.activo
-         and (u.is_admin or (u.can_delete and coalesce(data->>''estado'', '''') <> ''Autorizado''))))', cond);
+         and (public.is_agency_admin(data->>''agenciaOrigen'') or (u.can_delete and coalesce(data->>''estado'', '''') <> ''Autorizado''))))', cond);
 end $$;
 
 -- 3) Control de autorización y devolución.
@@ -60,9 +80,10 @@ begin
   if auth.uid() is null then
     return new; -- SQL Editor / procesos internos
   end if;
-  select exists (
-    select 1 from public.app_users u where u.id = auth.uid() and u.activo and u.is_admin
-  ) into es_admin;
+  -- Administrador general, o administrador de la agencia ORIGEN (la de antes y
+  -- la de después, si se cambia).
+  es_admin := public.is_agency_admin(new.data->>'agenciaOrigen')
+    and (tg_op = 'INSERT' or public.is_agency_admin(old.data->>'agenciaOrigen'));
   if es_admin then
     return new;
   end if;
@@ -74,7 +95,7 @@ begin
 
   -- Una devolución registrada solo la puede deshacer un administrador.
   if coalesce((old.data->>'devuelto')::boolean, false) and not coalesce((new.data->>'devuelto')::boolean, false) then
-    raise exception 'PRESTAMO_DEVUELTO: Solo un administrador puede deshacer una devolución.';
+    raise exception 'PRESTAMO_DEVUELTO: Solo un administrador (general o de la agencia origen) puede deshacer una devolución.';
   end if;
 
   -- Solo cambió la devolución (o quién/cuándo editó): se permite y se conserva
@@ -91,7 +112,7 @@ begin
     return new;
   end if;
   if coalesce(old.data->>'estado', '') = 'Autorizado' then
-    raise exception 'PRESTAMO_AUTORIZADO: Solo un administrador puede modificar un préstamo autorizado (sí puedes registrar la devolución).';
+    raise exception 'PRESTAMO_AUTORIZADO: Solo un administrador (general o de la agencia origen) puede modificar un préstamo autorizado (sí puedes registrar la devolución).';
   end if;
   -- Cualquier otro cambio de un usuario no administrador: vuelve a Pendiente.
   new.data := new.data || jsonb_build_object('estado', 'Pendiente');
