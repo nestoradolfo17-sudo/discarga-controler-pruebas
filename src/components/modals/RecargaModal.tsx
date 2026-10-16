@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Repeat, Search, UserRound, Users, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { Recarga, Route, Staff, TipoRecarga } from '../../types';
+import { Prestamo, Recarga, Route, Staff, TipoRecarga } from '../../types';
 import { Button, IconButton } from '../ui/Button';
 import { ModalFooter } from '../ui/ModalFooter';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { ResourcePicker, PickerItem } from '../ResourcePicker';
 import { formatoCorrelativo } from '../../services/recargas';
+import { cubreFecha } from '../../utils/prestamos';
 import { getGuatemalaDateForInput, parseFlexibleDate } from '../../utils/date';
 
 // --- Nueva recarga / Editar recarga ---
@@ -34,6 +35,7 @@ interface RecargaModalProps {
   inicial: Recarga | null; // null = nueva
   rutas: Route[]; // rutas activas + liquidadas que el usuario puede ver
   staff: Staff[];
+  prestamos?: Prestamo[];
   agencias: string[];
   agenciaPorDefecto: string;
   // Nombre que se propone como "Solicitado por" en una recarga nueva.
@@ -59,6 +61,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
   inicial,
   rutas,
   staff,
+  prestamos = [] as Prestamo[],
   agencias,
   agenciaPorDefecto,
   solicitantePorDefecto = '',
@@ -123,12 +126,22 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
       }
     : null;
 
+  // Préstamos que cubren la fecha de la recarga: la persona cuenta para la
+  // agencia que la recibió (y no para la suya) ese día.
+  const prestadoEnFecha = useMemo(() => {
+    const m = new Map<string, Prestamo>();
+    prestamos.forEach((p) => {
+      if (cubreFecha(p, fecha)) p.recursos.forEach((r) => r.tipo !== 'camion' && m.set(r.id, p));
+    });
+    return m;
+  }, [prestamos, fecha]);
+  const agenciaDe = (s: Staff) => prestadoEnFecha.get(s.id)?.agenciaDestino || s.agencia;
   const personalAgencia = useMemo(
     () =>
       staff
-        .filter((s) => (!agencia || s.agencia === agencia) && s.estado !== 'Baja' && s.estatus !== 'BAJA')
+        .filter((s) => (!agencia || agenciaDe(s) === agencia) && s.estado !== 'Baja' && s.estatus !== 'BAJA')
         .sort((a, b) => a.nombre.localeCompare(b.nombre)),
-    [staff, agencia]
+    [staff, agencia, prestadoEnFecha] // eslint-disable-line react-hooks/exhaustive-deps
   );
   const toItem = (s: Staff): PickerItem => ({
     id: s.nombre,
@@ -137,6 +150,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
     searchText: norm([s.nombre, s.codigo, s.codigoCorto, s.dpi].join(' ')),
     status: 'disponible',
     statusLabel: s.rol === 'Conductor' ? 'Piloto' : 'Auxiliar',
+    extraBadge: prestadoEnFecha.get(s.id) && prestadoEnFecha.get(s.id)!.agenciaDestino === agencia ? `Prestado de ${prestadoEnFecha.get(s.id)!.agenciaOrigen}` : undefined,
   });
   const pilotoItems = useMemo(
     () => personalAgencia.filter((s) => s.rol === 'Conductor' || s.puesto === 'VPP' || s.puesto === 'VPPB').map(toItem),
