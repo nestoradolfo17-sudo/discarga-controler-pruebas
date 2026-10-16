@@ -21,7 +21,8 @@
 | Subir Excel de Camiones / Personal | Carga masiva de recursos |
 | Puede eliminar | Borrar rutas, camiones, personal |
 | Agencias | Todas, o solo las que marques |
-| Administrador | Todo lo anterior + gestionar usuarios |
+| Administrador de agencias | En las agencias marcadas: eliminar, revertir y **aprobar** (recargas, préstamos que salen de esa agencia, cambio de segmento y de estatus de camión). No gestiona usuarios. Solo lo asigna el administrador general. |
+| Administrador | Todo lo anterior en todas las agencias + gestionar usuarios |
 
 Los cambios de permisos se aplican al instante, incluso si el usuario ya está conectado. Si eliminas un usuario, se le cierra la sesión.
 
@@ -65,6 +66,12 @@ GitHub Desktop → commit + push → esperar a Netlify (1–3 min) → abrir htt
 
 ---
 
+## Administrador de agencias (Fase 10)
+
+1. Supabase → **SQL Editor → New query** → pega TODO el contenido de `supabase/fase10_admin_agencias.sql` → **Run**. Después vuelve a correr, igual, `fase8_recargas.sql` y `fase9_prestamos.sql`.
+2. Edge Functions → `admin-users` → **Code** → reemplaza todo por el nuevo `supabase/functions/admin-users/index.ts` → **Deploy**.
+3. En **Usuarios**, el administrador general marca las agencias en "Administrador de agencias" (al crear el usuario o en la columna *Admin. de agencias*). Solo puede administrar agencias que también puede ver.
+
 ## Problemas comunes
 
 | Mensaje | Causa / solución |
@@ -74,6 +81,8 @@ GitHub Desktop → commit + push → esperar a Netlify (1–3 min) → abrir htt
 | "No se encontró la función admin-users" | Paso 4 no hecho o el nombre no es exacto. |
 | "Sesión no válida" al crear usuarios | Cierra sesión y vuelve a entrar. |
 | La app carga pero sin datos | El SQL del paso 3 se ejecutó pero el usuario no tiene perfil activo. |
+| "Falta correr ... fase10_admin_agencias.sql" | Paso 1 de la Fase 10. |
+
 
 ## Pendiente para más adelante
 - Filtrar datos por agencia **en la base de datos** (hoy lo filtra la app). Es la siguiente capa de seguridad.
