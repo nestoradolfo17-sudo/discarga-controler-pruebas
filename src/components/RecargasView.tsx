@@ -30,6 +30,10 @@ interface RecargasViewProps {
 }
 
 const VIAJES: Record<TipoRecarga, number> = { Simple: 1, Doble: 2, Triple: 3 };
+// Valor a pagar por cada recarga SIMPLE según el puesto (Doble = x2, Triple = x3).
+// Solo se usa en el Excel; no se muestra en pantalla.
+const TARIFA_RECARGA: Record<string, number> = { VPP: 125, VPPB: 125, APP: 75 };
+const tarifaDe = (puesto: string) => TARIFA_RECARGA[puesto] ?? (puesto === 'APP' ? 75 : 125);
 const fmt = (iso: string) => (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : iso || '-');
 const fmtHora = (iso?: string) => {
   if (!iso) return '';
@@ -187,9 +191,9 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
     const previa = modal.recarga;
     let r: Recarga;
     if (!previa) {
-      r = { ...datos, id: nuevoIdRecarga(), origen: 'manual', creadoPor: usuario, creadoEn: ahora, estado: 'Pendiente' };
+      r = { ...datos, solicitadoPor: usuario, id: nuevoIdRecarga(), origen: 'manual', creadoPor: usuario, creadoEn: ahora, estado: 'Pendiente' };
     } else {
-      r = { ...previa, ...datos, editadoPor: usuario, editadoEn: ahora };
+      r = { ...previa, ...datos, solicitadoPor: previa.solicitadoPor || previa.creadoPor, editadoPor: usuario, editadoEn: ahora };
       // Un cambio real hecho por alguien que no es administrador vuelve a Pendiente.
       if (!isAdmin && contenido(previa) !== contenido(r)) {
         r = { ...r, estado: 'Pendiente', autorizadoPor: undefined, autorizadoEn: undefined, motivoRechazo: undefined };
@@ -268,6 +272,73 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
     }
     const XLSX = await loadXLSX();
     const wb = XLSX.utils.book_new();
+
+    // --- Hoja "Pago recargas": solo AUTORIZADAS, una fila por persona ---
+    // Cada recarga cuenta para el piloto y para cada auxiliar que la sacó. El
+    // puesto (VPP / VPPB / APP) y el DPI se toman de Personal.
+    const porId = new Map(staff.map((x) => [x.id, x]));
+    const buscarPersona = (nombre: string, id: string | null | undefined, agenciaR: string) => {
+      const n = norm(nombre).trim();
+      return (
+        (id ? porId.get(id) : undefined) ||
+        staff.find((x) => x.agencia === agenciaR && norm(x.nombre).trim() === n) ||
+        staff.find((x) => norm(x.nombre).trim() === n)
+      );
+    };
+    const personasDe = (r: Recarga) => [
+      ...(r.conductor ? [{ nombre: r.conductor, id: r.conductorId, rol: 'Piloto' }] : []),
+      ...(r.auxiliares || []).map((n, i) => ({ nombre: n, id: r.auxiliarIds?.[i] || null, rol: 'Auxiliar' })).filter((x) => x.nombre),
+    ];
+    const valorDe = (r: Recarga) =>
+      personasDe(r).reduce((acc, p) => {
+        const st = buscarPersona(p.nombre, p.id, r.agencia);
+        const puesto = (st?.puesto || (p.rol === 'Piloto' ? 'VPP' : 'APP')).toUpperCase();
+        return acc + tarifaDe(puesto) * (VIAJES[r.tipo] || 1);
+      }, 0);
+    type FilaPago = { dpi: string; nombre: string; puesto: string; agencia: string; s: number; d: number; t: number };
+    const pago = new Map<string, FilaPago>();
+    filtradas
+      .filter((r) => estadoDe(r) === 'Autorizada')
+      .forEach((r) => {
+        personasDe(r).forEach((p) => {
+          const st = buscarPersona(p.nombre, p.id, r.agencia);
+          const puesto = (st?.puesto || (p.rol === 'Piloto' ? 'VPP' : 'APP')).toUpperCase();
+          const dpi = st?.dpi ? String(st.dpi) : '';
+          const k = dpi || `${r.agencia}|${norm(p.nombre).trim()}`;
+          const f = pago.get(k) || { dpi, nombre: st?.nombre || p.nombre, puesto, agencia: st?.agencia || r.agencia, s: 0, d: 0, t: 0 };
+          if (r.tipo === 'Triple') f.t++;
+          else if (r.tipo === 'Doble') f.d++;
+          else f.s++;
+          pago.set(k, f);
+        });
+      });
+    const filasPago = Array.from(pago.values())
+      .map((f) => {
+        const recargas = f.s + f.d * 2 + f.t * 3;
+        const tarifa = tarifaDe(f.puesto);
+        return { ...f, recargas, tarifa, valor: recargas * tarifa };
+      })
+      .sort((a, b) => a.agencia.localeCompare(b.agencia) || a.puesto.localeCompare(b.puesto) || a.nombre.localeCompare(b.nombre));
+    const aoa: (string | number)[][] = [
+      ['DPI', 'Nombre y Apellidos', 'PUESTO', 'Agencia', 'Simples', 'Dobles', 'Triples', 'Recargas', 'Tarifa por recarga', 'Valor Recargas'],
+      ...filasPago.map((f) => [f.dpi, f.nombre, f.puesto, f.agencia, f.s, f.d, f.t, f.recargas, f.tarifa, f.valor]),
+    ];
+    const totRec = filasPago.reduce((a, f) => a + f.recargas, 0);
+    const totVal = filasPago.reduce((a, f) => a + f.valor, 0);
+    aoa.push(['', filasPago.length ? 'TOTAL' : 'Sin recargas autorizadas en este rango', '', '', '', '', '', totRec, '', totVal]);
+    const wsPago = XLSX.utils.aoa_to_sheet(aoa);
+    wsPago['!cols'] = [17, 34, 9, 18, 9, 9, 9, 10, 17, 16].map((wch) => ({ wch }));
+    if (filasPago.length) wsPago['!autofilter'] = { ref: `A1:J${filasPago.length + 1}` };
+    for (let i = 2; i <= aoa.length; i++) {
+      ['I', 'J'].forEach((c) => {
+        const cell = wsPago[`${c}${i}`];
+        if (cell && typeof cell.v === 'number') cell.z = '"Q" #,##0.00';
+      });
+      const dpiCell = wsPago[`A${i}`];
+      if (dpiCell) dpiCell.t = 's'; // DPI como texto (sin notación científica)
+    }
+    XLSX.utils.book_append_sheet(wb, wsPago, 'Pago recargas');
+
     const detalle = filtradas.map((r) => {
       const e = estadoDe(r);
       return {
@@ -280,6 +351,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
         'Viajes de recarga': VIAJES[r.tipo] || 1,
         Estado: e,
         'Cuenta para pago': e === 'Autorizada' ? 'Sí' : 'No',
+        'Valor a pagar (Q)': e === 'Autorizada' ? valorDe(r) : 0,
         Piloto: r.conductor,
         'Auxiliar 1': r.auxiliares?.[0] || '',
         'Auxiliar 2': r.auxiliares?.[1] || '',
@@ -290,7 +362,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
         'Autorizado / rechazado por': r.autorizadoPor || '',
         'Fecha autorización': fmtHora(r.autorizadoEn),
         'Motivo de rechazo': r.motivoRechazo || '',
-        Origen: r.origen === 'asignacion' ? 'Automática (Tablero)' : 'Manual',
+        Origen: r.origen === 'asignacion' ? 'Automática (liquidación)' : 'Manual',
         'Solicitado por': r.solicitadoPor || r.creadoPor,
         'Registrado por': r.creadoPor,
         'Registrado el': fmtHora(r.creadoEn),
@@ -299,7 +371,11 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       };
     });
     const wsD = XLSX.utils.json_to_sheet(detalle);
-    wsD['!cols'] = [12, 10, 9, 16, 16, 8, 10, 11, 10, 26, 22, 22, 22, 22, 10, 40, 22, 17, 30, 18, 16, 17, 16, 17].map((wch) => ({ wch }));
+    for (let i = 2; i <= detalle.length + 1; i++) {
+      const c = wsD[`J${i}`];
+      if (c && typeof c.v === 'number') c.z = '"Q" #,##0.00';
+    }
+    wsD['!cols'] = [12, 10, 9, 16, 16, 8, 10, 11, 10, 14, 26, 22, 22, 22, 22, 10, 40, 22, 17, 30, 18, 16, 17, 16, 17].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, wsD, 'Recargas');
 
     const porAg = new Map<string, { p: number; a: number; r: number; v: number }>();
@@ -320,36 +396,6 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
     const wsR = XLSX.utils.json_to_sheet(resumen);
     wsR['!cols'] = [20, 11, 12, 11, 15, 28].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, wsR, 'Resumen por agencia');
-
-    // Solo autorizadas: es la base para el pago. Cada recarga cuenta para el
-    // piloto y para cada auxiliar que la sacó (puede ir solo uno de los dos).
-    const porPersona = new Map<string, { ag: string; nombre: string; rol: string; s: number; d: number; t: number; v: number }>();
-    filtradas
-      .filter((r) => estadoDe(r) === 'Autorizada')
-      .forEach((r) => {
-        const personas = [
-          ...(r.conductor ? [{ nombre: r.conductor, rol: 'Piloto' }] : []),
-          ...(r.auxiliares || []).filter(Boolean).map((n) => ({ nombre: n, rol: 'Auxiliar' })),
-        ];
-        personas.forEach(({ nombre, rol }) => {
-          const k = `${r.agencia}|${rol}|${nombre}`;
-          const p = porPersona.get(k) || { ag: r.agencia, nombre, rol, s: 0, d: 0, t: 0, v: 0 };
-          if (r.tipo === 'Triple') p.t++;
-          else if (r.tipo === 'Doble') p.d++;
-          else p.s++;
-          p.v += VIAJES[r.tipo] || 1;
-          porPersona.set(k, p);
-        });
-      });
-    const wsP = XLSX.utils.json_to_sheet(
-      porPersona.size
-        ? Array.from(porPersona.values())
-            .sort((a, b) => a.ag.localeCompare(b.ag) || a.rol.localeCompare(b.rol) || b.v - a.v)
-            .map((p) => ({ Agencia: p.ag, Nombre: p.nombre, Rol: p.rol, Simple: p.s, Doble: p.d, Triple: p.t, 'Viajes para pago': p.v }))
-        : [{ Agencia: 'Sin recargas autorizadas en este rango', Nombre: '', Rol: '', Simple: 0, Doble: 0, Triple: 0, 'Viajes para pago': 0 }]
-    );
-    wsP['!cols'] = [20, 30, 10, 8, 8, 8, 16].map((wch) => ({ wch }));
-    XLSX.utils.book_append_sheet(wb, wsP, 'Pago por persona');
 
     XLSX.writeFile(wb, `Recargas_${desde || 'inicio'}_a_${hasta || 'hoy'}${agencia ? '_' + agencia.replace(/\s+/g, '_') : ''}.xlsx`);
     onShowToast(`Reporte de ${filtradas.length} recarga(s) descargado.`, 'success');
@@ -551,7 +597,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
           </div>
           <span className="text-[11px] text-slate-400">
             {estado === 'Pendiente' ? 'Todas las pendientes, sin importar la fecha' : `${desde ? fmt(desde) : 'Desde el inicio'} a ${fmt(hasta)}`}
-            {kpi.auto > 0 ? ` · ${kpi.auto} automática(s) desde el Tablero` : ''}
+            {kpi.auto > 0 ? ` · ${kpi.auto} automática(s) por liquidación` : ''}
           </span>
           {isAdmin && seleccionadas.length > 0 && (
             <button
