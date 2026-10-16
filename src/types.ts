@@ -137,6 +137,8 @@ export interface Truck {
   estadoManual?: { estado: 'Disponible' | 'En Ruta'; fecha: string } | null;
   // Cambios manuales de estatus (con autorización de administrador).
   historialEstado?: { fecha: string; de: ResourceStatus; a: ResourceStatus; motivo: string; por: string; autorizadoPor?: string }[];
+  // Solo en pantalla: préstamo a otra agencia vigente hoy (no se guarda).
+  prestamoInfo?: PrestamoInfo;
 }
 
 export interface Staff {
@@ -157,6 +159,8 @@ export interface Staff {
   motivoNoAsignado?: StaffUnavailableReason | null;
   motivoNoAsignadoFecha?: string | null;
   remuneraNoAsignado?: RemuneraStatus | null;
+  // Solo en pantalla: préstamo a otra agencia vigente hoy (no se guarda).
+  prestamoInfo?: PrestamoInfo;
 }
 
 export interface RouteAssignment {
@@ -479,4 +483,54 @@ export interface Recarga {
   autorizadoPor?: string;
   autorizadoEn?: string;
   motivoRechazo?: string;
+}
+
+// --- Préstamo de personal y camiones entre agencias ---
+// Un préstamo mueve TEMPORALMENTE (rango de fechas) pilotos, auxiliares y/o
+// camiones de una agencia a otra. La persona o el camión siguen siendo de su
+// agencia de origen en Personal/Camiones; mientras el préstamo está vigente la
+// agencia destino los ve para asignar y la agencia origen no. Lo puede crear
+// cualquier usuario; lo autoriza un administrador y se cierra con la
+// devolución. Las recargas hechas en préstamo solo se pagan cuando el préstamo
+// tiene autorización Y devolución. Tabla "app_prestamos" (ver
+// supabase/fase9_prestamos.sql).
+export type TipoRecursoPrestamo = 'piloto' | 'auxiliar' | 'camion';
+export interface RecursoPrestamo {
+  tipo: TipoRecursoPrestamo;
+  id: string; // id del Staff o del Truck
+  nombre: string; // nombre de la persona o placa del camión
+  detalle?: string; // puesto (VPP/APP) o ID de camión
+}
+export type EstadoPrestamo = 'Pendiente' | 'Autorizado' | 'Rechazado';
+export interface Prestamo {
+  id: string;
+  correlativo?: number;
+  agenciaOrigen: string;
+  agenciaDestino: string;
+  // Rango de fechas (AAAA-MM-DD), ambos días incluidos.
+  fechaInicio: string;
+  fechaFin: string;
+  recursos: RecursoPrestamo[];
+  motivo: string;
+  solicitadoPor: string;
+  creadoPor: string;
+  creadoEn: string;
+  editadoPor?: string;
+  editadoEn?: string;
+  estado?: EstadoPrestamo; // sin valor = Pendiente
+  autorizadoPor?: string;
+  autorizadoEn?: string;
+  motivoRechazo?: string;
+  devuelto?: boolean;
+  devueltoPor?: string;
+  devueltoEn?: string;
+  comentarioDevolucion?: string;
+}
+// Dato de pantalla (no se guarda): préstamo vigente hoy de un camión o persona.
+export interface PrestamoInfo {
+  origen: string;
+  destino: string;
+  hasta: string; // AAAA-MM-DD
+  correlativo?: number;
+  estado: EstadoPrestamo;
 }
