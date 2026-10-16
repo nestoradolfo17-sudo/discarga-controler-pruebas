@@ -2466,27 +2466,6 @@ export default function App() {
       })
     );
 
-    // Módulo de Recargas: una ruta asignada como "Recarga" queda registrada sola
-    // (tipo Simple, editable en Recargas). Si luego se corrige la tripulación con
-    // Modificar / Reasignar, se actualiza el mismo registro.
-    if (isRecarga && targetRoute) {
-      const fechaRecarga = getGuatemalaDateForInput();
-      const helpers = [assignment.helper1, assignment.helper2, assignment.helper3, assignment.helper4].filter(Boolean) as string[];
-      void registrarRecargaAuto({
-        id: idRecargaAuto(getRouteKey(targetRoute), fechaRecarga),
-        fecha: fechaRecarga,
-        rutaId: String(targetRoute.id),
-        agencia: targetRoute.agencia || '',
-        segmento: targetRoute.segmento,
-        conductor: assignment.driverName || '',
-        conductorId: assignment.driverName ? staffIdByName(targetRoute.agencia, assignment.driverName) : undefined,
-        auxiliares: helpers,
-        auxiliarIds: helpers.map((n) => staffIdByName(targetRoute.agencia, n) || null),
-        camionPlaca: assignment.truckPlaca,
-        creadoPor: currentUser?.nombre || currentUser?.username || 'Tablero',
-      });
-    }
-
     // Update Truck status - Si el camión ya está cargado con otra ruta activa, conservar todas las rutas asignadas
     setTrucks((prev) =>
       prev.map((t) => {
@@ -3020,6 +2999,37 @@ export default function App() {
   // mismo ID de ruta puede repetirse en fechas distintas, así que se identifica la
   // fila exacta con ID + Fecha (ver src/utils/routeKey.ts) para no liquidar también
   // otra fila con el mismo ID pero de otra fecha.
+  // Módulo de Recargas: cuando se LIQUIDA un viaje que salió como "Recarga"
+  // (cualquier modalidad de cierre, también por Contingencia), queda registrado
+  // solo en Recargas como Pendiente de autorizar (tipo Simple, editable). La
+  // tripulación es la que llevaba el viaje. Una clave por ruta, fecha y número
+  // de despacho evita duplicarlo si se vuelve a guardar.
+  const esViajeRecarga = (r: Route) =>
+    (r.asignacion?.tipoAsignacion || r.tipoAsignacion || (r.esRecarga ? 'Recarga' : '')) === 'Recarga';
+  const registrarRecargaLiquidada = (r: Route) => {
+    const a = r.asignacion;
+    if (!a || !esViajeRecarga(r)) return;
+    const d = parseFlexibleDate(a.fechaDespacho || a.fechaAsignacion || r.fechaAsignacion);
+    const fechaRecarga = getGuatemalaDateForInput(d || new Date());
+    const intento = (r.historialDespachos?.length || 0) + 1;
+    const auxiliares = [a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].filter(Boolean) as string[];
+    if (!a.conductor && auxiliares.length === 0) return;
+    void registrarRecargaAuto({
+      id: `${idRecargaAuto(getRouteKey(r), fechaRecarga)}__${intento}`,
+      fecha: fechaRecarga,
+      rutaId: String(r.id),
+      agencia: r.agencia || '',
+      segmento: r.segmento,
+      conductor: a.conductor || '',
+      conductorId: a.conductorId || (a.conductor ? staffIdByName(r.agencia, a.conductor) : undefined),
+      auxiliares,
+      auxiliarIds: auxiliares.map((n) => staffIdByName(r.agencia, n) || null),
+      camionPlaca: a.camionPlaca,
+      solicitadoPor: currentUser?.nombre || currentUser?.username || 'Liquidación',
+      creadoPor: currentUser?.nombre || currentUser?.username || 'Liquidación',
+    });
+  };
+
   const handleConfirmLiquidation = (
     routeId: string,
     fecha: string,
@@ -3049,6 +3059,7 @@ export default function App() {
   ) => {
     const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
     if (!targetRoute) return;
+    registrarRecargaLiquidada(targetRoute);
 
     // Ruta partida (Cierre Definitivo): las cajas devueltas de este viaje pasan
     // a los viajes pendientes del grupo, repartidas parejo. Este viaje queda con
@@ -3478,6 +3489,14 @@ export default function App() {
     }
     const byBefore = new Map(plan.routeUpdates.filter((u) => u.beforeKey).map((u) => [u.beforeKey as string, u.route]));
     const nuevas = plan.routeUpdates.filter((u) => !u.beforeKey).map((u) => u.route);
+    // Viajes de Recarga que la contingencia liquida → al módulo de Recargas.
+    routes.forEach((antes) => {
+      const despues = byBefore.get(getRouteKey(antes));
+      if (!despues || despues.estado === 'En Tránsito' || despues.estado === antes.estado) return;
+      if (antes.estado === 'En Tránsito') registrarRecargaLiquidada(antes);
+      else if (despues.estado === 'Liquidada' || despues.estado === 'Abierta')
+        registrarRecargaLiquidada({ ...despues, asignacion: despues.asignacion || despues.ultimoDespacho || null });
+    });
     setRoutes((prev) => {
       const next = prev.map((r) => byBefore.get(getRouteKey(r)) || r);
       const keys = new Set(next.map(getRouteKey));
