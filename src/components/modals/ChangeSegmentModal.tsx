@@ -114,7 +114,7 @@ export const ChangeSegmentModal: React.FC<ChangeSegmentModalProps> = ({
           )}
 
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
-            <p className="text-xs font-bold text-amber-900">Autorización de administrador</p>
+            <p className="text-xs font-bold text-amber-900">Autorización de administrador (general o de la agencia)</p>
             <input
               id="segAdminUser"
               type="text"
