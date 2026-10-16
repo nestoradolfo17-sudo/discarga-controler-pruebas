@@ -4,8 +4,9 @@
 -- (número de ruta, piloto, auxiliares, fecha, tipo Simple/Doble/Triple y
 -- comentarios). Mismo formato que las demás tablas: id + data (jsonb).
 --
--- Autorización: toda recarga nace "Pendiente" y solo un ADMINISTRADOR puede
--- pasarla a "Autorizada" o "Rechazada" (la base lo hace cumplir, no solo la
+-- Autorización: toda recarga nace "Pendiente" y solo un ADMINISTRADOR (general
+-- o administrador de la agencia de la recarga) puede pasarla a "Autorizada" o
+-- "Rechazada" (la base lo hace cumplir, no solo la
 -- pantalla). Si un usuario no administrador cambia algo de una recarga ya
 -- revisada (Pendiente/Rechazada), vuelve a quedar "Pendiente". Una recarga
 -- AUTORIZADA solo la puede modificar o eliminar un administrador.
@@ -15,6 +16,25 @@
 --
 -- Cómo correrlo: Supabase → SQL Editor → New query → pega todo → Run.
 -- Es seguro correrlo más de una vez. NO toca ni borra ninguna otra tabla.
+
+-- 0) Administrador de agencias (Fase 10): un usuario puede ser administrador
+--    solo de ciertas agencias. Si la columna o la función ya existen, no
+--    cambia nada.
+alter table public.app_users add column if not exists admin_agencies jsonb not null default '[]'::jsonb;
+
+-- ¿El usuario en sesión es administrador general, o administrador de ESTA agencia?
+create or replace function public.is_agency_admin(ag text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.app_users u
+    where u.id = auth.uid() and u.activo
+      and (
+        u.is_admin
+        or (coalesce(ag, '') <> '' and jsonb_typeof(u.admin_agencies) = 'array' and u.admin_agencies ? ag)
+      )
+  );
+$$;
+grant execute on function public.is_agency_admin(text) to authenticated;
 
 -- 1) Tabla
 create table if not exists public.app_recargas (
@@ -50,7 +70,7 @@ begin
   execute format(
     'create policy "Eliminar" on public.app_recargas for delete to authenticated using (%s and exists (
        select 1 from public.app_users u where u.id = auth.uid() and u.activo
-         and (u.is_admin or (u.can_delete and coalesce(data->>''estado'', '''') <> ''Autorizada''))))', cond);
+         and (public.is_agency_admin(data->>''agencia'') or (u.can_delete and coalesce(data->>''estado'', '''') <> ''Autorizada''))))', cond);
 end $$;
 
 -- 2b) Control de autorización (lo hace cumplir la base de datos).
@@ -64,9 +84,10 @@ begin
   if auth.uid() is null then
     return new;
   end if;
-  select exists (
-    select 1 from public.app_users u where u.id = auth.uid() and u.activo and u.is_admin
-  ) into es_admin;
+  -- Administrador general, o administrador de la agencia de la recarga (la de
+  -- antes y la de después, si se cambia de agencia).
+  es_admin := public.is_agency_admin(new.data->>'agencia')
+    and (tg_op = 'INSERT' or public.is_agency_admin(old.data->>'agencia'));
   if es_admin then
     return new;
   end if;
@@ -77,7 +98,7 @@ begin
   end if;
   -- Una recarga ya AUTORIZADA solo la modifica un administrador.
   if tg_op = 'UPDATE' and coalesce(old.data->>'estado', '') = 'Autorizada' then
-    raise exception 'RECARGA_AUTORIZADA: Solo un administrador puede modificar una recarga autorizada.';
+    raise exception 'RECARGA_AUTORIZADA: Solo un administrador (general o de la agencia) puede modificar una recarga autorizada.';
   end if;
   -- Alta o cambio de un usuario no administrador: siempre queda Pendiente.
   new.data := (new.data - limpiar) || jsonb_build_object('estado', 'Pendiente');
