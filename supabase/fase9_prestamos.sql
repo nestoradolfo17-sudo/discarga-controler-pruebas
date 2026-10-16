@@ -9,7 +9,9 @@
 --  • Solo un ADMINISTRADOR lo pasa a "Autorizado" o "Rechazado".
 --  • Cualquier usuario puede registrar la DEVOLUCIÓN (aunque esté autorizado).
 --  • Un préstamo AUTORIZADO solo lo modifica o elimina un administrador
---    (salvo registrar la devolución).
+--    (salvo registrar la devolución). Cualquier usuario puede EXTENDER la
+--    fecha final: el préstamo vuelve a "Pendiente" para que el administrador
+--    autorice la extensión.
 --  • Correlativo único PRE-000001, PRE-000002, ... (no se repite ni cambia).
 --
 -- Cómo correrlo: Supabase → SQL Editor → New query → pega todo → Run.
@@ -81,6 +83,13 @@ begin
     return new;
   end if;
   new.data := new.data - aut;
+  -- Extensión: solo cambia la fecha final (a una posterior) y su historial.
+  -- Se permite a cualquiera y el préstamo vuelve a Pendiente.
+  if (old.data - dev - aut - 'fechaFin' - 'historialExtensiones') = (new.data - dev - 'fechaFin' - 'historialExtensiones')
+     and coalesce(new.data->>'fechaFin', '') > coalesce(old.data->>'fechaFin', '') then
+    new.data := new.data || jsonb_build_object('estado', 'Pendiente');
+    return new;
+  end if;
   if coalesce(old.data->>'estado', '') = 'Autorizado' then
     raise exception 'PRESTAMO_AUTORIZADO: Solo un administrador puede modificar un préstamo autorizado (sí puedes registrar la devolución).';
   end if;
