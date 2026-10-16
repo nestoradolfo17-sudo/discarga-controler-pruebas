@@ -159,7 +159,6 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
   if (!fecha) faltan.push('fecha');
   if (!idLimpio && !sinRuta) faltan.push('número de ruta (o marca "Sin ruta")');
   if (!agencia) faltan.push('agencia');
-  if (!solicitadoPor.trim()) faltan.push('quién solicita la recarga');
   // Basta con piloto O al menos un auxiliar (puede ir solo uno de los dos).
   if (!conductor && auxiliares.length === 0) faltan.push('piloto o al menos un auxiliar');
   const sinTripulacion = intentado && !conductor && auxiliares.length === 0;
@@ -184,7 +183,8 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
       auxiliarIds: auxiliares.map((n) => staffId(n) || null),
       camionPlaca: sinRuta ? inicial?.camionPlaca : asig?.camionPlaca || inicial?.camionPlaca,
       comentario: comentario.trim() || undefined,
-      solicitadoPor: solicitadoPor.trim().toUpperCase(),
+      // Automático: el usuario que registra (en una edición se conserva el original).
+      solicitadoPor: (solicitadoPor || solicitantePorDefecto).trim(),
     });
   };
 
@@ -402,16 +402,15 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
           </div>
 
           <div>
-            <label htmlFor="recSolicitadoPor" className={label}>Solicitado por *</label>
-            <input
+            <p className={label}>Solicitado por</p>
+            <div
               id="recSolicitadoPor"
-              value={solicitadoPor}
-              maxLength={80}
-              onChange={(e) => setSolicitadoPor(e.target.value)}
-              placeholder="Nombre de quien solicita la recarga"
-              className={`${input} ${intentado && !solicitadoPor.trim() ? 'border-rose-400' : ''}`}
-            />
-            <p className="mt-1 text-[10.5px] text-slate-400">Firma en la boleta junto con la tripulación.</p>
+              aria-readonly="true"
+              className="w-full min-h-[44px] px-3 border border-slate-200 bg-slate-100 rounded-lg text-sm font-bold text-slate-700 flex items-center"
+            >
+              {solicitadoPor || solicitantePorDefecto || '-'}
+            </div>
+            <p className="mt-1 text-[10.5px] text-slate-400">Automático: usuario que registra la recarga. Firma en la boleta junto con la tripulación.</p>
           </div>
 
           <div>
