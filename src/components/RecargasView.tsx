@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Repeat, Plus, Download, Search, Pencil, Trash2, AlertTriangle, RefreshCw, Zap, ShieldCheck, Check, X, Clock, Printer } from 'lucide-react';
-import { EstadoRecarga, Recarga, Route, Staff, TipoRecarga } from '../types';
+import { EstadoRecarga, Prestamo, Recarga, Route, Staff, TipoRecarga } from '../types';
+import { cubreFecha, prestamoCerrado, formatoCorrelativoPrestamo, estadoPrestamo } from '../utils/prestamos';
 import { RecargaModal, TIPOS_RECARGA } from './modals/RecargaModal';
 import { leerRecargas, guardarRecarga, guardarRecargas, eliminarRecarga, suscribirRecargas, nuevoIdRecarga, formatoCorrelativo } from '../services/recargas';
 import { imprimirBoletaRecarga } from '../utils/boletaRecarga';
@@ -27,6 +28,9 @@ interface RecargasViewProps {
   isAdmin: boolean;
   canDelete: boolean;
   onShowToast: (msg: string, type?: 'success' | 'error' | 'info', action?: { label: string; onClick: () => void }) => void;
+  // Préstamos entre agencias: las recargas hechas en préstamo solo se pagan
+  // con el préstamo autorizado y devuelto.
+  prestamos?: Prestamo[];
 }
 
 const VIAJES: Record<TipoRecarga, number> = { Simple: 1, Doble: 2, Triple: 3 };
@@ -72,7 +76,7 @@ const ESTADO_STYLE: Record<EstadoRecarga, string> = {
 const contenido = (r: Partial<Recarga>) =>
   JSON.stringify([r.solicitadoPor || '', r.fecha, r.rutaId, !!r.sinRuta, r.agencia, r.tipo, r.conductor, r.auxiliares, r.camionPlaca, r.comentario || '']);
 
-export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agencias, agenciaGeneral, usuario, isAdmin, canDelete, onShowToast }) => {
+export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agencias, agenciaGeneral, usuario, isAdmin, canDelete, onShowToast, prestamos = [] as Prestamo[] }) => {
   const [recargas, setRecargas] = useState<Recarga[]>([]);
   const [cargando, setCargando] = useState(true);
   const [tablaFalta, setTablaFalta] = useState(false);
@@ -289,13 +293,24 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       ...(r.conductor ? [{ nombre: r.conductor, id: r.conductorId, rol: 'Piloto' }] : []),
       ...(r.auxiliares || []).map((n, i) => ({ nombre: n, id: r.auxiliarIds?.[i] || null, rol: 'Auxiliar' })).filter((x) => x.nombre),
     ];
+    // Préstamo que cubría a esa persona ese día en la agencia de la recarga.
+    const prestamoDe = (staffId: string | undefined, r: Recarga) =>
+      staffId
+        ? prestamos.find(
+            (p) => p.agenciaDestino === r.agencia && cubreFecha(p, r.fecha) && p.recursos.some((x) => x.tipo !== 'camion' && x.id === staffId)
+          )
+        : undefined;
+    type Retenida = { r: Recarga; nombre: string; puesto: string; p: Prestamo; valor: number };
+    const retenidas: Retenida[] = [];
     const valorDe = (r: Recarga) =>
       personasDe(r).reduce((acc, p) => {
         const st = buscarPersona(p.nombre, p.id, r.agencia);
+        const pr = prestamoDe(st?.id, r);
+        if (pr && !prestamoCerrado(pr)) return acc;
         const puesto = (st?.puesto || (p.rol === 'Piloto' ? 'VPP' : 'APP')).toUpperCase();
         return acc + tarifaDe(puesto) * (VIAJES[r.tipo] || 1);
       }, 0);
-    type FilaPago = { dpi: string; nombre: string; puesto: string; agencia: string; s: number; d: number; t: number };
+    type FilaPago = { dpi: string; nombre: string; puesto: string; agencia: string; s: number; d: number; t: number; enPrestamo: number };
     const pago = new Map<string, FilaPago>();
     filtradas
       .filter((r) => estadoDe(r) === 'Autorizada')
@@ -303,12 +318,19 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
         personasDe(r).forEach((p) => {
           const st = buscarPersona(p.nombre, p.id, r.agencia);
           const puesto = (st?.puesto || (p.rol === 'Piloto' ? 'VPP' : 'APP')).toUpperCase();
+          // Hecha en préstamo: solo se paga con el préstamo autorizado y devuelto.
+          const pr = prestamoDe(st?.id, r);
+          if (pr && !prestamoCerrado(pr)) {
+            retenidas.push({ r, nombre: st?.nombre || p.nombre, puesto, p: pr, valor: tarifaDe(puesto) * (VIAJES[r.tipo] || 1) });
+            return;
+          }
           const dpi = st?.dpi ? String(st.dpi) : '';
           const k = dpi || `${r.agencia}|${norm(p.nombre).trim()}`;
-          const f = pago.get(k) || { dpi, nombre: st?.nombre || p.nombre, puesto, agencia: st?.agencia || r.agencia, s: 0, d: 0, t: 0 };
+          const f = pago.get(k) || { dpi, nombre: st?.nombre || p.nombre, puesto, agencia: st?.agencia || r.agencia, s: 0, d: 0, t: 0, enPrestamo: 0 };
           if (r.tipo === 'Triple') f.t++;
           else if (r.tipo === 'Doble') f.d++;
           else f.s++;
+          if (pr) f.enPrestamo += VIAJES[r.tipo] || 1;
           pago.set(k, f);
         });
       });
@@ -320,15 +342,19 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       })
       .sort((a, b) => a.agencia.localeCompare(b.agencia) || a.puesto.localeCompare(b.puesto) || a.nombre.localeCompare(b.nombre));
     const aoa: (string | number)[][] = [
-      ['DPI', 'Nombre y Apellidos', 'PUESTO', 'Agencia', 'Simples', 'Dobles', 'Triples', 'Recargas', 'Tarifa por recarga', 'Valor Recargas'],
-      ...filasPago.map((f) => [f.dpi, f.nombre, f.puesto, f.agencia, f.s, f.d, f.t, f.recargas, f.tarifa, f.valor]),
+      ['DPI', 'Nombre y Apellidos', 'PUESTO', 'Agencia', 'Simples', 'Dobles', 'Triples', 'Recargas', 'Tarifa por recarga', 'Valor Recargas', 'Recargas en préstamo (incluidas)'],
+      ...filasPago.map((f) => [f.dpi, f.nombre, f.puesto, f.agencia, f.s, f.d, f.t, f.recargas, f.tarifa, f.valor, f.enPrestamo]),
     ];
     const totRec = filasPago.reduce((a, f) => a + f.recargas, 0);
     const totVal = filasPago.reduce((a, f) => a + f.valor, 0);
-    aoa.push(['', filasPago.length ? 'TOTAL' : 'Sin recargas autorizadas en este rango', '', '', '', '', '', totRec, '', totVal]);
+    aoa.push(['', filasPago.length ? 'TOTAL' : 'Sin recargas autorizadas en este rango', '', '', '', '', '', totRec, '', totVal, '']);
+    if (retenidas.length) {
+      aoa.push([]);
+      aoa.push(['', `Retenidas por préstamo sin autorización o sin devolución: ${retenidas.length} (ver hoja "Retenidas por préstamo")`]);
+    }
     const wsPago = XLSX.utils.aoa_to_sheet(aoa);
-    wsPago['!cols'] = [17, 34, 9, 18, 9, 9, 9, 10, 17, 16].map((wch) => ({ wch }));
-    if (filasPago.length) wsPago['!autofilter'] = { ref: `A1:J${filasPago.length + 1}` };
+    wsPago['!cols'] = [17, 34, 9, 18, 9, 9, 9, 10, 17, 16, 16].map((wch) => ({ wch }));
+    if (filasPago.length) wsPago['!autofilter'] = { ref: `A1:K${filasPago.length + 1}` };
     for (let i = 2; i <= aoa.length; i++) {
       ['I', 'J'].forEach((c) => {
         const cell = wsPago[`${c}${i}`];
@@ -338,6 +364,32 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       if (dpiCell) dpiCell.t = 's'; // DPI como texto (sin notación científica)
     }
     XLSX.utils.book_append_sheet(wb, wsPago, 'Pago recargas');
+
+    if (retenidas.length) {
+      const wsRet = XLSX.utils.json_to_sheet(
+        retenidas.map((x) => ({
+          'Recarga': formatoCorrelativo(x.r.correlativo),
+          Fecha: fmt(x.r.fecha),
+          Ruta: x.r.sinRuta || !x.r.rutaId ? 'SIN RUTA' : x.r.rutaId,
+          'Agencia donde trabajó': x.r.agencia,
+          Tipo: x.r.tipo,
+          'Nombre y Apellidos': x.nombre,
+          PUESTO: x.puesto,
+          'Préstamo': formatoCorrelativoPrestamo(x.p.correlativo),
+          'Agencia que prestó': x.p.agenciaOrigen,
+          'Autorización préstamo': estadoPrestamo(x.p),
+          'Devuelto': x.p.devuelto ? 'Sí' : 'No',
+          'Falta': [estadoPrestamo(x.p) !== 'Autorizado' ? 'autorización' : '', !x.p.devuelto ? 'devolución' : ''].filter(Boolean).join(' y '),
+          'Valor retenido (Q)': x.valor,
+        }))
+      );
+      wsRet['!cols'] = [12, 10, 9, 18, 8, 30, 8, 12, 18, 14, 9, 22, 16].map((wch) => ({ wch }));
+      for (let i = 2; i <= retenidas.length + 1; i++) {
+        const c = wsRet[`M${i}`];
+        if (c && typeof c.v === 'number') c.z = '"Q" #,##0.00';
+      }
+      XLSX.utils.book_append_sheet(wb, wsRet, 'Retenidas por préstamo');
+    }
 
     const detalle = filtradas.map((r) => {
       const e = estadoDe(r);
@@ -862,6 +914,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
         inicial={modal.recarga}
         rutas={rutas}
         staff={staff}
+        prestamos={prestamos}
         agencias={agenciasVisibles}
         agenciaPorDefecto={agencia || (agenciaGeneral !== 'TODAS' ? agenciaGeneral : '')}
         solicitantePorDefecto={usuario}
