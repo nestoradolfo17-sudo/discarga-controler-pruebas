@@ -154,7 +154,9 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
   if (!fecha) faltan.push('fecha');
   if (!idLimpio && !sinRuta) faltan.push('número de ruta (o marca "Sin ruta")');
   if (!agencia) faltan.push('agencia');
-  if (!conductor) faltan.push('piloto');
+  // Basta con piloto O al menos un auxiliar (puede ir solo uno de los dos).
+  if (!conductor && auxiliares.length === 0) faltan.push('piloto o al menos un auxiliar');
+  const sinTripulacion = intentado && !conductor && auxiliares.length === 0;
   const valido = faltan.length === 0;
 
   const staffId = (nombre: string) => staff.find((s) => s.nombre === nombre && (!agencia || s.agencia === agencia))?.id;
@@ -321,15 +323,30 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
             </div>
           </div>
 
+          <div className="space-y-2">
+          <p className={`text-[11px] ${sinTripulacion ? 'font-bold text-rose-600' : 'text-slate-500'}`}>
+            Tripulación: elige el piloto, los auxiliares o ambos (al menos uno).
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <p className={label}>Piloto *</p>
+              <div className="flex items-center justify-between">
+                <p className={label}>Piloto</p>
+                {conductor && (
+                  <button
+                    type="button"
+                    onClick={() => setConductor('')}
+                    className="mb-1 text-[11px] font-bold text-slate-500 hover:text-rose-600 cursor-pointer"
+                  >
+                    Quitar piloto
+                  </button>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setPicker('piloto')}
                 disabled={!agencia}
                 className={`w-full min-h-[52px] px-3 rounded-xl border-2 border-dashed text-left flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
-                  conductor ? 'border-indigo-300 bg-indigo-50' : intentado ? 'border-rose-300' : 'border-slate-300 hover:bg-slate-50'
+                  conductor ? 'border-indigo-300 bg-indigo-50' : sinTripulacion ? 'border-rose-300' : 'border-slate-300 hover:bg-slate-50'
                 }`}
               >
                 <UserRound className="w-4 h-4 text-indigo-600 shrink-0" />
@@ -345,7 +362,9 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
                 type="button"
                 onClick={() => setPicker('aux')}
                 disabled={!agencia}
-                className="w-full min-h-[52px] px-3 rounded-xl border-2 border-dashed border-slate-300 text-left flex items-center gap-2 cursor-pointer hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className={`w-full min-h-[52px] px-3 rounded-xl border-2 border-dashed text-left flex items-center gap-2 cursor-pointer hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 ${
+                  auxiliares.length ? 'border-indigo-300 bg-indigo-50' : sinTripulacion ? 'border-rose-300' : 'border-slate-300'
+                }`}
               >
                 <Users className="w-4 h-4 text-indigo-600 shrink-0" />
                 <span className={`flex-1 text-sm ${auxiliares.length ? 'font-bold text-slate-800' : 'text-slate-400'}`}>
@@ -371,6 +390,8 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
                 </div>
               )}
             </div>
+          </div>
+
           </div>
 
           <div>
@@ -405,7 +426,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
             <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
               <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>
-                Ya hay una recarga <b>{duplicada.tipo}</b> de la ruta {duplicada.rutaId} ese día ({duplicada.conductor || 'sin piloto'}). Si es la
+                Ya hay una recarga <b>{duplicada.tipo}</b> de la ruta {duplicada.rutaId} ese día ({duplicada.conductor || duplicada.auxiliares?.join(', ') || 'sin tripulación'}). Si es la
                 misma, mejor edítala y cambia el tipo a Doble o Triple.
               </span>
             </div>
@@ -416,7 +437,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
 
           <ModalFooter
             bleed="p-6"
-            info={idLimpio || sinRuta ? `${sinRuta ? 'Sin ruta' : `Ruta ${idLimpio}`} · ${tipo}${conductor ? ` · ${conductor}` : ''}` : undefined}
+            info={idLimpio || sinRuta ? `${sinRuta ? 'Sin ruta' : `Ruta ${idLimpio}`} · ${tipo}${conductor ? ` · ${conductor}` : auxiliares.length ? ` · ${auxiliares[0]}${auxiliares.length > 1 ? ` +${auxiliares.length - 1}` : ''}` : ''}` : undefined}
             secondary={
               <Button variant="secondary" size="lg" onClick={onClose}>
                 Cancelar
