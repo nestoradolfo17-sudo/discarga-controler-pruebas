@@ -38,6 +38,7 @@ import { exportRoutesToExcel, exportRutasPrioridadesToExcel } from './utils/exce
 import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate, parseFlexibleDate, getGuatemalaDateForInput } from './utils/date';
 import { getRouteKey, routeMatchesKey, isSameSplitGroup, clavesDuplicado } from './utils/routeKey';
 import { esJornadaFutura } from './utils/jornada';
+import { normBusqueda, clientesQueCoinciden } from './utils/busqueda';
 import { asignadosEnFecha, camionesSinAsignar, personalSinAsignar } from './utils/recursosSinAsignar';
 import { isDemoMode } from './services/demoMode';
 import {
@@ -128,19 +129,22 @@ const HISTORY_INITIAL_DAYS = 45;
 
 // Filtro por segmento del Tablero: compara sin importar mayúsculas/espacios;
 // '__SIN__' = rutas que no tienen segmento.
-// Buscador del Tablero (ruta, agencia, mercado, segmento, fecha, camión y
-// tripulación). Se usa para la tabla y para los indicadores de arriba.
+// Buscador del Tablero (ruta, agencia, mercado, segmento, fecha, camión,
+// tripulación y CLIENTES de la ruta: código o nombre). No distingue tildes ni
+// mayúsculas. Se usa para la tabla y para los indicadores de arriba.
 function coincideBusqueda(r: Route, q: string): boolean {
   if (!q) return true;
+  const t = normBusqueda(q);
   const asig = r.asignacion;
-  const has = (v: unknown) => !!v && String(v).toLowerCase().includes(q);
+  const has = (v: unknown) => !!v && normBusqueda(v).includes(t);
   return (
     has(r.id) ||
     has(r.agencia) ||
     has(r.mercado) ||
     has(r.segmento) ||
     has(r.fecha) ||
-    (!!asig && (has(asig.camionPlaca) || has(asig.conductor) || has(asig.auxiliar1) || has(asig.auxiliar2) || has(asig.auxiliar3)))
+    (!!asig && (has(asig.camionPlaca) || has(asig.conductor) || has(asig.auxiliar1) || has(asig.auxiliar2) || has(asig.auxiliar3) || has(asig.auxiliar4))) ||
+    clientesQueCoinciden(r, q).length > 0
   );
 }
 
@@ -4626,7 +4630,7 @@ export default function App() {
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar ruta, camión, piloto..."
+                placeholder="Buscar ruta, camión, piloto, cliente..."
                 aria-label="Buscar ruta, camión o piloto"
                 className="flex-1 min-w-[160px] max-w-xs min-h-[44px] px-3 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -4655,6 +4659,7 @@ export default function App() {
           <RoutesTable
             fillHeight
             routes={filteredActiveRoutes}
+            busqueda={searchQuery}
             allRoutes={routes}
             trucks={trucksLive}
             staff={staffLive}
