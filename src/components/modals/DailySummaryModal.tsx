@@ -2401,7 +2401,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                           </p>
                           <p className="text-[11px] text-slate-500 font-normal">
                             {mode === 'inicio'
-                              ? 'Rutas programadas como Recarga (2° viaje) en el Tablero de Rutas'
+                              ? 'Rutas programadas como Recarga (2° viaje) en Asignación'
                               : 'Recargas (2° viaje) despachadas: liquidadas en la fecha + las que siguen en ruta'}
                           </p>
                         </div>
