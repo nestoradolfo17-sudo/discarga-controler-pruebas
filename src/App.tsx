@@ -1505,7 +1505,7 @@ export default function App() {
             fechaLiquidacion: d.fechaRetorno,
             asignacion: {
               camionPlaca: d.camionPlaca,
-              camionId: d.camionId,
+              camionId: d.camionId || '',
               conductor: d.conductor,
               auxiliar1: d.auxiliares?.[0] || null,
               auxiliar2: d.auxiliares?.[1] || null,
@@ -1517,7 +1517,7 @@ export default function App() {
             },
             ultimoDespacho: {
               camionPlaca: d.camionPlaca,
-              camionId: d.camionId,
+              camionId: d.camionId || '',
               conductor: d.conductor,
               auxiliar1: d.auxiliares?.[0] || null,
               auxiliar2: d.auxiliares?.[1] || null,
@@ -1748,7 +1748,7 @@ export default function App() {
       staff.map((s) => {
         if (s.estado === 'Baja') return s;
         const prestada = prestamosHoy.get(`s:${s.id}`);
-        const estado =
+        const estado: ResourceStatus =
           busyResources.people.has(`${s.agencia || ''}|${(s.nombre || '').trim().toLowerCase()}`) ||
           (prestada && busyResources.people.has(`${prestada.agenciaDestino}|${(s.nombre || '').trim().toLowerCase()}`)) ||
           busyResources.personIds.has(s.id)
