@@ -112,7 +112,7 @@ export const TabNav: React.FC<TabNavProps> = ({
 }) => {
   const items: NavItem[] = [
     { key: 'dashboard', label: 'Dashboard', short: 'Dashboard', icon: Gauge, activeClass: 'bg-slate-900 text-white', iconClass: 'text-slate-500', show: showDashboard },
-    { key: 'board', label: 'Tablero de Rutas', short: 'Tablero', icon: LayoutDashboard, count: activeCount, activeClass: 'bg-slate-900 text-white', iconClass: 'text-slate-600', show: showBoard },
+    { key: 'board', label: 'Asignación', short: 'Asignación', icon: LayoutDashboard, count: activeCount, activeClass: 'bg-slate-900 text-white', iconClass: 'text-slate-600', show: showBoard },
     { key: 'liquidated', label: 'Rutas Liquidadas', short: 'Liquidadas', icon: CheckCircle2, count: liquidatedCount, activeClass: 'bg-emerald-600 text-white', iconClass: 'text-emerald-600', show: showLiquidated },
     { key: 'recargas', label: 'Recargas', short: 'Recargas', icon: Repeat, activeClass: 'bg-violet-600 text-white', iconClass: 'text-violet-600', show: showRecargas },
     { key: 'prestamos', label: 'Préstamos', short: 'Préstamos', icon: ArrowLeftRight, activeClass: 'bg-teal-600 text-white', iconClass: 'text-teal-600', show: showPrestamos },
@@ -219,7 +219,7 @@ export const TabNav: React.FC<TabNavProps> = ({
           size="md"
           icon={PanelLeftOpen}
           onClick={onToggleRail}
-          title="Mostrar menú (Tablero, Liquidadas, Camiones, Personal, Carga Excel...)"
+          title="Mostrar menú (Asignación, Liquidadas, Camiones, Personal, Carga Excel...)"
           className="hidden md:inline-flex"
         >
           Menú
