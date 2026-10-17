@@ -16,7 +16,7 @@ import type { AppUser, TablePermissions } from '../types';
 // Los usuarios entran con su NOMBRE DE USUARIO; internamente Supabase Auth
 // necesita un correo, así que se usa "usuario@usuarios.discarga.app".
 export const USER_EMAIL_DOMAIN = 'usuarios.discarga.app';
-export const MIN_PASSWORD_LENGTH = 6;
+export const MIN_PASSWORD_LENGTH = 8;
 export const USERNAME_PATTERN = /^[a-z0-9._-]{3,30}$/;
 
 export const normalizeUsername = (u: string) => u.trim().toLowerCase();
