@@ -21,12 +21,12 @@ import { toNum } from '../utils/number';
 // personal); no modifica ni guarda nada. Usa la misma paleta de estado que el
 // dashboard clásico: good = completado, info = en operación, warning = pendiente,
 // serious = devolución, critical = requiere atención.
-const C_GOOD = '#0ca30c';
-const C_INFO = '#2a78d6';
-const C_WARN = '#fab219';
-const C_SERIOUS = '#ec835a';
-const C_CRIT = '#d03b3b';
-const C_TRACK = '#e8eef5';
+export const C_GOOD = '#0ca30c';
+export const C_INFO = '#2a78d6';
+export const C_WARN = '#fab219';
+export const C_SERIOUS = '#ec835a';
+export const C_CRIT = '#d03b3b';
+export const C_TRACK = '#e8eef5';
 
 interface DashboardStats {
   pendientes: number;
@@ -84,7 +84,7 @@ const hoursSince = (r: Route, now: number) => {
 const cajasPlan = (r: Route) => toNum(r.cajasOriginales || r.cajasFisicas);
 
 // ---------- piezas visuales ----------
-const Card: React.FC<{ title: string; sub?: string; icon?: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string }> = ({
+export const Card: React.FC<{ title: string; sub?: string; icon?: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string }> = ({
   title,
   sub,
   icon,
@@ -107,7 +107,7 @@ const Card: React.FC<{ title: string; sub?: string; icon?: React.ReactNode; righ
   </section>
 );
 
-const Kpi: React.FC<{
+export const Kpi: React.FC<{
   label: string;
   value: string;
   sub: string;
@@ -137,20 +137,21 @@ const Kpi: React.FC<{
 );
 
 // Barra horizontal con etiqueta, valor y tooltip al pasar el dedo/mouse.
-const HBar: React.FC<{ label: string; value: number; max: number; color: string; display?: string; tip?: string }> = ({
+export const HBar: React.FC<{ label: string; value: number; max: number; color: string; display?: string; tip?: string; valueWidth?: string }> = ({
   label,
   value,
   max,
   color,
   display,
   tip,
+  valueWidth = 'w-20',
 }) => (
   <div className="flex items-center gap-3 group" title={tip || `${label}: ${display ?? n0(value)}`}>
     <span className="w-32 sm:w-40 shrink-0 text-xs text-slate-700 truncate">{label}</span>
     <div className="flex-1 h-3 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
       <div className="h-full rounded-full transition-all group-hover:opacity-80" style={{ width: `${max > 0 ? Math.max(value > 0 ? 2 : 0, (value / max) * 100) : 0}%`, backgroundColor: color }} />
     </div>
-    <span className="w-20 text-right text-xs font-bold text-slate-800 tabular-nums">{display ?? n0(value)}</span>
+    <span className={`${valueWidth} text-right text-xs font-bold text-slate-800 tabular-nums whitespace-nowrap`}>{display ?? n0(value)}</span>
   </div>
 );
 
@@ -428,7 +429,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
       {/* Encabezado */}
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="text-lg font-bold text-slate-800">Dashboard ejecutivo</h2>
+          <h2 className="text-lg font-bold text-slate-800">Dashboard de Despacho</h2>
           <p className="text-xs text-slate-500">
             {periodLabel} · Agencia: <span className="font-semibold text-slate-700">{selectedAgency === 'TODAS' ? 'Todas' : selectedAgency}</span> · {n0(totalPlan)} rutas planificadas
           </p>
