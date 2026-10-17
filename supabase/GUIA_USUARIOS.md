@@ -11,7 +11,7 @@
 
 - No hay registro público: **solo el administrador crea usuarios**, desde la pantalla **Usuarios** de la app.
 - Los usuarios entran con su **nombre de usuario** (ej. `jperez`) y contraseña. Internamente Supabase usa `jperez@usuarios.discarga.app`, pero nadie tiene que escribir eso ni se envían correos.
-- Formato de usuario: 3 a 30 caracteres, minúsculas, números, `.` `-` `_` (sin espacios ni tildes). Contraseña: mínimo 6 caracteres.
+- Formato de usuario: 3 a 30 caracteres, minúsculas, números, `.` `-` `_` (sin espacios ni tildes). Contraseña: mínimo 8 caracteres (las contraseñas actuales de 6 siguen funcionando hasta que se cambien).
 
 ### Permisos por usuario (pantalla Usuarios)
 
@@ -71,6 +71,9 @@ GitHub Desktop → commit + push → esperar a Netlify (1–3 min) → abrir htt
 1. Supabase → **SQL Editor → New query** → pega TODO el contenido de `supabase/fase10_admin_agencias.sql` → **Run**. Después vuelve a correr, igual, `fase8_recargas.sql` y `fase9_prestamos.sql`.
 2. Edge Functions → `admin-users` → **Code** → reemplaza todo por el nuevo `supabase/functions/admin-users/index.ts` → **Deploy**.
 3. En **Usuarios**, el administrador general marca las agencias en "Administrador de agencias" (al crear el usuario o en la columna *Admin. de agencias*). Solo puede administrar agencias que también puede ver.
+
+## ¿Qué fases tiene aplicada mi base?
+Supabase → SQL Editor → pega `supabase/diagnostico_fases.sql` → Run. Solo lee: muestra cada fase con SÍ/NO, las tablas sin seguridad por filas (debe salir vacío) y los administradores activos.
 
 ## Problemas comunes
 
