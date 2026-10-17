@@ -44,6 +44,13 @@ const escribirLocal = (list: Recarga[]) => {
   }
 };
 
+// Versión DEMO: lo que se registra o cambia vive solo en la memoria de esta
+// pestaña (la base no se toca) y se combina con lo real al leer, para que la
+// práctica se vea completa. Al recargar la página vuelve a lo real.
+const demoGuardadas = new Map<string, Recarga>();
+const demoEliminadas = new Set<string>();
+let demoMaxCorrelativo = 0;
+
 export const nuevoIdRecarga = () => `RC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
 /** Clave fija para la recarga creada sola desde el Tablero (una por ruta y día). */
@@ -63,6 +70,12 @@ export async function leerRecargas(): Promise<ResultadoLectura> {
       const rows = (data || []) as { id: string; data: Recarga }[];
       rows.forEach((r) => r.data && all.push({ ...r.data, id: r.id }));
       if (rows.length < PAGE) break;
+    }
+    if (isDemoMode) {
+      all.forEach((r) => (demoMaxCorrelativo = Math.max(demoMaxCorrelativo, r.correlativo || 0)));
+      const byId = new Map(all.filter((r) => !demoEliminadas.has(r.id)).map((r) => [r.id, r]));
+      demoGuardadas.forEach((r, id) => byId.set(id, r));
+      return { ok: true, data: [...byId.values()] };
     }
     return { ok: true, data: all };
   } catch (e) {
@@ -107,6 +120,16 @@ export async function guardarRecargas(list: Recarga[]): Promise<ResultadoGuardad
     escribirLocal(all);
     return { error: null, guardadas };
   }
+  if (isDemoMode) {
+    const guardadas = list.map((r) => {
+      const previa = demoGuardadas.get(r.id);
+      const g = { ...r, correlativo: r.correlativo || previa?.correlativo || ++demoMaxCorrelativo };
+      demoGuardadas.set(r.id, g);
+      demoEliminadas.delete(r.id);
+      return g;
+    });
+    return { error: null, guardadas };
+  }
   try {
     const now = new Date().toISOString();
     const { data, error } = await supabase
@@ -129,6 +152,11 @@ export async function guardarRecarga(r: Recarga): Promise<{ error: string | null
 }
 
 export async function eliminarRecarga(id: string): Promise<string | null> {
+  if (isDemoMode) {
+    demoGuardadas.delete(id);
+    demoEliminadas.add(id);
+    return null;
+  }
   if (!isSupabaseConfigured || !supabase) {
     escribirLocal(leerLocal().filter((x) => x.id !== id));
     return null;
@@ -147,17 +175,20 @@ export async function eliminarRecarga(id: string): Promise<string | null> {
 }
 
 /**
- * Registro automático al asignar una ruta como "Recarga" en el Tablero. Si ya
- * existe el registro de esa ruta y día (por ejemplo, al corregir la
- * tripulación con Modificar / Reasignar) se actualiza la tripulación y se
- * conservan el tipo y el comentario que alguien haya puesto. Nunca muestra
+ * Registro automático de un viaje "Recarga" del Tablero: se crea al ASIGNAR
+ * (queda en Recargas → Por autorizar) y se actualiza la misma recarga al
+ * LIQUIDAR (misma clave: ruta, fecha y número de despacho; nunca se duplica).
+ * Si ya existe (por ejemplo, al corregir la tripulación con Modificar /
+ * Reasignar) se actualiza la tripulación y se conservan el tipo y el
+ * comentario que alguien haya puesto. Nunca muestra
  * errores: si algo falla, la recarga se puede registrar a mano.
  */
 export async function registrarRecargaAuto(base: Omit<Recarga, 'tipo' | 'origen' | 'creadoEn'>): Promise<void> {
-  if (isDemoMode) return;
   try {
     let previa: Recarga | undefined;
-    if (!isSupabaseConfigured || !supabase) {
+    if (isDemoMode && demoGuardadas.has(base.id)) {
+      previa = demoGuardadas.get(base.id);
+    } else if (!isSupabaseConfigured || !supabase) {
       previa = leerLocal().find((x) => x.id === base.id);
     } else {
       const { data, error } = await supabase.from(TABLE).select('id, data').eq('id', base.id).limit(1);
