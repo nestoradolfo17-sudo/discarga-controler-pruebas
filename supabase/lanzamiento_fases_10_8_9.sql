@@ -60,6 +60,12 @@ begin
   if auth.uid() is null then
     return new;
   end if;
+  -- Una recarga AUTORIZADA ya no se modifica (nadie, ni administradores); solo
+  -- se puede eliminar (regla "Eliminar"). Guardar sin cambios reales sí pasa.
+  if tg_op = 'UPDATE' and coalesce(old.data->>'estado', '') = 'Autorizada'
+     and (old.data - 'editadoPor' - 'editadoEn') is distinct from (new.data - 'editadoPor' - 'editadoEn') then
+    raise exception 'RECARGA_AUTORIZADA: Una recarga autorizada no se puede modificar. Si está mal, un administrador debe eliminarla y registrarla de nuevo.';
+  end if;
   -- Administrador general, o administrador de la agencia de la recarga (la de
   -- antes y la de después, si se cambia de agencia).
   es_admin := public.is_agency_admin(new.data->>'agencia')
@@ -240,7 +246,7 @@ select 'Fase 10 (admin de agencias)' as fase,
        case when exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'app_users' and column_name = 'admin_agencies') then 'SÍ' else 'NO' end as aplicada
 union all
 select 'Fase 8 (recargas, versión actual)',
-       case when exists (select 1 from pg_proc where proname = 'dc_recargas_control' and prosrc like '%is_agency_admin%') then 'SÍ' else 'NO' end
+       case when exists (select 1 from pg_proc where proname = 'dc_recargas_control' and prosrc like '%is_agency_admin%' and prosrc like '%no se puede modificar%') then 'SÍ' else 'NO' end
 union all
 select 'Fase 9 (préstamos, versión actual)',
        case when exists (select 1 from pg_proc where proname = 'dc_prestamos_control' and prosrc like '%historialExtensiones%' and prosrc like '%is_agency_admin%') then 'SÍ' else 'NO' end;
