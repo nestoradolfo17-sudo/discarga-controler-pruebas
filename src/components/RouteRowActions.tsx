@@ -10,14 +10,14 @@ import { ACTION_ICONS } from './ui/actionIcons';
 //       Pendiente   → Asignar          (azul)
 //       A Piso      → Sacar de Piso    (azul)
 //       En Tránsito → Liquidar         (verde)
-//       Abierta     → Liquidar         (verde)
+//       Abierta     → Reasignar        (naranja)
 //       Liquidada   → Ver Acta         (blanco)
 //   • Todo lo demás queda en "⋯" (más acciones).
 //   • Una sola tabla de configuración (getRowActions) en vez de repetir el
 //     menú en 4 bloques por estado.
 //   • Todos los botones miden al menos 44 px (dedo en tablet).
 
-type Tone = 'primary' | 'success' | 'warning' | 'danger' | 'neutral' | 'purple';
+type Tone = 'primary' | 'success' | 'warning' | 'danger' | 'neutral' | 'purple' | 'reasignar';
 type IconType = React.ComponentType<{ className?: string }>;
 
 export interface RowAction {
@@ -100,8 +100,11 @@ export function getRowActions(
       if (aPiso) more.push(aPiso);
       break;
     case 'Abierta':
-      primary = { key: 'liquidar', label: 'Liquidar', hint: 'Liquidar definitivamente', icon: ACTION_ICONS.liquidar, tone: 'success', run: h.onLiquidate };
-      more.push({ key: 'reasignar', label: 'Reasignar / 2° viaje', hint: 'Recarga o nueva tripulación', icon: ACTION_ICONS.reasignar, tone: 'primary', run: h.onAssign });
+      // Ruta Abierta (regresó con clientes pendientes): la acción principal es
+      // REASIGNAR, en naranja para distinguirla de Asignar (azul) y Liquidar
+      // (verde). Liquidar definitivamente queda en "Más acciones".
+      primary = { key: 'reasignar', label: 'Reasignar', hint: 'Recarga, revisita o nueva tripulación', icon: ACTION_ICONS.reasignar, tone: 'reasignar', run: h.onAssign };
+      more.push({ key: 'liquidar', label: 'Liquidar', hint: 'Liquidar definitivamente', icon: ACTION_ICONS.liquidar, tone: 'success', run: h.onLiquidate });
       if (aPiso) more.push(aPiso);
       break;
     case 'Liquidada':
@@ -130,6 +133,7 @@ const PRIMARY_BTN: Record<Tone, string> = {
   danger: 'bg-rose-600 hover:bg-rose-700 text-white border-rose-600 focus-visible:ring-rose-300',
   neutral: 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300 focus-visible:ring-slate-300',
   purple: 'bg-white hover:bg-purple-50 text-purple-800 border-purple-300 focus-visible:ring-purple-300',
+  reasignar: 'bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white border-orange-500 focus-visible:ring-orange-300',
 };
 
 const MENU_ICON: Record<Tone, string> = {
@@ -139,6 +143,7 @@ const MENU_ICON: Record<Tone, string> = {
   danger: 'bg-rose-100 text-rose-700',
   neutral: 'bg-slate-100 text-slate-600',
   purple: 'bg-purple-100 text-purple-700',
+  reasignar: 'bg-orange-100 text-orange-700',
 };
 
 interface RouteRowActionsProps {
