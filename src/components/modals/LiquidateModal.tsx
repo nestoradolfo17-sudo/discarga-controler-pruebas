@@ -567,7 +567,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                     />
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                    Cierra la ruta operativamente, libera piloto, auxiliares y unidad, y la transfiere al <strong>Tablero de Rutas Liquidadas</strong>.
+                    Cierra la ruta operativamente, libera piloto, auxiliares y unidad, y la transfiere a <strong>Rutas Liquidadas</strong>.
                   </p>
                 </div>
               </div>
@@ -604,7 +604,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                     />
                   </div>
                   <p className="text-[11px] text-indigo-900 mt-1 leading-relaxed">
-                    <strong>Libera piloto, auxiliares y unidad</strong> para dejarlos disponibles, y <strong>mantiene la ruta en el Tablero de Rutas</strong> con registro de su salida y retorno para volver a sacarla como <strong>Revisita</strong> (al día siguiente o por falta de tiempo).
+                    <strong>Libera piloto, auxiliares y unidad</strong> para dejarlos disponibles, y <strong>mantiene la ruta en Asignación</strong> con registro de su salida y retorno para volver a sacarla como <strong>Revisita</strong> (al día siguiente o por falta de tiempo).
                   </p>
                 </div>
               </div>
