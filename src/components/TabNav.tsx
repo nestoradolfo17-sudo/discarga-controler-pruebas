@@ -118,7 +118,7 @@ export const TabNav: React.FC<TabNavProps> = ({
     { key: 'prestamos', label: 'Préstamos', short: 'Préstamos', icon: ArrowLeftRight, activeClass: 'bg-teal-600 text-white', iconClass: 'text-teal-600', show: showPrestamos },
     { key: 'trucks', label: 'Camiones', short: 'Camiones', icon: Truck, count: trucksCount, activeClass: 'bg-blue-600 text-white', iconClass: 'text-blue-600', show: showTrucks },
     { key: 'staff', label: 'Personal', short: 'Personal', icon: Users, count: staffCount, activeClass: 'bg-indigo-600 text-white', iconClass: 'text-indigo-600', show: showStaff },
-    { key: 'batch', label: 'Carga Masiva Excel', short: 'Carga Excel', icon: FileSpreadsheet, activeClass: 'bg-emerald-600 text-white', iconClass: 'text-emerald-600', show: showBatch },
+    { key: 'batch', label: 'Cargar Rutas', short: 'Cargar Rutas', icon: FileSpreadsheet, activeClass: 'bg-emerald-600 text-white', iconClass: 'text-emerald-600', show: showBatch },
     { key: 'users', label: 'Usuarios', short: 'Usuarios', icon: ShieldCheck, count: usersCount, activeClass: 'bg-slate-700 text-white', iconClass: 'text-slate-500', show: showUsers },
   ].filter((i) => i.show) as NavItem[];
 
@@ -232,7 +232,7 @@ export const TabNav: React.FC<TabNavProps> = ({
           size="md"
           icon={PanelLeftOpen}
           onClick={onToggleRail}
-          title="Mostrar menú (Asignación, Liquidadas, Camiones, Personal, Carga Excel...)"
+          title="Mostrar menú (Asignación, Liquidadas, Camiones, Personal, Cargar Rutas...)"
           className="hidden md:inline-flex"
         >
           Menú
