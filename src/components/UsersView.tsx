@@ -78,7 +78,7 @@ const DEFAULT_PERMISSIONS: TablePermissions = {
 // canManualAddTrucks/canManualAddStaff en App.tsx).
 const PERMISSION_LABELS: { key: keyof TablePermissions; label: string; grandfathered?: boolean }[] = [
   { key: 'dashboard', label: 'Dashboard' },
-  { key: 'board', label: 'Tablero de Rutas' },
+  { key: 'board', label: 'Asignación' },
   { key: 'liquidated', label: 'Rutas Liquidadas' },
   { key: 'trucks', label: 'Camiones' },
   { key: 'staff', label: 'Personal' },
@@ -585,7 +585,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
                 {(!agencyAll || !canGrantAllAgencies) && (
                   <div className="space-y-1.5">
                     <p className="text-[11px] text-slate-500">
-                      Selecciona las agencias que este usuario podrá ver en el Tablero de Rutas y
+                      Selecciona las agencias que este usuario podrá ver en Asignación y
                       en Rutas Liquidadas (mismas opciones que el campo Origen de Ruta de
                       Traslado):
                     </p>
