@@ -241,14 +241,14 @@ export const TabNav: React.FC<TabNavProps> = ({
       {leading && <div className="min-w-0 flex-shrink">{leading}</div>}
       <div className="relative flex-1 min-w-[180px] max-w-sm">
         <label htmlFor="toolbarSearch" className="sr-only">
-          Buscar ruta, camión o piloto
+          Buscar ruta, camión, piloto o cliente
         </label>
         <input
           id="toolbarSearch"
           type="search"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Buscar ruta, camión, piloto..."
+          placeholder="Buscar ruta, camión, piloto, cliente..."
           className="w-full min-h-[44px] pl-9 pr-3 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
         />
         <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden />
