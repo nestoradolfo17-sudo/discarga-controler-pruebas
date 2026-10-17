@@ -30,7 +30,7 @@ from (values
   (8,  'Fase 8 (recargas)', 'Tabla de recargas',
         to_regclass('public.app_recargas') is not null),
   (9,  'Fase 8 (versión actual)', 'Recargas: aprueba también el admin de la agencia',
-        exists (select 1 from fn where proname = 'dc_recargas_control' and prosrc like '%is_agency_admin%')),
+        exists (select 1 from fn where proname = 'dc_recargas_control' and prosrc like '%is_agency_admin%' and prosrc like '%no se puede modificar%')),
   (10, 'Fase 9 (préstamos)', 'Tabla de préstamos',
         to_regclass('public.app_prestamos') is not null),
   (11, 'Fase 9 (versión actual)', 'Préstamos: extensión y admin de la agencia origen',
