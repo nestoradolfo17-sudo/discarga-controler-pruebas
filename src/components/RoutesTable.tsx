@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { AssignmentDetailModal } from './modals/AssignmentDetailModal';
 import { ClientesRutaList } from './ClientesRutaList';
+import { clientesQueCoinciden } from '../utils/busqueda';
 import { RouteRowActions } from './RouteRowActions';
 import { Button } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
@@ -65,6 +66,9 @@ interface RoutesTableProps {
   // Si se indica, solo se ofrece "Eliminar ruta" en las rutas que devuelve true
   // (administrador de agencias: solo las de sus agencias).
   puedeEliminarRuta?: (route: Route) => boolean;
+  // Texto del buscador general: si coincide con clientes de la ruta, se
+  // muestran debajo del número de ruta para saber en qué ruta va el cliente.
+  busqueda?: string;
 }
 
 type SortKey =
@@ -106,6 +110,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   onBulkMoveToFloor,
   onOpenDeleteModal,
   puedeEliminarRuta,
+  busqueda = '',
 }) => {
   const [activeDropdownId, setActiveDropdownId] = React.useState<string | null>(null);
   const [sortKey, setSortKey] = React.useState<SortKey | null>(null);
@@ -495,6 +500,29 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   {/* ID Ruta without # */}
                   <td className="px-2 2xl:px-3 py-2 md:py-2.5 font-mono">
                     <div className="font-bold text-slate-900 text-xs md:text-sm whitespace-nowrap">{route.id}</div>
+                    {(() => {
+                      const cl = clientesQueCoinciden(route, busqueda);
+                      if (!cl.length) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedClientesKey(routeKey)}
+                          title={cl.map((c) => `${c.codigo} · ${c.nombre}`).join('\n')}
+                          className="mt-0.5 mb-0.5 flex flex-col items-start gap-0.5 text-left cursor-pointer"
+                        >
+                          {cl.slice(0, 2).map((c) => (
+                            <span
+                              key={c.codigo}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] md:text-[11px] font-bold bg-yellow-100 text-yellow-900 border border-yellow-300 max-w-[220px]"
+                            >
+                              <Users className="w-2.5 h-2.5 shrink-0" />
+                              <span className="truncate font-sans">{c.codigo} · {c.nombre}</span>
+                            </span>
+                          ))}
+                          {cl.length > 2 && <span className="text-[10px] font-semibold text-yellow-800 font-sans">+{cl.length - 2} cliente(s) más</span>}
+                        </button>
+                      );
+                    })()}
                     {route.tipoAsignacion === 'Recarga' || route.esRecarga ? (
                       <span className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-0.2 rounded text-[10px] md:text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-300 whitespace-nowrap">
                         <Repeat className="w-2.5 h-2.5 text-purple-700" />
@@ -803,7 +831,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                 {expandedClientesKey === routeKey && route.clientesRuta && route.clientesRuta.length > 0 && (
                   <tr key={`${routeKey}-clientes`} className="bg-slate-50/70">
                     <td colSpan={9} className="px-4 py-3">
-                      <ClientesRutaList clientes={route.clientesRuta} />
+                      <ClientesRutaList clientes={route.clientesRuta} filtroInicial={clientesQueCoinciden(route, busqueda).length ? busqueda : ''} />
                     </td>
                   </tr>
                 )}
