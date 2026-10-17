@@ -207,6 +207,11 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
   const handleGuardar = async (datos: Omit<Recarga, 'id' | 'origen' | 'creadoPor' | 'creadoEn'>) => {
     const ahora = new Date().toISOString();
     const previa = modal.recarga;
+    if (previa && estadoDe(previa) === 'Autorizada') {
+      onShowToast('Una recarga autorizada no se puede editar. Si está mal, un administrador debe eliminarla y registrarla de nuevo.', 'error');
+      setModal({ abierto: false, recarga: null });
+      return;
+    }
     let r: Recarga;
     if (!previa) {
       r = { ...datos, solicitadoPor: usuario, id: nuevoIdRecarga(), origen: 'manual', creadoPor: usuario, creadoEn: ahora, estado: 'Pendiente' };
@@ -242,7 +247,8 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
   };
 
   const cambiarEstado = async (list: Recarga[], nuevo: EstadoRecarga, motivo?: string) => {
-    list = list.filter((r) => adminDe(r.agencia));
+    // Las autorizadas ya no cambian de estado (solo se pueden eliminar).
+    list = list.filter((r) => adminDe(r.agencia) && estadoDe(r) !== 'Autorizada');
     if (!aprobador || list.length === 0) return;
     const ahora = new Date().toISOString();
     const cambios = list.map<Recarga>((r) => ({
@@ -724,7 +730,9 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                   const pend = e === 'Pendiente';
                   // Autorizadas: solo un administrador las modifica o elimina.
                   const esAdminAqui = adminDe(r.agencia);
-                  const puedeEditar = esAdminAqui || e !== 'Autorizada';
+                  // Una recarga AUTORIZADA ya no se edita ni se rechaza (nadie);
+                  // solo la puede ELIMINAR un administrador (general o de la agencia).
+                  const puedeEditar = e !== 'Autorizada';
                   const puedeEliminar = esAdminAqui || (canDelete && e !== 'Autorizada');
                   return (
                     <React.Fragment key={r.id}>
@@ -811,7 +819,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                                 <Check className="w-3.5 h-3.5" /> Autorizar
                               </button>
                             )}
-                            {esAdminAqui && e !== 'Rechazada' && (
+                            {esAdminAqui && e !== 'Rechazada' && e !== 'Autorizada' && (
                               <button
                                 type="button"
                                 disabled={procesando}
