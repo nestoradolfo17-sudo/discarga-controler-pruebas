@@ -4,12 +4,18 @@
 # - X-Content-Type-Options: el navegador no "adivina" el tipo de archivo.
 # - Referrer-Policy: no envía la dirección completa de la app a otros sitios.
 # - Permissions-Policy: la app no usa cámara, micrófono, ubicación ni pagos.
+# - Content-Security-Policy: el navegador SOLO ejecuta código de la propia
+#   app (nada de programas de otros sitios) y solo se conecta a Supabase. Si
+#   alguien lograra meter código en una página, no podría enviar la sesión a
+#   otro servidor.
+# - X-Robots-Tag: Google y otros buscadores no muestran la app.
 /*
   X-Frame-Options: SAMEORIGIN
-  Content-Security-Policy: frame-ancestors 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  X-Robots-Tag: noindex, nofollow
 
 # Caché de la app: los archivos de /assets/ llevan un código único en el nombre
 # (Vite) que cambia en cada publicación, así que el navegador puede guardarlos
