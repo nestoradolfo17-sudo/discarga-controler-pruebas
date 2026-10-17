@@ -12,9 +12,35 @@
 //    Así queda protegido todo, incluso funciones que se agreguen después.
 //  - Solo se permite iniciar sesión (y renovar la sesión) y las lecturas.
 
+// ¿Es DEMO? Se decide al PUBLICAR, no por la dirección web: Netlify también
+// sirve cada publicación en una dirección propia ("<código>--discargacontroler
+// .netlify.app") y ahí la dirección no empieza con "demo--"; antes, abrir el
+// demo por esa dirección guardaba en los datos reales. Reglas:
+//   • Rama "demo", o cualquier publicación de Netlify que NO sea la de
+//     producción (otras ramas, vistas previas de cambios) → DEMO (solo lectura).
+//   • VITE_DEMO_MODE=true → DEMO.
+//   • La dirección "demo--..." → DEMO (respaldo).
+//   • Solo la publicación de producción (rama main) escribe datos reales.
+const netlifyContext = (() => {
+  try {
+    return typeof __NETLIFY_CONTEXT__ === 'string' ? __NETLIFY_CONTEXT__ : '';
+  } catch {
+    return '';
+  }
+})();
+const netlifyBranch = (() => {
+  try {
+    return typeof __NETLIFY_BRANCH__ === 'string' ? __NETLIFY_BRANCH__ : '';
+  } catch {
+    return '';
+  }
+})();
+
 export const isDemoMode: boolean = (() => {
   try {
     if (import.meta.env.VITE_DEMO_MODE === 'true') return true;
+    if (netlifyBranch === 'demo') return true;
+    if (netlifyContext && netlifyContext !== 'production') return true;
     return typeof window !== 'undefined' && window.location.hostname.startsWith('demo--');
   } catch {
     return false;
