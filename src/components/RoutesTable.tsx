@@ -263,7 +263,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
         </div>
         <h4 className="text-slate-700 font-bold text-base">No hay rutas activas para mostrar</h4>
         <p className="text-slate-500 text-xs mt-1">
-          Las rutas liquidadas han pasado al Tablero de Rutas Liquidadas. Crea una nueva ruta o ajusta los filtros.
+          Las rutas liquidadas han pasado a Rutas Liquidadas. Crea una nueva ruta o ajusta los filtros.
         </p>
         <Button variant="primary" icon={ACTION_ICONS.nuevo} onClick={onOpenNewRouteModal} className="mt-4">
           Crear nueva ruta
