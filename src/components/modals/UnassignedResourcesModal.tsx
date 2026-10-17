@@ -10,6 +10,8 @@ import { X, AlertTriangle, Truck as TruckIcon, Users, CheckCircle2 } from 'lucid
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { AssignmentDaySummary } from '../AssignmentDaySummary';
+import { asignadosEnFecha, camionesSinAsignar, personalSinAsignar } from '../../utils/recursosSinAsignar';
+import { formatDateToGuatemala } from '../../utils/date';
 
 const TRUCK_REASONS = TRUCK_REASON_OPTIONS;
 const STAFF_REASONS = STAFF_REASON_OPTIONS;
@@ -63,37 +65,15 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
   agencies = [],
   selectedAgency,
 }) => {
-  // Verificación cruzada contra las rutas activas: además del campo "estado" del
-  // camión/persona, se confirma que no aparezcan realmente asignados en ninguna
-  // ruta En Tránsito (por si el estado quedara desincronizado por algún caso borde).
-  const { assignedTruckIds, assignedStaffNames } = useMemo(() => {
-    const truckIds = new Set<string>();
-    const staffNames = new Set<string>();
-    routes.forEach((r) => {
-      if (r.estado === 'En Tránsito' && r.asignacion) {
-        if (r.asignacion.camionId) truckIds.add(String(r.asignacion.camionId));
-        [
-          r.asignacion.conductor,
-          r.asignacion.auxiliar1,
-          r.asignacion.auxiliar2,
-          r.asignacion.auxiliar3,
-          r.asignacion.auxiliar4,
-        ].forEach((name) => {
-          if (name) staffNames.add(name);
-        });
-      }
-    });
-    return { assignedTruckIds: truckIds, assignedStaffNames: staffNames };
-  }, [routes]);
+  // Solo los recursos que NO salieron a ruta en la fecha de operación (ni
+  // siguen En Tránsito, ni regresaron, ni se liquidaron ese día): son los que
+  // necesitan un motivo. Misma regla que el número del botón (utils/recursosSinAsignar).
+  const fechaDia = fechaOperacion || formatDateToGuatemala(new Date());
+  const asignados = useMemo(() => asignadosEnFecha(routes, fechaDia), [routes, fechaDia]);
+  const idleTrucks = useMemo(() => camionesSinAsignar(trucks, asignados), [trucks, asignados]);
+  const idleStaff = useMemo(() => personalSinAsignar(staff, asignados), [staff, asignados]);
 
   if (!isOpen) return null;
-
-  const idleTrucks = trucks.filter(
-    (t) => t.estado === 'Disponible' && !assignedTruckIds.has(String(t.id))
-  );
-  const idleStaff = staff.filter(
-    (s) => s.estado === 'Disponible' && !assignedStaffNames.has(s.nombre)
-  );
 
   const pendingTrucks = idleTrucks.filter((t) => !t.motivoNoAsignado).length;
   const pendingStaff = idleStaff.filter((s) => !s.motivoNoAsignado).length;
@@ -108,8 +88,8 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
               Motivos de Recursos Sin Asignar
             </h3>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Paso 2 de la asignación: indica por qué las unidades y el personal disponibles no
-              salieron a ruta hoy.
+              Paso 2 de la asignación: solo aparecen las unidades y el personal que NO fueron
+              asignados el {fechaDia}. Indica por qué no salieron a ruta.
             </p>
           </div>
           <IconButton icon={ACTION_ICONS.cerrar} label="Cerrar" onClick={onClose} className="text-slate-400 hover:text-slate-700 hover:bg-slate-100" />
