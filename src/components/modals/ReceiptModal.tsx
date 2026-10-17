@@ -62,6 +62,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     try {
       const printWindow = window.open('', '_blank', 'width=850,height=900');
       if (printWindow) {
+        // Seguridad: la ventana de impresión comparte la sesión de la app, así
+        // que NO se carga ningún programa externo (antes se usaba el CDN de
+        // Tailwind). Se reutilizan las mismas hojas de estilo de la app, que ya
+        // traen todas las clases del acta.
+        const estilosApp = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+          .map((el) =>
+            el instanceof HTMLLinkElement
+              ? `<link rel="stylesheet" href="${el.href.replace(/"/g, '&quot;')}">`
+              : `<style>${el.textContent || ''}</style>`
+          )
+          .join('\n');
         printWindow.document.write(`
           <!DOCTYPE html>
           <html lang="es">
@@ -69,10 +80,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>${documentTitle}</title>
-            <script src="https://cdn.tailwindcss.com"></script>
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+            ${estilosApp}
             <style>
               @page { size: letter portrait; margin: 12mm 15mm; }
+              @media print { @page { size: letter portrait; margin: 12mm 15mm; } }
               body {
                 font-family: 'Inter', sans-serif;
                 -webkit-print-color-adjust: exact !important;
@@ -87,19 +98,31 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <div class="max-w-2xl mx-auto space-y-4">
               ${printableContent.innerHTML}
             </div>
-            <script>
-              window.onload = function() {
-                setTimeout(function() {
-                  window.focus();
-                  window.print();
-                  setTimeout(function() { window.close(); }, 750);
-                }, 350);
-              };
-            </script>
+
           </body>
           </html>
         `);
         printWindow.document.close();
+        // Se imprime desde aquí (sin código dentro de la ventana), cuando ya
+        // cargaron los estilos.
+        let impreso = false;
+        const lanzar = () => {
+          if (impreso) return;
+          impreso = true;
+          setTimeout(() => {
+            try {
+              printWindow.focus();
+              printWindow.print();
+              setTimeout(() => printWindow.close(), 750);
+            } catch {
+              /* la ventana se cerró antes */
+            }
+          }, 350);
+        };
+        if (printWindow.document.readyState === 'complete') lanzar();
+        else printWindow.addEventListener('load', lanzar, { once: true });
+        // Por si el navegador no avisa que terminó de cargar.
+        setTimeout(lanzar, 3000);
         setTimeout(() => {
           document.title = originalTitle;
         }, 1500);
