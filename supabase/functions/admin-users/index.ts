@@ -22,7 +22,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 // correos a esa dirección).
 const USER_EMAIL_DOMAIN = 'usuarios.discarga.app';
 const USERNAME_RE = /^[a-z0-9._-]{3,30}$/;
-const MIN_PASSWORD = 6;
+const MIN_PASSWORD = 8;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
