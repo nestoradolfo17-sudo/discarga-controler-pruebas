@@ -4,6 +4,7 @@ import { getGuatemalaDateForInput, formatDateToGuatemala } from '../../utils/dat
 import { X, PlusCircle, Lock } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
+import { SEGMENTO_OPTIONS } from '../../data/segmentos';
 
 interface NewRouteModalProps {
   isOpen: boolean;
@@ -24,7 +25,9 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
   // durante el desarrollo. Si un operador con prisa solo llenaba Fecha y daba clic
   // en "Crear Ruta", el sistema guardaba una ruta ficticia de 74 paradas y 398.48
   // cajas. Ahora todos arrancan en blanco/cero y los campos clave son obligatorios.
-  const [mercado, setMercado] = useState('Mercado Abierto');
+  // Mercado / segmento: botones con los mismos segmentos de la carga por Excel.
+  const [segmento, setSegmento] = useState('');
+  const [errorSegmento, setErrorSegmento] = useState(false);
   const [fecha, setFecha] = useState('');
   const [paradas, setParadas] = useState(0);
   const [cajasFisicas, setCajasFisicas] = useState<number | string>('');
@@ -36,6 +39,8 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setFecha(getGuatemalaDateForInput(new Date()));
+      setSegmento('');
+      setErrorSegmento(false);
     }
   }, [isOpen]);
 
@@ -43,10 +48,15 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!segmento) {
+      setErrorSegmento(true);
+      return;
+    }
     onSubmit({
       id: nextSuggestedId.trim(),
       agencia: agencia.trim() || 'Mercado Abierto',
-      mercado: mercado.trim() || 'Mercado Abierto',
+      mercado: segmento,
+      segmento,
       fecha: formatDateToGuatemala(fecha),
       paradas: Number(paradas) || 1,
       cajasFisicas: Number(cajasFisicas) || 0,
@@ -96,16 +106,31 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Canal / Mercado</label>
-              <input
-                type="text"
-                value={mercado}
-                onChange={(e) => setMercado(e.target.value)}
-                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium outline-none"
-              />
+          <div>
+            <p className="font-semibold text-slate-700 mb-1.5">Mercado / Segmento *</p>
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Mercado / Segmento">
+              {SEGMENTO_OPTIONS.map((sg) => (
+                <button
+                  key={sg}
+                  type="button"
+                  role="radio"
+                  aria-checked={segmento === sg}
+                  onClick={() => {
+                    setSegmento(sg);
+                    setErrorSegmento(false);
+                  }}
+                  className={`min-h-[40px] px-3 rounded-lg border-2 font-semibold transition-all cursor-pointer ${
+                    segmento === sg ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  {sg}
+                </button>
+              ))}
             </div>
+            {errorSegmento && <p className="mt-1 text-[11px] font-semibold text-rose-600">Selecciona el mercado / segmento de la ruta.</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Fecha Operación</label>
               <input
