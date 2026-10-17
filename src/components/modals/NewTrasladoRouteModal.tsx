@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Route } from '../../types';
 import { getGuatemalaDateForInput, formatDateToGuatemala } from '../../utils/date';
 import { AGENCIA_LOCATION_OPTIONS } from '../../data/agencies';
-import { X, PlusCircle, Lock, ArrowLeftRight } from 'lucide-react';
+import { MOTIVOS_TRASLADO, MOTIVO_TRASLADO_OTRAS } from '../../data/motivosTraslado';
+import { Lock, ArrowLeftRight } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 
@@ -12,18 +13,10 @@ interface NewTrasladoRouteModalProps {
   onSubmit: (route: Partial<Route>) => void;
   nextSuggestedId: string;
   agencia: string;
+  // Agencias de origen posibles: las del usuario. Si hay una sola (o el
+  // usuario eligió una agencia arriba), el origen queda fijo en esa.
+  agenciasOrigen?: string[];
 }
-
-// NOTA: las 3 opciones de "Razón" siguen siendo genéricas (el usuario indicó que
-// proporcionará las categorías definitivas más adelante), pero ya no llevan una
-// etiqueta que se vea como texto de desarrollo interno («Razón 1», «Razón 2»...)
-// visible para operadores reales. Para actualizarlas con las categorías definitivas,
-// basta con editar este arreglo (label + fieldLabel por opción).
-const RAZON_OPTIONS: { key: string; label: string; fieldLabel: string }[] = [
-  { key: 'razon1', label: 'Motivo Operativo 1', fieldLabel: 'Detalle del motivo' },
-  { key: 'razon2', label: 'Motivo Operativo 2', fieldLabel: 'Detalle del motivo' },
-  { key: 'razon3', label: 'Motivo Operativo 3', fieldLabel: 'Detalle del motivo' },
-];
 
 // Opciones de Origen / Destino (agencias/plantas disponibles para traslado).
 // Este arreglo vive ahora en '../../data/agencies' porque también se reutiliza
@@ -35,12 +28,16 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
   onSubmit,
   nextSuggestedId,
   agencia,
+  agenciasOrigen = [] as string[],
 }) => {
+  const origenFijo = agenciasOrigen.length <= 1;
   const [fecha, setFecha] = useState('');
   const [origen, setOrigen] = useState('');
   const [destino, setDestino] = useState('');
   const [razon, setRazon] = useState<string>('');
   const [razonDetalle, setRazonDetalle] = useState('');
+  // Volumen, paradas y demás datos de carga: opcionales (se activan con el check).
+  const [conCarga, setConCarga] = useState(false);
   const [paradas, setParadas] = useState(1);
   const [cajasFisicas, setCajasFisicas] = useState<number | string>(0);
   const [peso, setPeso] = useState<number | string>(0);
@@ -52,20 +49,46 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setFecha(getGuatemalaDateForInput(new Date()));
-      setOrigen('');
+      setOrigen(
+        agenciasOrigen.length === 0 ? agencia : agenciasOrigen.length === 1 ? agenciasOrigen[0] : agenciasOrigen.includes(agencia) ? agencia : ''
+      );
       setDestino('');
       setRazon('');
       setRazonDetalle('');
+      setConCarga(false);
+      setParadas(1);
+      setCajasFisicas(0);
+      setPeso(0);
+      setEquipoFrio(0);
+      setCapacidad('100%');
+      setDistancia(0);
       setError('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const selectedRazon = RAZON_OPTIONS.find((r) => r.key === razon);
+  const destinos = AGENCIA_LOCATION_OPTIONS.filter((ag) => ag !== origen);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!origen) {
+      setError('Selecciona la agencia de origen.');
+      return;
+    }
+    if (!destino) {
+      setError('Selecciona la agencia de destino.');
+      return;
+    }
+    if (!razon) {
+      setError('Selecciona el motivo del traslado.');
+      return;
+    }
+    if (razon === MOTIVO_TRASLADO_OTRAS && !razonDetalle.trim()) {
+      setError('Escribe cuál es el motivo (opción "Otras").');
+      return;
+    }
     // Corrección: antes no se validaba que Origen y Destino fueran distintos,
     // así que era posible registrar un "traslado" de una agencia hacia sí misma.
     if (origen && destino && origen === destino) {
@@ -75,15 +98,16 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
     setError('');
     onSubmit({
       id: nextSuggestedId.trim(),
-      agencia: agencia.trim() || 'Mercado Abierto',
-      mercado: agencia.trim() || 'Mercado Abierto',
+      // La ruta pertenece a la agencia de ORIGEN.
+      agencia: origen.trim(),
+      mercado: origen.trim(),
       fecha: formatDateToGuatemala(fecha),
-      paradas: Number(paradas) || 1,
-      cajasFisicas: Number(cajasFisicas) || 0,
-      pesoKg: Number(peso) || 0,
-      equipoFrio: Number(equipoFrio) || 0,
-      capacidadPorc: capacidad.trim() || '100%',
-      distancia: Number(distancia) || 0,
+      paradas: conCarga ? Number(paradas) || 1 : 1,
+      cajasFisicas: conCarga ? Number(cajasFisicas) || 0 : 0,
+      pesoKg: conCarga ? Number(peso) || 0 : 0,
+      equipoFrio: conCarga ? Number(equipoFrio) || 0 : 0,
+      capacidadPorc: conCarga ? capacidad.trim() || '100%' : '100%',
+      distancia: conCarga ? Number(distancia) || 0 : 0,
       viaje: '02:00',
       servicio: '08:00',
       descanso: '00:45',
@@ -92,7 +116,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
       tipoRuta: 'Traslado',
       origen: origen.trim(),
       destino: destino.trim(),
-      razonTraslado: selectedRazon?.label,
+      razonTraslado: razon,
       razonTrasladoDetalle: razonDetalle.trim(),
     });
   };
@@ -112,15 +136,6 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="flex items-center gap-1 font-semibold text-slate-700 mb-1">
-                Agencia / Sucursal
-                <Lock className="w-3 h-3 text-slate-400" />
-              </label>
-              <div className="w-full min-h-[44px] p-2.5 border border-slate-200 bg-slate-50 rounded-lg font-medium text-slate-600">
-                {agencia}
-              </div>
-            </div>
-            <div>
-              <label className="flex items-center gap-1 font-semibold text-slate-700 mb-1">
                 ID de Ruta
                 <Lock className="w-3 h-3 text-slate-400" />
               </label>
@@ -128,45 +143,98 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 {nextSuggestedId}
               </div>
             </div>
+            <div>
+              <label htmlFor="trasladoFecha" className="block font-semibold text-slate-700 mb-1">Fecha Operación</label>
+              <input
+                id="trasladoFecha"
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Origen *</label>
-              <select
-                value={origen}
-                onChange={(e) => setOrigen(e.target.value)}
-                required
-                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium outline-none bg-white"
-              >
-                <option value="" disabled>
-                  Selecciona un origen
-                </option>
-                {AGENCIA_LOCATION_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
+          {/* Origen: siempre la agencia del usuario; botones solo si tiene más de una. */}
+          <div>
+            <p className="flex items-center gap-1 font-semibold text-slate-700 mb-1.5">
+              Origen *{origenFijo && <Lock className="w-3 h-3 text-slate-400" aria-hidden />}
+            </p>
+            {origenFijo ? (
+              <div className="w-full min-h-[44px] p-2.5 border border-slate-200 bg-slate-50 rounded-lg font-semibold text-slate-700">
+                {origen || agencia}
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Agencia de origen">
+                {agenciasOrigen.map((ag) => (
+                  <button
+                    key={ag}
+                    type="button"
+                    role="radio"
+                    aria-checked={origen === ag}
+                    onClick={() => {
+                      setOrigen(ag);
+                      if (destino === ag) setDestino('');
+                    }}
+                    className={`min-h-[40px] px-3 rounded-lg border-2 font-semibold transition-all cursor-pointer ${
+                      origen === ag ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {ag}
+                  </button>
                 ))}
-              </select>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <p className="font-semibold text-slate-700 mb-1.5">Destino *</p>
+            <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto" role="radiogroup" aria-label="Agencia de destino">
+              {destinos.map((ag) => (
+                <button
+                  key={ag}
+                  type="button"
+                  role="radio"
+                  aria-checked={destino === ag}
+                  onClick={() => setDestino(ag)}
+                  className={`min-h-[40px] px-3 rounded-lg border-2 font-semibold transition-all cursor-pointer ${
+                    destino === ag ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  {ag}
+                </button>
+              ))}
             </div>
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Destino *</label>
-              <select
-                value={destino}
-                onChange={(e) => setDestino(e.target.value)}
-                required
-                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium outline-none bg-white"
-              >
-                <option value="" disabled>
-                  Selecciona un destino
-                </option>
-                {AGENCIA_LOCATION_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
+          </div>
+
+          <div>
+            <p className="font-semibold text-slate-700 mb-1.5">Motivo del traslado *</p>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Motivo del traslado">
+              {MOTIVOS_TRASLADO.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={razon === m}
+                  onClick={() => setRazon(m)}
+                  className={`min-h-[44px] px-2 rounded-lg border-2 font-semibold text-xs text-left transition-all cursor-pointer ${
+                    razon === m ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
             </div>
+            {razon && (
+              <input
+                type="text"
+                value={razonDetalle}
+                onChange={(e) => setRazonDetalle(e.target.value)}
+                placeholder={razon === MOTIVO_TRASLADO_OTRAS ? 'Escribe el motivo *' : 'Detalle adicional (opcional)'}
+                aria-label="Detalle del motivo"
+                className="mt-2 w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium outline-none"
+              />
+            )}
           </div>
 
           {error && (
@@ -175,114 +243,87 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
             </div>
           )}
 
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">Fecha Operación</label>
-            <input
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-700 mb-2">Razón del Traslado</label>
-            <div className="grid grid-cols-3 gap-2">
-              {RAZON_OPTIONS.map((opt) => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  onClick={() => setRazon(opt.key)}
-                  className={`min-h-[48px] px-2 rounded-lg border-2 font-semibold text-xs transition-all cursor-pointer ${
-                    razon === opt.key
-                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            {selectedRazon && (
-              <div className="mt-3">
-                <label className="block font-semibold text-slate-700 mb-1">{selectedRazon.fieldLabel}</label>
-                <input
-                  type="text"
-                  value={razonDetalle}
-                  onChange={(e) => setRazonDetalle(e.target.value)}
-                  placeholder="Detalle adicional (opcional)"
-                  className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-medium outline-none"
-                />
-              </div>
+          <div className="rounded-xl border border-slate-200 p-3 space-y-3">
+            <label className="flex items-center gap-2 font-semibold text-slate-700 cursor-pointer w-fit">
+              <input
+                id="trasladoConCarga"
+                type="checkbox"
+                checked={conCarga}
+                onChange={(e) => setConCarga(e.target.checked)}
+                className="w-5 h-5 cursor-pointer"
+              />
+              Registrar volumen y paradas (opcional)
+            </label>
+            {conCarga && (
+              <>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Cantidad de Paradas</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={paradas}
+                      onChange={(e) => setParadas(parseInt(e.target.value) || 1)}
+                      className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-semibold outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Volumen (Cajas)</label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      value={cajasFisicas}
+                      onChange={(e) => setCajasFisicas(e.target.value)}
+                      className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Peso Total (Kg)</label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      value={peso}
+                      onChange={(e) => setPeso(e.target.value)}
+                      className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Equipo Frío</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={equipoFrio}
+                      onChange={(e) => setEquipoFrio(parseInt(e.target.value) || 0)}
+                      className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">% Capacidad</label>
+                    <input
+                      type="text"
+                      value={capacidad}
+                      onChange={(e) => setCapacidad(e.target.value)}
+                      className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Distancia (Km)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={distancia}
+                      onChange={(e) => setDistancia(e.target.value)}
+                      className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
+                    />
+                  </div>
+                </div>
+              </>
             )}
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Cantidad de Paradas</label>
-              <input
-                type="number"
-                min="1"
-                value={paradas}
-                onChange={(e) => setParadas(parseInt(e.target.value) || 1)}
-                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-semibold outline-none"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Cajas Físicas</label>
-              <input
-                type="number"
-                step="0.001"
-                min="0"
-                value={cajasFisicas}
-                onChange={(e) => setCajasFisicas(e.target.value)}
-                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Peso Total (Kg)</label>
-              <input
-                type="number"
-                step="0.001"
-                min="0"
-                value={peso}
-                onChange={(e) => setPeso(e.target.value)}
-                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Equipo Frío</label>
-              <input
-                type="number"
-                min="0"
-                value={equipoFrio}
-                onChange={(e) => setEquipoFrio(parseInt(e.target.value) || 0)}
-                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono outline-none"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">% Capacidad</label>
-              <input
-                type="text"
-                value={capacidad}
-                onChange={(e) => setCapacidad(e.target.value)}
-                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Distancia (Km)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={distancia}
-                onChange={(e) => setDistancia(e.target.value)}
-                className="w-full min-h-[44px] p-2.5 border border-slate-300 rounded-lg font-mono outline-none"
-              />
-            </div>
           </div>
 
 <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
