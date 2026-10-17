@@ -1,20 +1,23 @@
 import React, { useState, useMemo } from 'react';
 import { RouteClientEntry, ClientePendiente } from '../types';
 import { Search } from 'lucide-react';
+import { normBusqueda } from '../utils/busqueda';
 
 interface ClientesRutaListProps {
   clientes: RouteClientEntry[];
   // Clientes que quedaron pendientes al liquidar (con su motivo): se marcan en
   // rojo dentro de la lista (y se agregan si ya no estaban en ella).
   pendientes?: ClientePendiente[];
+  // Búsqueda con la que se abre la lista (p. ej. el cliente buscado en el Tablero).
+  filtroInicial?: string;
 }
 
 // Lista de solo consulta/referencia de los clientes de una ruta (Código, Nombre,
 // Cajas), usada tanto en el Tablero de Rutas como en el Tablero de Rutas
 // Liquidadas. No permite editar ni seleccionar nada — para eso existe el
 // selector de Clientes Pendientes dentro del modal de Liquidar.
-export const ClientesRutaList: React.FC<ClientesRutaListProps> = ({ clientes: clientesBase, pendientes }) => {
-  const [q, setQ] = useState('');
+export const ClientesRutaList: React.FC<ClientesRutaListProps> = ({ clientes: clientesBase, pendientes, filtroInicial = '' }) => {
+  const [q, setQ] = useState(filtroInicial);
 
   const motivoPend = useMemo(() => new Map((pendientes || []).map((p) => [p.codigo, p.motivo])), [pendientes]);
   const clientes = useMemo(() => {
@@ -29,11 +32,9 @@ export const ClientesRutaList: React.FC<ClientesRutaListProps> = ({ clientes: cl
   const nPend = motivoPend.size;
 
   const filtered = useMemo(() => {
-    const term = q.toLowerCase().trim();
+    const term = normBusqueda(q);
     if (!term) return clientes;
-    return clientes.filter(
-      (c) => c.codigo.toLowerCase().includes(term) || (c.nombre || '').toLowerCase().includes(term)
-    );
+    return clientes.filter((c) => normBusqueda(c.codigo).includes(term) || normBusqueda(c.nombre).includes(term));
   }, [clientes, q]);
 
   return (
