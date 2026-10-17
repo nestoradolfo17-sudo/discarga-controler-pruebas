@@ -38,6 +38,7 @@ import { exportRoutesToExcel, exportRutasPrioridadesToExcel } from './utils/exce
 import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate, parseFlexibleDate, getGuatemalaDateForInput } from './utils/date';
 import { getRouteKey, routeMatchesKey, isSameSplitGroup, clavesDuplicado } from './utils/routeKey';
 import { esJornadaFutura } from './utils/jornada';
+import { asignadosEnFecha, camionesSinAsignar, personalSinAsignar } from './utils/recursosSinAsignar';
 import { isDemoMode } from './services/demoMode';
 import {
   getSessionUserId,
@@ -4276,11 +4277,36 @@ export default function App() {
   // Corrección: se cuenta sobre visibleTrucks/visibleStaff (ya filtrados por la agencia
   // del usuario) en vez de las listas completas, para que el número en la insignia de
   // "Fin de Asignación" coincida con lo que ese usuario realmente puede ver al abrir el modal.
+  // Solo cuentan los que NO fueron asignados en la fecha del Tablero (o hoy):
+  // misma regla que el modal (ver utils/recursosSinAsignar).
+  const fechaFinAsignacion = boardFecha || formatDateToGuatemala(new Date());
+  const rutasFinAsignacion = useMemo(() => [...routes, ...historicalRoutes], [routes, historicalRoutes]);
+  const asignadosFinAsignacion = useMemo(
+    () => asignadosEnFecha(rutasFinAsignacion, fechaFinAsignacion),
+    [rutasFinAsignacion, fechaFinAsignacion]
+  );
+  // Fin de Asignación: solo camiones y personal de las agencias asignadas al
+  // usuario. A un usuario con agencias específicas NO se le muestran recursos
+  // sin agencia ni de otras agencias (en las listas generales sí aparecen los
+  // "Sin Agencia" para poder corregirlos).
+  const accesoRestringido =
+    !!currentUser && !currentUser.isAdmin && Array.isArray(currentUser.agencyAccess);
+  const deMisAgencias = (ag?: string | null) => (accesoRestringido ? !!ag && canViewAgency(ag) : true);
+  const trucksFinAsignacion = useMemo(
+    () => visibleTrucks.filter((t) => deMisAgencias(t.agencia)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visibleTrucks, currentUser]
+  );
+  const staffFinAsignacion = useMemo(
+    () => visibleStaff.filter((x) => deMisAgencias(x.agencia)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visibleStaff, currentUser]
+  );
   const pendingReasonsCount = useMemo(() => {
-    const pendingTrucks = visibleTrucks.filter((t) => t.estado === 'Disponible' && !t.motivoNoAsignado).length;
-    const pendingStaff = visibleStaff.filter((s) => s.estado === 'Disponible' && !s.motivoNoAsignado).length;
+    const pendingTrucks = camionesSinAsignar(trucksFinAsignacion, asignadosFinAsignacion).filter((t) => !t.motivoNoAsignado).length;
+    const pendingStaff = personalSinAsignar(staffFinAsignacion, asignadosFinAsignacion).filter((s) => !s.motivoNoAsignado).length;
     return pendingTrucks + pendingStaff;
-  }, [visibleTrucks, visibleStaff]);
+  }, [trucksFinAsignacion, staffFinAsignacion, asignadosFinAsignacion]);
 
   // Mientras se carga la base de datos compartida (solo aplica cuando Supabase
   // está configurado — ver src/services/supabaseClient.ts) se muestra una
@@ -4996,9 +5022,9 @@ export default function App() {
       <UnassignedResourcesModal
         isOpen={isUnassignedResourcesModalOpen}
         onClose={() => setIsUnassignedResourcesModalOpen(false)}
-        trucks={visibleTrucks}
-        staff={visibleStaff}
-        routes={routes}
+        trucks={trucksFinAsignacion}
+        staff={staffFinAsignacion}
+        routes={rutasFinAsignacion}
         onSetTruckReason={handleSetTruckReason}
         onSetStaffReason={handleSetStaffReason}
         summaryRoutes={routes.filter((r) => canViewAgency(r.agencia))}
