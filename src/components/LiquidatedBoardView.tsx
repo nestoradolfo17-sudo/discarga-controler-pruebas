@@ -226,7 +226,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
   const handleExport = async () => {
     const success = await exportHistoricalToExcel(filteredList, staff);
     if (success) {
-      onShowToast(`Se descargaron ${filteredList.length} registros del Tablero de Rutas Liquidadas en Excel`, 'success');
+      onShowToast(`Se descargaron ${filteredList.length} registros de Rutas Liquidadas en Excel`, 'success');
     } else {
       onShowToast('No hay rutas liquidadas para exportar', 'error');
     }
@@ -896,7 +896,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             <PackageCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
             <div className="font-semibold text-slate-600">No hay rutas liquidadas para mostrar</div>
             <p className="mt-1 text-slate-400">
-              Las rutas aparecerán aquí una vez que sean liquidadas desde el Tablero de Rutas.
+              Las rutas aparecerán aquí una vez que sean liquidadas desde Asignación.
             </p>
           </div>
         )}
