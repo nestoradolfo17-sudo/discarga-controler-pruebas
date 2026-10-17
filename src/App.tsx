@@ -4589,6 +4589,8 @@ export default function App() {
             historyLimitedDays={historyLimited ? HISTORY_INITIAL_DAYS : undefined}
             onLoadFullHistory={loadFullHistory}
             isLoadingFullHistory={isLoadingFullHistory}
+            puedeVerAgencia={canViewAgency}
+            usuario={currentUser.nombre || currentUser.username}
           />
         )}
 
