@@ -82,7 +82,7 @@ const PERMISSION_LABELS: { key: keyof TablePermissions; label: string; grandfath
   { key: 'liquidated', label: 'Rutas Liquidadas' },
   { key: 'trucks', label: 'Camiones' },
   { key: 'staff', label: 'Personal' },
-  { key: 'batch', label: 'Carga Masiva Excel' },
+  { key: 'batch', label: 'Cargar Rutas' },
   { key: 'canBulkUploadTrucks', label: 'Subir Excel Camiones', grandfathered: true },
   { key: 'canBulkUploadStaff', label: 'Subir Excel Personal', grandfathered: true },
   { key: 'canCreateUsers', label: 'Crear usuarios' },
