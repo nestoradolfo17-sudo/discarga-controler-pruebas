@@ -9,7 +9,8 @@
 -- "Rechazada" (la base lo hace cumplir, no solo la
 -- pantalla). Si un usuario no administrador cambia algo de una recarga ya
 -- revisada (Pendiente/Rechazada), vuelve a quedar "Pendiente". Una recarga
--- AUTORIZADA solo la puede modificar o eliminar un administrador.
+-- AUTORIZADA ya no se modifica (nadie); solo la elimina un administrador
+-- (general o de la agencia).
 --
 -- Correlativo: cada recarga recibe un número único y consecutivo (REC-000001),
 -- lo asigna la base para que nunca se repita aunque registren varios a la vez.
@@ -83,6 +84,12 @@ begin
   -- Sin usuario (SQL Editor / procesos internos): sin restricción.
   if auth.uid() is null then
     return new;
+  end if;
+  -- Una recarga AUTORIZADA ya no se modifica (nadie, ni administradores); solo
+  -- se puede eliminar (regla "Eliminar"). Guardar sin cambios reales sí pasa.
+  if tg_op = 'UPDATE' and coalesce(old.data->>'estado', '') = 'Autorizada'
+     and (old.data - 'editadoPor' - 'editadoEn') is distinct from (new.data - 'editadoPor' - 'editadoEn') then
+    raise exception 'RECARGA_AUTORIZADA: Una recarga autorizada no se puede modificar. Si está mal, un administrador debe eliminarla y registrarla de nuevo.';
   end if;
   -- Administrador general, o administrador de la agencia de la recarga (la de
   -- antes y la de después, si se cambia de agencia).
