@@ -2121,6 +2121,7 @@ export default function App() {
       fechaCarga: formatDateTimeToGuatemala(new Date()),
       fechaCreacion: formatDateTimeToGuatemala(new Date()),
       tipoRuta: newRouteData.tipoRuta || 'Entrega',
+      segmento: newRouteData.segmento,
       origen: newRouteData.origen,
       destino: newRouteData.destino,
       razonTraslado: newRouteData.razonTraslado,
@@ -2571,6 +2572,31 @@ export default function App() {
       })
     );
 
+    // Recarga: queda de una vez en Recargas → Por autorizar (al liquidar se
+    // actualiza la misma, sin duplicar).
+    if (isRecarga && targetRoute && (assignment.driverName || assignment.helper1 || assignment.helper2 || assignment.helper3 || assignment.helper4)) {
+      registrarRecargaDelViaje({
+        ...targetRoute,
+        tipoAsignacion: effectiveTipo,
+        esRecarga: true,
+        fechaAsignacion: fechaHoraAsignacion,
+        asignacion: {
+          camionId: assignment.truckId,
+          camionPlaca: assignment.truckPlaca,
+          conductor: assignment.driverName,
+          auxiliar1: assignment.helper1 || null,
+          auxiliar2: assignment.helper2 || null,
+          auxiliar3: assignment.helper3 || null,
+          auxiliar4: assignment.helper4 || null,
+          conductorId: staffIdByName(targetRoute.agencia, assignment.driverName),
+          horaSalida: assignment.horaSalida,
+          fechaDespacho: formatDateToGuatemala(new Date()),
+          fechaAsignacion: fechaHoraAsignacion,
+          tipoAsignacion: effectiveTipo,
+        },
+      });
+    }
+
     // Update Truck status - Si el camión ya está cargado con otra ruta activa, conservar todas las rutas asignadas
     setTrucks((prev) =>
       prev.map((t) => {
@@ -2633,7 +2659,7 @@ export default function App() {
       showToast(`Ruta ${routeId} asignada solo con camión ${assignment.truckPlaca} (tripulación pendiente: complétala con Modificar/Reasignar).`, 'success');
     } else if (isRecarga) {
       showToast(
-        `Ruta ${routeId} asignada como RECARGA ${intentoNum > 1 ? `(Despacho #${intentoNum})` : '(Segundo Viaje)'} a la unidad ${assignment.truckPlaca} y tripulación.`,
+        `Ruta ${routeId} asignada como RECARGA ${intentoNum > 1 ? `(Despacho #${intentoNum})` : '(Segundo Viaje)'} a la unidad ${assignment.truckPlaca} y tripulación. Quedó en Recargas → Por autorizar.`,
         'success'
       );
     } else if (effectiveTipo === 'Revisita') {
@@ -3118,14 +3144,15 @@ export default function App() {
   // mismo ID de ruta puede repetirse en fechas distintas, así que se identifica la
   // fila exacta con ID + Fecha (ver src/utils/routeKey.ts) para no liquidar también
   // otra fila con el mismo ID pero de otra fecha.
-  // Módulo de Recargas: cuando se LIQUIDA un viaje que salió como "Recarga"
-  // (cualquier modalidad de cierre, también por Contingencia), queda registrado
-  // solo en Recargas como Pendiente de autorizar (tipo Simple, editable). La
+  // Módulo de Recargas: un viaje "Recarga" se registra en Recargas → Por
+  // autorizar desde que se ASIGNA en el Tablero, y al LIQUIDARLO (cualquier
+  // modalidad de cierre, también por Contingencia) se actualiza la misma
+  // recarga con la tripulación final (tipo Simple, editable). La
   // tripulación es la que llevaba el viaje. Una clave por ruta, fecha y número
   // de despacho evita duplicarlo si se vuelve a guardar.
   const esViajeRecarga = (r: Route) =>
     (r.asignacion?.tipoAsignacion || r.tipoAsignacion || (r.esRecarga ? 'Recarga' : '')) === 'Recarga';
-  const registrarRecargaLiquidada = (r: Route) => {
+  const registrarRecargaDelViaje = (r: Route) => {
     const a = r.asignacion;
     if (!a || !esViajeRecarga(r)) return;
     const d = parseFlexibleDate(a.fechaDespacho || a.fechaAsignacion || r.fechaAsignacion);
@@ -3178,7 +3205,7 @@ export default function App() {
   ) => {
     const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
     if (!targetRoute) return;
-    registrarRecargaLiquidada(targetRoute);
+    registrarRecargaDelViaje(targetRoute);
 
     // Ruta partida (Cierre Definitivo): las cajas devueltas de este viaje pasan
     // a los viajes pendientes del grupo, repartidas parejo. Este viaje queda con
@@ -3450,11 +3477,11 @@ export default function App() {
         handleViewConsolidatedReceipt(targetRoute.parentRouteId, targetRoute);
         return;
       } else {
-        showToast(`Línea ${targetRoute.id} liquidada y transferida al Tablero de Rutas Liquidadas.${cajaAbiertaSuffix}`, 'info');
+        showToast(`Línea ${targetRoute.id} liquidada y transferida a Rutas Liquidadas.${cajaAbiertaSuffix}`, 'info');
       }
     } else {
       showToast(
-        `Ruta ${targetRoute.id} completamente liquidada y transferida al Tablero de Rutas Liquidadas.${cajaAbiertaSuffix}`,
+        `Ruta ${targetRoute.id} completamente liquidada y transferida a Rutas Liquidadas.${cajaAbiertaSuffix}`,
         data.isCajaAbierta ? 'info' : 'success'
       );
     }
@@ -3608,14 +3635,19 @@ export default function App() {
     }
     const byBefore = new Map(plan.routeUpdates.filter((u) => u.beforeKey).map((u) => [u.beforeKey as string, u.route]));
     const nuevas = plan.routeUpdates.filter((u) => !u.beforeKey).map((u) => u.route);
-    // Viajes de Recarga que la contingencia liquida → al módulo de Recargas.
+    // Viajes de Recarga que la contingencia asigna o liquida → al módulo de Recargas.
     routes.forEach((antes) => {
       const despues = byBefore.get(getRouteKey(antes));
+      if (despues && despues.estado === 'En Tránsito' && antes.estado !== 'En Tránsito') {
+        registrarRecargaDelViaje(despues);
+        return;
+      }
       if (!despues || despues.estado === 'En Tránsito' || despues.estado === antes.estado) return;
-      if (antes.estado === 'En Tránsito') registrarRecargaLiquidada(antes);
+      if (antes.estado === 'En Tránsito') registrarRecargaDelViaje(antes);
       else if (despues.estado === 'Liquidada' || despues.estado === 'Abierta')
-        registrarRecargaLiquidada({ ...despues, asignacion: despues.asignacion || despues.ultimoDespacho || null });
+        registrarRecargaDelViaje({ ...despues, asignacion: despues.asignacion || despues.ultimoDespacho || null });
     });
+    nuevas.filter((r) => r.estado === 'En Tránsito').forEach((r) => registrarRecargaDelViaje(r));
     setRoutes((prev) => {
       const next = prev.map((r) => byBefore.get(getRouteKey(r)) || r);
       const keys = new Set(next.map(getRouteKey));
@@ -4567,7 +4599,7 @@ export default function App() {
           {boardFullscreen && (
             <div className="shrink-0 flex flex-wrap items-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm px-2.5 py-2">
               <span className="font-bold text-sm text-slate-800 px-1 whitespace-nowrap">
-                Tablero de Rutas{selectedAgency !== 'TODAS' ? ` · ${selectedAgency}` : ''}
+                Asignación{selectedAgency !== 'TODAS' ? ` · ${selectedAgency}` : ''}
               </span>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
@@ -4855,6 +4887,16 @@ export default function App() {
         onSubmit={handleCreateRoute}
         nextSuggestedId={nextTrasladoRouteId}
         agencia={effectiveAgencyForCreation}
+        agenciasOrigen={
+          // Origen = agencia del usuario. Con acceso limitado: sus agencias
+          // (botones si son varias). Con acceso a todas: la elegida arriba, o
+          // botones con todas si está en "Todas las agencias".
+          currentUser && !currentUser.isAdmin && Array.isArray(currentUser.agencyAccess)
+            ? importAgencyOptions
+            : selectedAgency !== 'TODAS'
+            ? [selectedAgency]
+            : importAgencyOptions
+        }
       />
 
       <ChangeSegmentModal
