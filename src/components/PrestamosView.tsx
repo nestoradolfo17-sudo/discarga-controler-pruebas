@@ -149,6 +149,12 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
     });
     return c;
   }, [base, desde, hasta]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Agencia que recibe: solo las que el usuario puede ver o administra (el
+  // administrador general, todas). Al editar se conserva la que ya tenía.
+  const agenciasDestinoPermitidas = (actual?: string) => {
+    const lista = isAdmin ? agenciasTodas : agenciasTodas.filter((a) => agencias.includes(a) || adminAgencias.includes(a));
+    return actual && !lista.includes(actual) ? [...lista, actual] : lista;
+  };
   // Pendientes que el usuario en sesión puede autorizar (agencia origen que administra).
   const porAutorizarMios = base.filter((p) => clasif(p).porAutorizar && adminDe(p.agenciaOrigen)).length;
 
@@ -798,7 +804,7 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
         agenciasOrigen={Array.from(new Set([...staff.map((s) => s.agencia || ''), ...trucks.map((t) => t.agencia || '')]))
           .filter(Boolean)
           .sort()}
-        agenciasDestino={agenciasTodas}
+        agenciasDestino={agenciasDestinoPermitidas(modal.prestamo?.agenciaDestino)}
         agenciaPorDefecto={agencia || (agenciaGeneral !== 'TODAS' ? agenciaGeneral : '')}
         existentes={prestamos}
         usuario={usuario}
