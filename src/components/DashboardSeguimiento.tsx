@@ -2,8 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { Route } from '../types';
 import { parseFlexibleDate, formatDateToGuatemala, formatDateTimeToGuatemala } from '../utils/date';
 import { getRouteKey } from '../utils/routeKey';
-import { toNum } from '../utils/number';
-import { loadXLSX } from '../utils/excel';
+import { toNum, fmtNum } from '../utils/number';
+import { loadXLSX, formatoMiles } from '../utils/excel';
 import { Lock, RotateCcw, Clock, Download, AlertTriangle } from 'lucide-react';
 
 // --- Dashboard de SEGUIMIENTO: Cajas Abiertas y Rutas Abiertas ---
@@ -38,8 +38,8 @@ const DIA = 86400000;
 // siempre el mismo número de días durante todo el día.
 const soloFecha = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 const diasDesde = (d: Date | null) => (d ? Math.max(0, Math.round((soloFecha(new Date()) - soloFecha(d)) / DIA)) : 0);
-const q = (n: number) => `Q ${n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const n1 = (n: number) => n.toLocaleString('es-GT', { maximumFractionDigits: 1 });
+const q = (n: number) => `Q ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const n1 = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 1 });
 
 interface FilaCaja {
   key: string;
@@ -304,6 +304,7 @@ export const DashboardSeguimiento: React.FC<Props> = ({
       ),
       'Rutas abiertas'
     );
+    formatoMiles(wb);
     XLSX.writeFile(wb, `Seguimiento_Cajas_y_Rutas_Abiertas_${hoy.replace(/\//g, '-')}.xlsx`);
   };
 
@@ -380,7 +381,7 @@ export const DashboardSeguimiento: React.FC<Props> = ({
           <p className="text-[10.5px] font-semibold text-amber-800 uppercase tracking-wide flex items-center gap-1">
             <Lock className="w-3.5 h-3.5" /> Cajas abiertas
           </p>
-          <p className="text-2xl font-bold text-slate-900">{kpi.cajas}</p>
+          <p className="text-2xl font-bold text-slate-900">{fmtNum(kpi.cajas)}</p>
           <p className="text-[11px] text-slate-500">Saldo pendiente {q(kpi.saldo)}</p>
         </div>
         <div className="bg-white border border-amber-200 rounded-2xl p-4 shadow-sm">
@@ -436,11 +437,11 @@ export const DashboardSeguimiento: React.FC<Props> = ({
               >
                 <span className="w-24 shrink-0 text-[11px] font-semibold text-slate-700">{a.label}</span>
                 <div className="flex-1 h-4 bg-slate-100 rounded-md overflow-hidden flex">
-                  <div style={{ width: `${(a.cajas / antigMax) * 100}%`, backgroundColor: '#eda100' }} title={`${a.cajas} caja(s) abierta(s)`} />
+                  <div style={{ width: `${(a.cajas / antigMax) * 100}%`, backgroundColor: '#eda100' }} title={`${fmtNum(a.cajas)} caja(s) abierta(s)`} />
                   <div style={{ width: `${(a.rutas / antigMax) * 100}%`, backgroundColor: '#5b6bd6' }} title={`${a.rutas} ruta(s) abierta(s)`} />
                 </div>
                 <span className="w-24 text-right text-[11px] tabular-nums text-slate-600">
-                  <b style={{ color: a.color }}>{tot}</b> ({a.cajas} CA · {a.rutas} RA)
+                  <b style={{ color: a.color }}>{tot}</b> ({fmtNum(a.cajas)} CA · {a.rutas} RA)
                 </span>
               </button>
             );
@@ -588,7 +589,7 @@ export const DashboardSeguimiento: React.FC<Props> = ({
                   <td className="px-3 py-2"><Chip r={r.rango} dias={r.dias} /></td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.retornos}</td>
                   <td className="px-3 py-2 text-right tabular-nums font-bold text-indigo-700">{n1(r.cajas)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.paradas}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.paradas)}</td>
                   <td className="px-3 py-2 text-slate-700 max-w-[220px] truncate" title={r.motivo}>{r.motivo}</td>
                   <td className="px-3 py-2 text-slate-600">
                     {r.ultimoPiloto} · <span className="font-mono">{r.ultimaPlaca}</span>
