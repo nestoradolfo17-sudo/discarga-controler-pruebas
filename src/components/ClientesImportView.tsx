@@ -11,6 +11,7 @@ import { formatDateToGuatemala } from '../utils/date';
 import { getRouteKey } from '../utils/routeKey';
 import { Users, UploadCloud, CheckCircle, X, AlertCircle, Calendar } from 'lucide-react';
 
+import { fmtNum } from '../utils/number';
 interface ClientesImportViewProps {
   // Rutas donde se pueden emparejar los clientes: el tablero activo y el
   // histórico de liquidadas. No se crean rutas nuevas con esta carga — solo se
@@ -181,9 +182,9 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
     }
     onCommitClientesRuta(allMatched);
     onShowToast(
-      `Se agregó el detalle de clientes a ${allMatched.length} ruta(s) (${totals.totalClientes} clientes en total).` +
+      `Se agregó el detalle de clientes a ${allMatched.length} ruta(s) (${fmtNum(totals.totalClientes)} clientes en total).` +
         (totals.totalUnmatched > 0
-          ? ` ${totals.totalUnmatched} ruta(s) del archivo no se encontraron en ${effectiveAgencia} para esa fecha y se omitieron.`
+          ? ` ${fmtNum(totals.totalUnmatched)} ruta(s) del archivo no se encontraron en ${effectiveAgencia} para esa fecha y se omitieron.`
           : ''),
       totals.totalUnmatched > 0 ? 'info' : 'success'
     );
@@ -341,19 +342,19 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
               <span className="text-emerald-700 font-semibold uppercase tracking-wider text-[10px]">
                 Rutas que se actualizarán
               </span>
-              <div className="text-xl font-extrabold text-emerald-700 mt-0.5">{totals.totalMatched}</div>
+              <div className="text-xl font-extrabold text-emerald-700 mt-0.5">{fmtNum(totals.totalMatched)}</div>
             </div>
             <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
               <span className="text-blue-700 font-semibold uppercase tracking-wider text-[10px]">
                 Clientes en total
               </span>
-              <div className="text-xl font-extrabold text-blue-700 mt-0.5">{totals.totalClientes}</div>
+              <div className="text-xl font-extrabold text-blue-700 mt-0.5">{fmtNum(totals.totalClientes)}</div>
             </div>
             <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
               <span className="text-amber-700 font-semibold uppercase tracking-wider text-[10px]">
                 Rutas del archivo sin coincidencia
               </span>
-              <div className="text-xl font-extrabold text-amber-700 mt-0.5">{totals.totalUnmatched}</div>
+              <div className="text-xl font-extrabold text-amber-700 mt-0.5">{fmtNum(totals.totalUnmatched)}</div>
             </div>
           </div>
 
@@ -362,7 +363,7 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
               <div className="flex items-center gap-1.5 font-bold">
                 <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
                 <span>
-                  {totals.totalUnmatched} ruta(s) del archivo no existen en el sistema para su fecha (revisa que el
+                  {fmtNum(totals.totalUnmatched)} ruta(s) del archivo no existen en el sistema para su fecha (revisa que el
                   mes/año elegido sea el correcto) y no se les podrá agregar el detalle de clientes:
                 </span>
               </div>
@@ -401,9 +402,9 @@ export const ClientesImportView: React.FC<ClientesImportViewProps> = ({
                   <tr key={d.sheetName} className="hover:bg-slate-50">
                     <td className="py-2 px-3 font-sans font-medium text-slate-800">{d.sheetName}</td>
                     <td className="py-2 px-3 font-sans text-slate-700">{d.fecha}</td>
-                    <td className="py-2 px-3 text-center">{d.totalRutas}</td>
+                    <td className="py-2 px-3 text-center">{fmtNum(d.totalRutas)}</td>
                     <td className="py-2 px-3 text-center text-emerald-700 font-bold">{d.matched.length}</td>
-                    <td className="py-2 px-3 text-center text-blue-700 font-bold">{d.totalClientes}</td>
+                    <td className="py-2 px-3 text-center text-blue-700 font-bold">{fmtNum(d.totalClientes)}</td>
                   </tr>
                 ))}
               </tbody>
