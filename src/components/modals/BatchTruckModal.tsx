@@ -4,6 +4,7 @@ import { Truck } from '../../types';
 import { downloadTruckExcelTemplate, parseTrucksFromSheet, ImportReport } from '../../utils/excel';
 import { X, UploadCloud, FileSpreadsheet, Download, CheckCircle, AlertCircle } from 'lucide-react';
 
+import { fmtNum } from '../../utils/number';
 interface BatchTruckModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -270,7 +271,7 @@ export const BatchTruckModal: React.FC<BatchTruckModalProps> = ({
                   </span>
                   {newTrucksCount > 0 && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      {newTrucksCount} nuevos
+                      {fmtNum(newTrucksCount)} nuevos
                     </span>
                   )}
                   {skippedTrucksCount > 0 && (
@@ -278,7 +279,7 @@ export const BatchTruckModal: React.FC<BatchTruckModalProps> = ({
                       className="inline-flex items-center px-2 py-0.5 rounded font-semibold bg-amber-50 text-amber-800 border border-amber-200"
                       title="Estos camiones ya existen en el sistema (coinciden por Placa o ID Camión) y no se modificarán: la carga masiva solo agrega camiones nuevos."
                     >
-                      {skippedTrucksCount} ya existen (se omitirán)
+                      {fmtNum(skippedTrucksCount)} ya existen (se omitirán)
                     </span>
                   )}
                 </div>
@@ -291,7 +292,7 @@ export const BatchTruckModal: React.FC<BatchTruckModalProps> = ({
                   <div className="flex items-center gap-1.5 font-bold">
                     <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
                     <span>
-                      Se leyeron {importReport.totalRows} filas con datos: {importReport.imported} se importaron y{' '}
+                      Se leyeron {fmtNum(importReport.totalRows)} filas con datos: {fmtNum(importReport.imported)} se importaron y{' '}
                       {importReport.discarded} se descartaron.
                     </span>
                   </div>
@@ -376,8 +377,8 @@ export const BatchTruckModal: React.FC<BatchTruckModalProps> = ({
                 <div className="text-[11px] text-slate-400">
                   {importReport ? (
                     <>
-                      Filas leídas: <strong className="text-slate-700">{importReport.totalRows}</strong> · Importadas:{' '}
-                      <strong className="text-slate-700">{importReport.imported}</strong>
+                      Filas leídas: <strong className="text-slate-700">{fmtNum(importReport.totalRows)}</strong> · Importadas:{' '}
+                      <strong className="text-slate-700">{fmtNum(importReport.imported)}</strong>
                       {importReport.discarded > 0 && (
                         <>
                           {' '}
@@ -419,7 +420,7 @@ export const BatchTruckModal: React.FC<BatchTruckModalProps> = ({
               >
                 <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
                 {skippedTrucksCount > 0
-                  ? `Agregar ${newTrucksCount} Camiones Nuevos (${skippedTrucksCount} se omitirán)`
+                  ? `Agregar ${fmtNum(newTrucksCount)} Camiones Nuevos (${fmtNum(skippedTrucksCount)} se omitirán)`
                   : `Cargar ${previewTrucks.length} Camiones al Sistema`}
               </button>
             )}
