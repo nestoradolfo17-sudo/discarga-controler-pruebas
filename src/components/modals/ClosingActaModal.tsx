@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
-import { toNum } from '../../utils/number';
+import { toNum, fmtNum } from '../../utils/number';
 import { getRouteKey } from '../../utils/routeKey';
 
 interface ClosingActaModalProps {
@@ -272,7 +272,7 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
             <div className="p-3 rounded-xl border border-indigo-200 bg-indigo-50">
               <span className="text-[10px] font-bold text-indigo-700 uppercase">Cajas (Plan / Ent / Dev)</span>
               <div className="text-sm font-black text-indigo-900">
-                {totalCajasPlan.toFixed(1)} / {totalCajasEntregadas.toFixed(1)} / {totalCajasDevueltas.toFixed(1)}
+                {fmtNum(totalCajasPlan, 1)} / {fmtNum(totalCajasEntregadas, 1)} / {fmtNum(totalCajasDevueltas, 1)}
               </div>
             </div>
           </div>
@@ -312,15 +312,15 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
                         <td className="px-2.5 py-2 whitespace-nowrap">{r.segmento}</td>
                         <td className="px-2.5 py-2 whitespace-nowrap">{r.conductor}</td>
                         <td className="px-2.5 py-2 font-mono whitespace-nowrap">{r.camionPlaca}</td>
-                        <td className="px-2.5 py-2 text-right font-semibold">{r.cajasPlan.toFixed(1)}</td>
+                        <td className="px-2.5 py-2 text-right font-semibold">{fmtNum(r.cajasPlan, 1)}</td>
                         <td className="px-2.5 py-2 text-right font-bold text-emerald-700">
-                          {r.cajasEntregadas.toFixed(1)}
+                          {fmtNum(r.cajasEntregadas, 1)}
                         </td>
                         <td className="px-2.5 py-2 text-right font-bold text-rose-700">
-                          {r.cajasDevueltas.toFixed(1)}
+                          {fmtNum(r.cajasDevueltas, 1)}
                         </td>
                         <td className="px-2.5 py-2 text-center whitespace-nowrap">
-                          {r.guiasExitosas}/{r.paradasPlan}
+                          {r.guiasExitosas}/{fmtNum(r.paradasPlan)}
                         </td>
                         <td className="px-2.5 py-2 whitespace-nowrap">{r.horaLiquidacion || '—'}</td>
                       </tr>
@@ -369,7 +369,7 @@ export const ClosingActaModal: React.FC<ClosingActaModalProps> = ({
                         </td>
                         <td className="px-2.5 py-2 whitespace-nowrap">{r.conductor}</td>
                         <td className="px-2.5 py-2 font-mono whitespace-nowrap">{r.camionPlaca}</td>
-                        <td className="px-2.5 py-2 text-right font-semibold">{r.cajasPlan.toFixed(1)}</td>
+                        <td className="px-2.5 py-2 text-right font-semibold">{fmtNum(r.cajasPlan, 1)}</td>
                         <td className="px-2.5 py-2 text-slate-600">{r.motivo || '—'}</td>
                       </tr>
                     ))}
