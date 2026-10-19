@@ -15,7 +15,7 @@ export const loadXLSX = () => import('xlsx');
 // DPI, teléfono, placa, correlativo, viaje, año…) ni a fechas u horas.
 const NO_MILES = /(^|\s)(id|no\.?|#|viaje|a[ñn]o|mes|semana|d[ií]a)$|^ruta$|^id\b|\bid de|ruta id|c[óo]d|dpi|tel[eé]f|celular|placa|correlativo|\bnit\b|\bcui\b|licencia|n[úu]mero|fecha|hora/i;
 export function formatoMiles(wb: XLSXTypes.WorkBook) {
-  for (const nombre of wb.SheetNames) {
+  for (const nombre of wb.SheetNames || []) {
     const ws = wb.Sheets[nombre];
     if (!ws) continue;
     // Encabezado de cada columna = último texto encontrado arriba de la celda.
