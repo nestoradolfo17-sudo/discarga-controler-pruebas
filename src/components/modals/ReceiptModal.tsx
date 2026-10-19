@@ -5,7 +5,7 @@ import { getRouteAssignmentType } from '../../utils/excel';
 import { X, Printer } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
-import { toNum } from '../../utils/number';
+import { toNum, fmtNum } from '../../utils/number';
 
 interface ReceiptModalProps {
   isOpen: boolean;
@@ -291,31 +291,31 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                       <tbody>
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-slate-600 font-sans">Total Paradas Programadas:</td>
-                          <td className="py-1 font-bold text-right text-slate-800">{sumParadas}</td>
+                          <td className="py-1 font-bold text-right text-slate-800">{fmtNum(sumParadas)}</td>
                         </tr>
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-emerald-700 font-sans">Paradas Entregadas (Suma Total):</td>
-                          <td className="py-1 font-bold text-right text-emerald-700">{sumExitosas}</td>
+                          <td className="py-1 font-bold text-right text-emerald-700">{fmtNum(sumExitosas)}</td>
                         </tr>
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-rose-700 font-sans">Paradas Rechazadas (Suma Total):</td>
-                          <td className="py-1 font-bold text-right text-rose-700">{sumRechazadas}</td>
+                          <td className="py-1 font-bold text-right text-rose-700">{fmtNum(sumRechazadas)}</td>
                         </tr>
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-slate-600 font-sans">Cajas Físicas Salida (Total Ruta):</td>
-                          <td className="py-1 font-bold text-right text-slate-800">{sumCajasSalida.toFixed(3)}</td>
+                          <td className="py-1 font-bold text-right text-slate-800">{fmtNum(sumCajasSalida, 3)}</td>
                         </tr>
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-emerald-700 font-sans font-bold">
                             Cajas Físicas Entregadas (Suma Total):
                           </td>
                           <td className="py-1 font-extrabold text-right text-emerald-700">
-                            {sumCajasEntregadas.toFixed(3)}
+                            {fmtNum(sumCajasEntregadas, 3)}
                           </td>
                         </tr>
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-rose-700 font-sans">Cajas Devueltas / Rechazos (Suma Total):</td>
-                          <td className="py-1 font-bold text-right text-rose-700">{sumCajasDevueltas.toFixed(3)}</td>
+                          <td className="py-1 font-bold text-right text-rose-700">{fmtNum(sumCajasDevueltas, 3)}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -471,7 +471,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                           <strong className="uppercase tracking-wide">Caja Abierta — Pendiente de Validar</strong>
                           {liq.motivoCajaAbierta && <span>: {liq.motivoCajaAbierta}</span>}
                           {typeof liq.montoDiferenciaCaja === 'number' && (
-                            <span> · Diferencia: Q {liq.montoDiferenciaCaja.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <span> · Diferencia: Q {liq.montoDiferenciaCaja.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           )}
                         </>
                       )}
@@ -492,7 +492,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                       <tbody>
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-slate-600 font-sans">Total Paradas Programadas:</td>
-                          <td className="py-1 font-bold text-right text-slate-800">{route.paradas}</td>
+                          <td className="py-1 font-bold text-right text-slate-800">{fmtNum(route.paradas)}</td>
                         </tr>
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-emerald-700 font-sans">Paradas Entregadas:</td>
@@ -511,21 +511,21 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-slate-600 font-sans">Cajas Físicas Salida:</td>
                           <td className="py-1 font-bold text-right text-slate-800">
-                            {toNum(route.cajasFisicas).toFixed(3)}
+                            {fmtNum(toNum(route.cajasFisicas), 3)}
                           </td>
                         </tr>
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-emerald-700 font-sans font-bold">Cajas Físicas Entregadas:</td>
                           <td className="py-1 font-extrabold text-right text-emerald-700">
-                            {parseFloat(
+                            {fmtNum(parseFloat(
                               String(liq.cajasEntregadas !== undefined ? liq.cajasEntregadas : route.cajasFisicas || 0)
-                            ).toFixed(3)}
+                            ), 3)}
                           </td>
                         </tr>
                         <tr className="border-b border-slate-100">
                           <td className="py-1 text-rose-700 font-sans">Cajas Devueltas / Rechazos:</td>
                           <td className="py-1 font-bold text-right text-rose-700">
-                            {parseFloat(String(liq.cajasDevueltas !== undefined ? liq.cajasDevueltas : 0)).toFixed(3)}
+                            {fmtNum(parseFloat(String(liq.cajasDevueltas !== undefined ? liq.cajasDevueltas : 0)), 3)}
                           </td>
                         </tr>
                         {(() => {
@@ -602,7 +602,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                             </div>
                             <div className="text-right font-mono">
                               <span className="text-rose-700 font-bold">
-                                Devueltas: {parseFloat(String(hd.cajasDevueltas || 0)).toFixed(3)}
+                                Devueltas: {fmtNum(parseFloat(String(hd.cajasDevueltas || 0)), 3)}
                               </span>
                               <div className="text-[9px] text-slate-400">
                                 {formatDateTimeToGuatemala(hd.fechaRetorno)}
