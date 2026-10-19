@@ -29,7 +29,7 @@ import { ResourcePicker, PickerItem, PickerStatus } from '../ResourcePicker';
 import { prestamosVigentes, fechaRutaISO } from '../../utils/prestamos';
 import { suggestCrewForRoute } from '../../utils/crewSuggestion';
 import { mismaJornada, esJornadaFutura } from '../../utils/jornada';
-import { toNum } from '../../utils/number';
+import { toNum, fmtNum } from '../../utils/number';
 
 // Recursos ocupados ahora mismo en OTRAS rutas en tránsito DE LA MISMA JORNADA
 // (para no precargarlos como sugerencia por defecto). Las rutas del día
@@ -699,9 +699,9 @@ export const AssignModal: React.FC<AssignModalProps> = ({
               <span className="text-slate-500">•</span>
               <span>Agencia: <strong className="text-slate-200">{route.agencia}</strong></span>
               <span className="text-slate-500">•</span>
-              <span><strong className="text-slate-200">{route.paradas}</strong> Paradas</span>
+              <span><strong className="text-slate-200">{fmtNum(route.paradas)}</strong> Paradas</span>
               <span className="text-slate-500">•</span>
-              <span className="text-blue-300 font-semibold">{route.cajasFisicas || 0} Cajas Físicas</span>
+              <span className="text-blue-300 font-semibold">{fmtNum(route.cajasFisicas)} Cajas Físicas</span>
             </p>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
@@ -988,7 +988,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   <option value="">-- Seleccionar ruta activa para combinar carga --</option>
                   {activeRoutesWithCrew.map((ar) => (
                     <option key={getRouteKey(ar)} value={getRouteKey(ar)}>
-                      Ruta {ar.id} ({ar.cajasFisicas} cajas) → Unidad {ar.asignacion?.camionPlaca} | Piloto: {ar.asignacion?.conductor}
+                      Ruta {ar.id} ({fmtNum(ar.cajasFisicas)} cajas) → Unidad {ar.asignacion?.camionPlaca} | Piloto: {ar.asignacion?.conductor}
                     </option>
                   ))}
                 </select>
@@ -1047,11 +1047,11 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
                   <div className="bg-white/80 p-2.5 rounded-lg border border-rose-200">
                     <div className="text-[10px] text-slate-500 font-semibold uppercase">Cajas físicas</div>
-                    <div className="font-mono font-bold text-rose-800 text-xs mt-0.5">{route.cajasFisicas || 0} cajas</div>
+                    <div className="font-mono font-bold text-rose-800 text-xs mt-0.5">{fmtNum(route.cajasFisicas)} cajas</div>
                   </div>
                   <div className="bg-white/80 p-2.5 rounded-lg border border-rose-200">
                     <div className="text-[10px] text-slate-500 font-semibold uppercase">Paradas</div>
-                    <div className="font-mono font-bold text-slate-800 text-xs mt-0.5">{route.paradas || 0}</div>
+                    <div className="font-mono font-bold text-slate-800 text-xs mt-0.5">{fmtNum(route.paradas)}</div>
                   </div>
                   <div className="bg-white/80 p-2.5 rounded-lg border border-rose-200">
                     <div className="text-[10px] text-slate-500 font-semibold uppercase">Nuevo estado</div>
@@ -1119,7 +1119,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   <div className="bg-white/80 p-2.5 rounded-lg border border-amber-200">
                     <div className="text-[10px] text-slate-500 font-semibold uppercase">Carga en Piso</div>
                     <div className="font-mono font-bold text-blue-700 text-xs mt-0.5">
-                      {route.cajasFisicas} cajas
+                      {fmtNum(route.cajasFisicas)} cajas
                     </div>
                   </div>
                 </div>
@@ -1204,7 +1204,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                       <div className="text-[10px] font-bold uppercase text-violet-500">Camión</div>
                       <div className="font-bold text-slate-800 truncate">
                         {sugTruck ? (sugTruck.idCamion ? `ID ${sugTruck.idCamion}` : sugTruck.placa) : '—'}
-                        {sugTruck && <span className="font-medium text-slate-500"> · {suggestion.truckCount} de {suggestion.samples}</span>}
+                        {sugTruck && <span className="font-medium text-slate-500"> · {fmtNum(suggestion.truckCount)} de {suggestion.samples}</span>}
                         {sugTruck && sugTruck.idCamion && <span className="block text-[11px] font-semibold text-slate-600">Placa {sugTruck.placa}</span>}
                       </div>
                     </div>
@@ -1212,7 +1212,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                       <div className="text-[10px] font-bold uppercase text-violet-500">Piloto</div>
                       <div className="font-bold text-slate-800 truncate">
                         {suggestion.driverName || '—'}
-                        {suggestion.driverName && <span className="font-medium text-slate-500"> · {suggestion.driverCount} de {suggestion.samples}</span>}
+                        {suggestion.driverName && <span className="font-medium text-slate-500"> · {fmtNum(suggestion.driverCount)} de {suggestion.samples}</span>}
                       </div>
                     </div>
                     <div className="bg-white rounded-lg border border-violet-100 px-3 py-2">
@@ -1262,7 +1262,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                           {selectedTruckObj.idCamion ? `Placa ${selectedTruckObj.placa}` : 'Sin ID de camión'}
                         </div>
                         <div className="text-xs text-slate-500 truncate">
-                          Capacidad {selectedTruckObj.capacidad} · Carga ruta {route.cajasFisicas} cajas
+                          Capacidad {selectedTruckObj.capacidad} · Carga ruta {fmtNum(route.cajasFisicas)} cajas
                         </div>
                       </div>
                     ) : (
@@ -1274,10 +1274,10 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                     const routesOnTruck = inTransitOthers.filter((ar) => ar.asignacion?.camionId === selectedTruckObj.id);
                     if (routesOnTruck.length === 0) return null;
                     const otherBoxes = routesOnTruck.reduce((acc, r) => acc + (toNum(r.cajasFisicas) || 0), 0);
-                    const combined = (otherBoxes + (toNum(route.cajasFisicas) || 0)).toFixed(1);
+                    const combined = fmtNum((otherBoxes + (toNum(route.cajasFisicas) || 0)), 1);
                     return (
                       <div className="text-[11px] bg-sky-50 border border-sky-200 rounded-lg px-2.5 py-1.5 text-sky-900">
-                        <strong>Carga compartida</strong> con {routesOnTruck.map((r) => `Ruta ${r.id}`).join(', ')} ({otherBoxes.toFixed(1)} cajas) · Total camión: <strong>{combined} cajas</strong>
+                        <strong>Carga compartida</strong> con {routesOnTruck.map((r) => `Ruta ${r.id}`).join(', ')} ({fmtNum(otherBoxes, 1)} cajas) · Total camión: <strong>{combined} cajas</strong>
                       </div>
                     );
                   })()}
@@ -1486,7 +1486,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             }
             info={
               <span className="hidden md:inline">
-                Ruta <b className="text-slate-700">{route.id}</b> · {route.cajasFisicas || 0} cajas
+                Ruta <b className="text-slate-700">{route.id}</b> · {fmtNum(route.cajasFisicas)} cajas
               </span>
             }
           >
