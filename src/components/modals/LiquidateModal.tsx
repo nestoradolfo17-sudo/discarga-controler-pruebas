@@ -8,10 +8,10 @@ import { ACTION_ICONS } from '../ui/actionIcons';
 import { useMaximized } from '../ui/useMaximized';
 import { MOTIVO_DEVOLUCION_OPTIONS, MOTIVO_REVISITA, MOTIVOS_RUTA_ABIERTA } from '../../data/motivosDevolucion';
 import { CAJA_ABIERTA_OPTIONS } from '../../data/motivosCajaAbierta';
-import { toNum } from '../../utils/number';
+import { toNum, fmtNum } from '../../utils/number';
 import { repartirParejo, ResumenGrupo } from '../../utils/splitGroup';
 
-const fmt3 = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 3 });
+const fmt3 = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 3 });
 
 interface LiquidateModalProps {
   isOpen: boolean;
@@ -331,7 +331,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
             </div>
             <p className="text-[11px] text-slate-400">
               Liquidando Ruta: {route.id}
-              {isSplitNotice} | Agencia: {route.agencia} | {route.cajasFisicas || 0} Cajas Físicas
+              {isSplitNotice} | Agencia: {route.agencia} | {fmtNum(route.cajasFisicas)} Cajas Físicas
             </p>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
@@ -363,7 +363,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
             </div>
             <div>
               <span className="text-slate-400 block text-[10px] uppercase">Cajas Físicas</span>
-              <b className="text-blue-700 font-mono text-xs">{route.cajasFisicas || 0} Cajas</b>
+              <b className="text-blue-700 font-mono text-xs">{fmtNum(route.cajasFisicas)} Cajas</b>
             </div>
           </div>
 
@@ -495,7 +495,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                   <div className="bg-white rounded-lg border border-purple-100 px-2 py-1">
                     <span className="block text-slate-500">Pendientes de entregar</span>
                     <b className="font-mono text-blue-700">{fmt3(resumenGrupo.pendiente)}</b>
-                    <span className="block text-[10px] text-slate-400">{resumenGrupo.viajesPendientes} viaje(s), incluye este</span>
+                    <span className="block text-[10px] text-slate-400">{fmtNum(resumenGrupo.viajesPendientes)} viaje(s), incluye este</span>
                   </div>
                 </div>
 
@@ -806,7 +806,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                             <span className="truncate text-xs">
                               <span className="font-mono text-slate-500">{c.codigo}</span>{' '}
                               <span className="font-medium text-slate-800">{c.nombre || '-'}</span>{' '}
-                              <span className="text-slate-400">({Number(c.cajas || 0).toFixed(3)} cajas)</span>
+                              <span className="text-slate-400">({fmtNum(Number(c.cajas || 0), 3)} cajas)</span>
                             </span>
                           </label>
                           {isMarcado && (
@@ -947,7 +947,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
 
       {/* Ventana emergente de confirmación antes del OK final */}
       {confirmOpen && (() => {
-        const n3 = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 3 });
+        const n3 = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 3 });
         const modalidad = tipoResolucion === 'abierta' ? 'Ruta Abierta (para reasignar)' : tipoResolucion === 'cajaAbierta' ? 'Caja Abierta (pendiente de validar)' : 'Cierre definitivo (liquidada)';
         const motivoTxt =
           tipoResolucion === 'cajaAbierta'
@@ -955,7 +955,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
             : clientesMarcados.size > 0
             ? Array.from(new Set(Array.from(clientesMarcados.values()).filter(Boolean))).join(', ') || '— sin marcar —'
             : motivoGeneral || (hayDiferencia || tipoResolucion === 'abierta' ? '— sin marcar —' : 'No aplica (entrega completa)');
-        const montoTxt = montoDiferencia.trim() === '' ? '— en blanco —' : `Q ${Number(montoDiferencia.replace(',', '.') || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const montoTxt = montoDiferencia.trim() === '' ? '— en blanco —' : `Q ${Number(montoDiferencia.replace(',', '.') || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         return (
           <div className="fixed inset-0 z-[60] bg-slate-900/50 flex items-center justify-center p-4" role="alertdialog" aria-modal="true" aria-labelledby="liqConfirmTitle">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden">
