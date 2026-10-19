@@ -15,6 +15,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { toNum } from '../utils/number';
+import { DashboardDevoluciones } from './DashboardDevoluciones';
 
 // --- Dashboard ejecutivo (propuesta nueva) ---
 // Solo LEE los datos que ya existen (rutas del tablero, liquidadas, camiones y
@@ -940,6 +941,9 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           </table>
         </div>
       </Card>
+      {/* 6. Rutas con mayor devolución (doble clic = detalle, descarga a Excel) */}
+      <DashboardDevoluciones liquidadas={liqPeriodo} periodLabel={periodLabel} />
+
       {motivoAbierto && motivoSel && (
         <div
           data-no-pdf
