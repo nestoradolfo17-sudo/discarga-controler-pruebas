@@ -1,6 +1,7 @@
 import React from 'react';
 import { Clock, Navigation, AlertTriangle, CheckCircle2, Warehouse, Package, PackageCheck, PackageX, Percent, Lock, Repeat } from 'lucide-react';
 
+import { fmtNum } from '../utils/number';
 interface StatsCardsProps {
   pendientes: number;
   transito: number;
@@ -41,7 +42,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 }) => {
   if (compact) {
     const fmt = (n?: number) =>
-      n !== undefined ? Number(n.toFixed(1)).toLocaleString('es-GT', { maximumFractionDigits: 1 }) : '0';
+      n !== undefined ? Number(n.toFixed(1)).toLocaleString('en-US', { maximumFractionDigits: 1 }) : '0';
     const pills: {
       label: string;
       value: string | number;
@@ -63,7 +64,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         : []),
       { label: 'Abiertas', value: abiertas, icon: AlertTriangle, cls: 'bg-orange-50 border-orange-200 text-orange-700', tab: 'board', title: 'Abiertas / con devolución, por reasignar' },
       { label: 'A Piso', value: pisoHoy, icon: Warehouse, cls: 'bg-yellow-50 border-yellow-200 text-yellow-700', tab: 'board', title: fechaHoy ? `Rutas a piso · ${fechaHoy}` : 'Rutas a piso hoy' },
-      { label: 'Liquidadas', value: liquidadas, icon: CheckCircle2, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700', tab: 'liquidated', title: liquidadasTotal !== undefined ? `${liquidadas} hoy · ${liquidadasTotal} en histórico` : 'Ver liquidadas' },
+      { label: 'Liquidadas', value: liquidadas, icon: CheckCircle2, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700', tab: 'liquidated', title: liquidadasTotal !== undefined ? `${liquidadas} hoy · ${fmtNum(liquidadasTotal)} en histórico` : 'Ver liquidadas' },
       { label: 'Cajas', value: fmt(cajasFisicasHoy), icon: Package, cls: 'bg-indigo-50 border-indigo-200 text-indigo-700', tab: 'board', title: cajasEntregadasHoy ? `Carga total del día · ${fmt(cajasEntregadasHoy)} entregadas` : 'Carga total del día (cajas físicas)' },
     ];
     return (
@@ -184,7 +185,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           <h3 className="text-2xl font-bold text-emerald-600 leading-none">{liquidadas}</h3>
           <span className="text-[11px] text-emerald-600 font-medium mt-1 block truncate">
             {liquidadasTotal !== undefined && liquidadasTotal > liquidadas
-              ? `${liquidadas} hoy · ${liquidadasTotal} hist. →`
+              ? `${liquidadas} hoy · ${fmtNum(liquidadasTotal)} hist. →`
               : 'Ver Liquidadas →'}
           </span>
         </div>
@@ -205,12 +206,12 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         <div>
           <h3 className="text-2xl font-bold text-indigo-700 leading-none">
             {cajasFisicasHoy !== undefined
-              ? Number(cajasFisicasHoy.toFixed(1)).toLocaleString('es-GT', { maximumFractionDigits: 1 })
+              ? Number(cajasFisicasHoy.toFixed(1)).toLocaleString('en-US', { maximumFractionDigits: 1 })
               : '0'}
           </h3>
           <span className="text-[11px] text-indigo-600 font-medium mt-1 block truncate">
             {cajasEntregadasHoy !== undefined && cajasEntregadasHoy > 0
-              ? `${Number(cajasEntregadasHoy.toFixed(1)).toLocaleString('es-GT', { maximumFractionDigits: 1 })} entregadas`
+              ? `${Number(cajasEntregadasHoy.toFixed(1)).toLocaleString('en-US', { maximumFractionDigits: 1 })} entregadas`
               : 'Carga total del día'}
           </span>
         </div>
@@ -230,7 +231,7 @@ export const LiquidatedStatsStrip: React.FC<{
   efectividad: string;
   cajaAbierta: number;
 }> = ({ rutas, cajasSalida, cajasEntregadas, cajasDevueltas, efectividad, cajaAbierta }) => {
-  const fmt = (n: number) => Number(n.toFixed(1)).toLocaleString('es-GT', { maximumFractionDigits: 1 });
+  const fmt = (n: number) => Number(n.toFixed(1)).toLocaleString('en-US', { maximumFractionDigits: 1 });
   const pills = [
     { label: 'Liquidadas', value: String(rutas), icon: CheckCircle2, cls: 'bg-slate-50 border-slate-200 text-slate-700', title: 'Rutas liquidadas (según filtros)' },
     { label: 'Entregadas', value: fmt(cajasEntregadas), icon: PackageCheck, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700', title: `Cajas entregadas de ${fmt(cajasSalida)} de salida` },
