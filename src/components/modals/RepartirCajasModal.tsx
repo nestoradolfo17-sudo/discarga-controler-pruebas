@@ -4,7 +4,7 @@ import { getRouteKey } from '../../utils/routeKey';
 import { Button, IconButton } from '../ui/Button';
 import { ModalFooter } from '../ui/ModalFooter';
 import { ACTION_ICONS } from '../ui/actionIcons';
-import { toNum } from '../../utils/number';
+import { toNum, fmtNum } from '../../utils/number';
 
 // --- Repartir cajas entre los viajes de una ruta partida ---
 // Para rutas de UN solo cliente que se partieron en varios viajes: aun ya
@@ -81,7 +81,7 @@ export const RepartirCajasModal: React.FC<RepartirCajasModalProps> = ({ isOpen, 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
           <p className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-[11px] text-indigo-900 leading-relaxed">
             Cambia cuántas cajas lleva cada viaje si cambiaron las cajas reales a entregar. El total del grupo se
-            mantiene en <strong>{total} cajas</strong>. La asignación (camión y tripulación) no cambia.
+            mantiene en <strong>{fmtNum(total)} cajas</strong>. La asignación (camión y tripulación) no cambia.
           </p>
 
           <div className="space-y-2">
@@ -132,7 +132,7 @@ export const RepartirCajasModal: React.FC<RepartirCajasModalProps> = ({ isOpen, 
             }`}
           >
             <span>
-              Suma: {suma} de {total} cajas
+              Suma: {fmtNum(suma)} de {fmtNum(total)} cajas
             </span>
             <span>
               {invalidos.length > 0
