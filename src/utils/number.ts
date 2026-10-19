@@ -43,3 +43,35 @@ export function limpiarNumeroTexto(v: string): string {
   const decCelda = tras.length;
   return n.toFixed(Math.min(6, Math.max(decimales, decCelda)));
 }
+
+// --- Formato para MOSTRAR cantidades: coma para miles y punto para decimales ---
+// (1,234 · 8,561.5 · Q 12,500.00). Se usa la convención en-US a propósito: da
+// exactamente ese formato en cualquier navegador o idioma del equipo (con
+// toLocaleString() sin idioma, un equipo en español de España mostraría 1.234).
+const formatos = new Map<string, Intl.NumberFormat>();
+const formato = (min: number, max: number) => {
+  const k = `${min}-${max}`;
+  let f = formatos.get(k);
+  if (!f) {
+    f = new Intl.NumberFormat('en-US', { minimumFractionDigits: min, maximumFractionDigits: max, useGrouping: true });
+    formatos.set(k, f);
+  }
+  return f;
+};
+
+/**
+ * Número con coma de miles.
+ *  • fmtNum(v)      → hasta 3 decimales, solo los necesarios (8,561 · 8,561.5)
+ *  • fmtNum(v, 2)   → exactamente 2 decimales (8,561.50)
+ *  • fmtNum(v, 0, 1)→ entre 0 y 1 decimal
+ * Acepta números o texto como "8561.000" / "8,561.000".
+ */
+export function fmtNum(v: unknown, decimales?: number, maxDecimales?: number): string {
+  const n = toNum(v);
+  const min = decimales ?? 0;
+  const max = maxDecimales ?? (decimales ?? 3);
+  return formato(min, Math.max(min, max)).format(n);
+}
+
+/** Monto en quetzales: Q 12,500.00 */
+export const fmtQ = (v: unknown) => `Q ${fmtNum(v, 2)}`;
