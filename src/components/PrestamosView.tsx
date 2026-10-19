@@ -4,7 +4,7 @@ import { Prestamo, Route, Staff, Truck } from '../types';
 import { PrestamoModal } from './modals/PrestamoModal';
 import { guardarPrestamos, eliminarPrestamo, nuevoIdPrestamo } from '../services/prestamos';
 import { getGuatemalaDateForInput } from '../utils/date';
-import { loadXLSX } from '../utils/excel';
+import { loadXLSX, formatoMiles } from '../utils/excel';
 import { isDemoMode } from '../services/demoMode';
 import {
   estadoPrestamo,
@@ -353,6 +353,7 @@ export const PrestamosView: React.FC<PrestamosViewProps> = ({
     ws['!cols'] = [13, 9, 30, 16, 8, 18, 18, 11, 11, 9, 12, 40, 34, 11, 20, 17, 26, 9, 18, 17, 26, 22, 20, 17, 50].map((wch) => ({ wch }));
     if (filas.length) ws['!autofilter'] = { ref: `A1:Y${filas.length + 1}` };
     XLSX.utils.book_append_sheet(wb, ws, 'Préstamos');
+    formatoMiles(wb);
     XLSX.writeFile(wb, `Prestamos_${vista}_${desde || 'inicio'}_a_${hasta || 'hoy'}.xlsx`);
     onShowToast(`Reporte de ${filtrados.length} préstamo(s) descargado.`, 'success');
   };
