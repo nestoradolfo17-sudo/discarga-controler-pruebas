@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Route, Truck, Staff } from '../types';
 import { formatDateToGuatemala, parseFlexibleDate } from '../utils/date';
 import { getRouteKey } from '../utils/routeKey';
@@ -200,6 +200,128 @@ const Columns: React.FC<{ data: { key: string; label: string; value: number; tip
   );
 };
 
+// ---------- Detalle de un motivo de devolución (al pasar el cursor) ----------
+interface DetalleMotivo {
+  r: Route;
+  cajas: number; // CJ devueltas atribuidas a este motivo
+  devRuta: number; // CJ devueltas totales de la ruta
+  pctDev: number; // % de devolución de la ruta
+  compartido: boolean; // la ruta tiene varios motivos (sus CJ se reparten)
+  clientes: { codigo: string; nombre: string; motivo: string; cajas?: number }[];
+}
+
+const top3 = (pares: Map<string, number>) =>
+  Array.from(pares.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+
+const DetalleMotivoPanel: React.FC<{ motivo: string; cajas: number; detalle: DetalleMotivo[] }> = ({ motivo, cajas, detalle }) => {
+  const porAgencia = new Map<string, number>();
+  const porPiloto = new Map<string, number>();
+  const porSegmento = new Map<string, number>();
+  detalle.forEach((d) => {
+    porAgencia.set(d.r.agencia || 'Sin agencia', (porAgencia.get(d.r.agencia || 'Sin agencia') || 0) + d.cajas);
+    const p = d.r.asignacion?.conductor;
+    if (p) porPiloto.set(p, (porPiloto.get(p) || 0) + 1);
+    const sg = (d.r.segmento || '').trim().toUpperCase() || 'SIN SEGMENTO';
+    porSegmento.set(sg, (porSegmento.get(sg) || 0) + d.cajas);
+  });
+  const clientes = detalle.flatMap((d) => d.clientes.map((c) => ({ ...c, ruta: d.r.id })));
+  const pilotosRepetidos = top3(porPiloto).filter(([, n]) => n > 1);
+  return (
+    <div className="space-y-3 text-xs">
+      <div>
+        <p className="font-black text-slate-900 text-sm">{motivo}</p>
+        <p className="text-slate-500">
+          {n1(cajas)} CJ devueltas en {n0(detalle.length)} ruta(s)
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-lg bg-slate-50 border border-slate-200 p-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Por agencia (CJ)</p>
+          {top3(porAgencia).map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-2">
+              <span className="truncate">{k}</span>
+              <b className="tabular-nums">{n1(v)}</b>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-lg bg-slate-50 border border-slate-200 p-2">
+          <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Por segmento (CJ)</p>
+          {top3(porSegmento).map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-2">
+              <span className="truncate">{k}</span>
+              <b className="tabular-nums">{n1(v)}</b>
+            </div>
+          ))}
+        </div>
+      </div>
+      {pilotosRepetidos.length > 0 && (
+        <p className="rounded-lg bg-amber-50 border border-amber-200 text-amber-900 px-2 py-1.5">
+          Se repite con: {pilotosRepetidos.map(([p, n]) => `${p} (${n} rutas)`).join(' · ')}
+        </p>
+      )}
+      <div>
+        <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Rutas</p>
+        <table className="w-full">
+          <thead>
+            <tr className="text-[10px] text-slate-500 border-b border-slate-200">
+              <th className="text-left py-1 pr-1">Ruta</th>
+              <th className="text-left py-1 px-1">Fecha</th>
+              <th className="text-left py-1 px-1">Agencia · piloto</th>
+              <th className="text-right py-1 px-1">CJ dev.</th>
+              <th className="text-right py-1 pl-1">% dev.</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {detalle.map((d) => (
+              <tr key={getRouteKey(d.r) + '|' + (d.r.tripNumber || 1)} className="align-top">
+                <td className="py-1 pr-1 font-mono font-bold text-slate-800 whitespace-nowrap">
+                  {d.r.id}
+                  {(d.r.tripNumber || 1) > 1 ? <span className="text-slate-400 font-normal"> V{d.r.tripNumber}</span> : null}
+                </td>
+                <td className="py-1 px-1 whitespace-nowrap text-slate-600">{routeDayKey(d.r)?.slice(0, 5) || '—'}</td>
+                <td className="py-1 px-1 text-slate-600">
+                  <span className="font-semibold text-slate-700">{d.r.agencia}</span>
+                  {d.r.asignacion?.conductor ? ` · ${d.r.asignacion.conductor}` : ''}
+                  {d.r.liquidacion?.motivoDetalle ? <span className="block text-[10.5px] text-slate-500 italic">“{d.r.liquidacion.motivoDetalle}”</span> : null}
+                </td>
+                <td className="py-1 px-1 text-right tabular-nums font-semibold" title={d.compartido ? `La ruta devolvió ${n1(d.devRuta)} CJ por varios motivos; se reparten entre ellos.` : undefined}>
+                  {n1(d.cajas)}
+                  {d.compartido ? '*' : ''}
+                </td>
+                <td className="py-1 pl-1 text-right tabular-nums font-bold" style={{ color: d.pctDev >= 0.2 ? C_CRIT : d.pctDev >= 0.1 ? C_SERIOUS : undefined }}>
+                  {(d.pctDev * 100).toFixed(1)}%
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {detalle.some((d) => d.compartido) && <p className="text-[10px] text-slate-400 mt-1">* Ruta con varios motivos: sus CJ se reparten entre ellos.</p>}
+      </div>
+      {clientes.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Clientes marcados con este motivo ({n0(clientes.length)})</p>
+          <div className="divide-y divide-slate-100">
+            {clientes.slice(0, 40).map((c, i) => (
+              <div key={c.ruta + c.codigo + i} className="flex justify-between gap-2 py-1">
+                <span className="truncate">
+                  <span className="font-mono text-slate-500">{c.codigo}</span> {c.nombre}
+                </span>
+                <span className="text-slate-500 whitespace-nowrap">
+                  Ruta {c.ruta}
+                  {c.cajas ? ` · ${n1(c.cajas)} CJ` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+          {clientes.length > 40 && <p className="text-[10px] text-slate-400 mt-1">… y {n0(clientes.length - 40)} más.</p>}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, trucks, staff, stats: statsHoy, selectedAgency, historyLimitedDays, onLoadFullHistory, isLoadingFullHistory }) => {
   const now = Date.now();
 
@@ -385,19 +507,30 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
 
   // ---------- Devoluciones del periodo ----------
   const motivos = useMemo(() => {
-    const m = new Map<string, { rutas: number; cajas: number }>();
+    const m = new Map<string, { rutas: number; cajas: number; detalle: DetalleMotivo[] }>();
     liqPeriodo.forEach((r) => {
       const dev = Number(r.liquidacion?.cajasDevueltas || 0);
       if (dev <= 0) return;
+      const ent = Number(r.liquidacion?.cajasEntregadas || 0);
       const sel = r.liquidacion?.motivosSeleccionados?.length ? r.liquidacion.motivosSeleccionados : [r.liquidacion?.motivoDevolucion || r.motivoDevolucion || 'Sin motivo registrado'];
       sel.forEach((mo) => {
         const k = String(mo || 'Sin motivo registrado');
-        const x = m.get(k) || { rutas: 0, cajas: 0 };
+        const x = m.get(k) || { rutas: 0, cajas: 0, detalle: [] };
         x.rutas += 1;
         x.cajas += dev / sel.length;
+        // Detalle para revisar (se ve al pasar el cursor por el motivo).
+        x.detalle.push({
+          r,
+          cajas: dev / sel.length,
+          devRuta: dev,
+          pctDev: ent + dev > 0 ? dev / (ent + dev) : 0,
+          compartido: sel.length > 1,
+          clientes: (r.liquidacion?.clientesPendientes || []).filter((c) => String(c.motivo || '') === k || (sel.length === 1 && !c.motivo)),
+        });
         m.set(k, x);
       });
     });
+    m.forEach((x) => x.detalle.sort((a, b) => b.cajas - a.cajas));
     return Array.from(m.entries()).map(([motivo, v]) => ({ motivo, ...v })).sort((a, b) => b.cajas - a.cajas);
   }, [liqPeriodo]);
   const motTotCj = motivos.reduce((a, m) => a + m.cajas, 0);
@@ -406,6 +539,34 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   // ---------- Recursos ----------
   const truckSinMotivo = trucks.filter((t) => t.estado === 'Disponible' && !t.motivoNoAsignado).length;
   const truckConMotivo = trucks.filter((t) => !!t.motivoNoAsignado).length;
+
+  // Detalle del motivo bajo el cursor: se muestra en una ventana flotante fija
+  // (la tabla tiene scroll horizontal y cortaría un globo normal). Tocar la
+  // fila en una tablet también la abre o la cierra.
+  const [motivoAbierto, setMotivoAbierto] = useState<{ motivo: string; top: number; left: number; arriba: boolean } | null>(null);
+  const cierre = useRef<number | undefined>(undefined);
+  const abrirMotivo = (motivo: string, el: HTMLElement) => {
+    window.clearTimeout(cierre.current);
+    const b = el.getBoundingClientRect();
+    const ancho = Math.min(560, window.innerWidth - 24);
+    const arriba = b.bottom > window.innerHeight * 0.55;
+    setMotivoAbierto({ motivo, left: Math.max(12, Math.min(b.left + 24, window.innerWidth - ancho - 12)), top: arriba ? b.top - 6 : b.bottom + 6, arriba });
+  };
+  const cerrarMotivo = () => {
+    window.clearTimeout(cierre.current);
+    cierre.current = window.setTimeout(() => setMotivoAbierto(null), 180);
+  };
+  // Al desplazar la página la ventana quedaría fuera de lugar: se cierra.
+  useEffect(() => {
+    if (!motivoAbierto) return;
+    const cerrar = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest('[role=dialog]')) return;
+      setMotivoAbierto(null);
+    };
+    window.addEventListener('scroll', cerrar, true);
+    return () => window.removeEventListener('scroll', cerrar, true);
+  }, [motivoAbierto]);
+  const motivoSel = motivoAbierto ? motivos.find((m) => m.motivo === motivoAbierto.motivo) : undefined;
 
   const cumplStatus = cumplimiento >= 0.9 ? { c: C_GOOD, t: 'En meta' } : cumplimiento >= 0.7 ? { c: C_WARN, t: 'En curso' } : { c: C_CRIT, t: 'Bajo' };
   const efStatus = efectividad >= 0.97 ? { c: C_GOOD, t: 'Óptima' } : efectividad >= 0.9 ? { c: C_WARN, t: 'Vigilar' } : { c: C_SERIOUS, t: 'Alta devolución' };
@@ -739,8 +900,22 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
             </thead>
             <tbody className="divide-y divide-slate-100">
               {motivos.map((m) => (
-                <tr key={m.motivo} className="hover:bg-slate-50">
-                  <td className="py-2 px-1 font-semibold text-slate-800">{m.motivo}</td>
+                <tr
+                  key={m.motivo}
+                  className={`cursor-help ${motivoAbierto?.motivo === m.motivo ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+                  tabIndex={0}
+                  onMouseEnter={(e) => abrirMotivo(m.motivo, e.currentTarget)}
+                  onMouseLeave={cerrarMotivo}
+                  onFocus={(e) => abrirMotivo(m.motivo, e.currentTarget)}
+                  onBlur={cerrarMotivo}
+                  onClick={(e) => (motivoAbierto?.motivo === m.motivo ? setMotivoAbierto(null) : abrirMotivo(m.motivo, e.currentTarget))}
+                >
+                  <td className="py-2 px-1 font-semibold text-slate-800">
+                    {m.motivo}
+                    <span className="ml-1.5 text-[10px] font-normal text-slate-400" data-no-pdf>
+                      ver detalle
+                    </span>
+                  </td>
                   <td className="py-2 px-1 text-right tabular-nums">{n0(m.rutas)}</td>
                   <td className="py-2 px-1 text-right tabular-nums font-semibold">{n1(m.cajas)}</td>
                   <td className="py-2 px-1 text-right tabular-nums font-bold" style={{ color: C_SERIOUS }}>{pctTxt(m.cajas, motTotCj)}</td>
@@ -765,6 +940,24 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           </table>
         </div>
       </Card>
+      {motivoAbierto && motivoSel && (
+        <div
+          data-no-pdf
+          role="dialog"
+          aria-label={`Detalle: ${motivoSel.motivo}`}
+          onMouseEnter={() => window.clearTimeout(cierre.current)}
+          onMouseLeave={cerrarMotivo}
+          className="fixed z-50 bg-white border border-slate-200 rounded-xl shadow-2xl p-3 overflow-y-auto"
+          style={{
+            left: motivoAbierto.left,
+            width: Math.min(560, window.innerWidth - 24),
+            maxHeight: motivoAbierto.arriba ? Math.max(200, motivoAbierto.top - 12) : Math.max(200, window.innerHeight - motivoAbierto.top - 12),
+            ...(motivoAbierto.arriba ? { bottom: window.innerHeight - motivoAbierto.top } : { top: motivoAbierto.top }),
+          }}
+        >
+          <DetalleMotivoPanel motivo={motivoSel.motivo} cajas={motivoSel.cajas} detalle={motivoSel.detalle} />
+        </div>
+      )}
     </div>
   );
 };
