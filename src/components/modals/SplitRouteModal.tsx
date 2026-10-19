@@ -6,7 +6,7 @@ import { Button, IconButton } from '../ui/Button';
 import { ModalFooter } from '../ui/ModalFooter';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { useMaximized } from '../ui/useMaximized';
-import { toNum } from '../../utils/number';
+import { toNum, fmtNum } from '../../utils/number';
 
 interface SplitRouteModalProps {
   isOpen: boolean;
@@ -233,7 +233,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
             <div>
               <h3 className="font-bold text-sm">Partir Ruta en Múltiples Viajes / Unidades</h3>
               <p className="text-[11px] text-slate-400">
-                Ruta {route.id} | {route.agencia} | {route.paradas} Paradas | {route.cajasFisicas} Cajas
+                Ruta {route.id} | {route.agencia} | {fmtNum(route.paradas)} Paradas | {fmtNum(route.cajasFisicas)} Cajas
               </p>
             </div>
           </div>
@@ -300,7 +300,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
             <div className="flex justify-between items-center text-[11px] text-slate-500 font-semibold px-1">
               <span>Distribución de Carga por Viaje</span>
               <span>
-                Total Base: {totalCajas} Cajas | {totalParadas} Paradas
+                Total Base: {fmtNum(totalCajas)} Cajas | {fmtNum(totalParadas)} Paradas
               </span>
             </div>
             <div
@@ -311,7 +311,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
               }`}
             >
               <span>
-                Total ingresado: {sumCajas} Cajas | {sumParadas} Paradas
+                Total ingresado: {fmtNum(sumCajas)} Cajas | {fmtNum(sumParadas)} Paradas
               </span>
               <span>
                 {emptyTrips.length > 0
@@ -412,7 +412,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                         <div className="min-w-0 text-xs">
                           <span className="font-mono text-slate-500">{c.codigo}</span>{' '}
                           <span className="font-semibold text-slate-800">{c.nombre || '-'}</span>{' '}
-                          <span className="text-slate-400">({Number(c.cajas || 0).toFixed(3)} cajas)</span>
+                          <span className="text-slate-400">({fmtNum(Number(c.cajas || 0), 3)} cajas)</span>
                         </div>
                         {numTrips > 6 ? (
                           <select
@@ -475,7 +475,7 @@ export const SplitRouteModal: React.FC<SplitRouteModalProps> = ({
                     : 'No cuadra con el total original'}
                 </span>
               ) : (
-                <span className="text-emerald-700 font-semibold">✓ Cuadra: {sumCajas} cajas · {sumParadas} paradas</span>
+                <span className="text-emerald-700 font-semibold">✓ Cuadra: {fmtNum(sumCajas)} cajas · {fmtNum(sumParadas)} paradas</span>
               )
             }
           >
