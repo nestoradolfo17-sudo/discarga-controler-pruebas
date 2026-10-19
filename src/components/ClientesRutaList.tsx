@@ -3,6 +3,7 @@ import { RouteClientEntry, ClientePendiente } from '../types';
 import { Search } from 'lucide-react';
 import { normBusqueda } from '../utils/busqueda';
 
+import { fmtNum } from '../utils/number';
 interface ClientesRutaListProps {
   clientes: RouteClientEntry[];
   // Clientes que quedaron pendientes al liquidar (con su motivo): se marcan en
@@ -76,7 +77,7 @@ export const ClientesRutaList: React.FC<ClientesRutaListProps> = ({ clientes: cl
                 <tr key={`${c.codigo}-${idx}`} className={motivo ? 'bg-rose-50/70' : 'hover:bg-slate-50'}>
                   <td className="px-2.5 py-1">{c.codigo}</td>
                   <td className="px-2.5 py-1 font-sans">{c.nombre || '-'}</td>
-                  <td className="px-2.5 py-1 text-right font-bold text-blue-700">{Number(c.cajas || 0).toFixed(3)}</td>
+                  <td className="px-2.5 py-1 text-right font-bold text-blue-700">{fmtNum(Number(c.cajas || 0), 3)}</td>
                   {nPend > 0 && (
                     <td className="px-2.5 py-1 font-sans">
                       {motivo ? (
