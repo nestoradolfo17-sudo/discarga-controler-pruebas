@@ -4,6 +4,7 @@ import { Staff } from '../../types';
 import { downloadStaffExcelTemplate, parseStaffFromSheet, ImportReport } from '../../utils/excel';
 import { X, UploadCloud, FileSpreadsheet, Download, CheckCircle, AlertCircle } from 'lucide-react';
 
+import { fmtNum } from '../../utils/number';
 interface BatchStaffModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -277,7 +278,7 @@ export const BatchStaffModal: React.FC<BatchStaffModalProps> = ({
                   </span>
                   {newStaffCount > 0 && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                      {newStaffCount} nuevos
+                      {fmtNum(newStaffCount)} nuevos
                     </span>
                   )}
                   {skippedStaffCount > 0 && (
@@ -285,7 +286,7 @@ export const BatchStaffModal: React.FC<BatchStaffModalProps> = ({
                       className="inline-flex items-center px-2 py-0.5 rounded font-semibold bg-amber-50 text-amber-800 border border-amber-200"
                       title="Estos colaboradores ya existen en el sistema (coinciden por DPI o Nombre) y no se modificarán: la carga masiva solo agrega colaboradores nuevos."
                     >
-                      {skippedStaffCount} ya existen (se omitirán)
+                      {fmtNum(skippedStaffCount)} ya existen (se omitirán)
                     </span>
                   )}
                 </div>
@@ -298,7 +299,7 @@ export const BatchStaffModal: React.FC<BatchStaffModalProps> = ({
                   <div className="flex items-center gap-1.5 font-bold">
                     <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
                     <span>
-                      Se leyeron {importReport.totalRows} filas con datos: {importReport.imported} se importaron y{' '}
+                      Se leyeron {fmtNum(importReport.totalRows)} filas con datos: {fmtNum(importReport.imported)} se importaron y{' '}
                       {importReport.discarded} se descartaron.
                     </span>
                   </div>
@@ -388,8 +389,8 @@ export const BatchStaffModal: React.FC<BatchStaffModalProps> = ({
                 <div className="text-[11px] text-slate-400">
                   {importReport ? (
                     <>
-                      Filas leídas: <strong className="text-slate-700">{importReport.totalRows}</strong> · Importadas:{' '}
-                      <strong className="text-slate-700">{importReport.imported}</strong>
+                      Filas leídas: <strong className="text-slate-700">{fmtNum(importReport.totalRows)}</strong> · Importadas:{' '}
+                      <strong className="text-slate-700">{fmtNum(importReport.imported)}</strong>
                       {importReport.discarded > 0 && (
                         <>
                           {' '}
@@ -431,7 +432,7 @@ export const BatchStaffModal: React.FC<BatchStaffModalProps> = ({
               >
                 <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
                 {skippedStaffCount > 0
-                  ? `Agregar ${newStaffCount} Colaboradores Nuevos (${skippedStaffCount} se omitirán)`
+                  ? `Agregar ${fmtNum(newStaffCount)} Colaboradores Nuevos (${fmtNum(skippedStaffCount)} se omitirán)`
                   : `Cargar ${previewStaff.length} Colaboradores al Sistema`}
               </button>
             )}
