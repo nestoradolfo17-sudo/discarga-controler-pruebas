@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+import { fmtNum } from './number';
 export interface SegmentoPdfRow {
   segmento: string;
   rutas: number;
@@ -261,11 +262,11 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
   doc.text('RUTAS PROGRAMADAS', margin + 2.5, currentY + 4.5);
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text(`${stats.totalRutas}`, margin + 2.5, currentY + 10);
+  doc.text(`${fmtNum(stats.totalRutas)}`, margin + 2.5, currentY + 10);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(100, 116, 139);
-  doc.text(`${stats.paradasPlan} paradas plan`, margin + 2.5, currentY + 13.8);
+  doc.text(`${fmtNum(stats.paradasPlan)} paradas plan`, margin + 2.5, currentY + 13.8);
 
   // KPI 2: Total Cajas Físicas
   const kpi2X = margin + cardWidth + 3;
@@ -277,14 +278,14 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
   doc.text('CAJAS FÍSICAS DÍA', kpi2X + 2.5, currentY + 4.5);
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text(`${stats.cajasPlan.toFixed(1)}`, kpi2X + 2.5, currentY + 10);
+  doc.text(`${fmtNum(stats.cajasPlan, 1)}`, kpi2X + 2.5, currentY + 10);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(100, 116, 139);
   doc.text(
     isInicio
       ? '100% carga planificada'
-      : `${(stats.cajasEntregadas || 0).toFixed(1)} ent • ${(stats.cajasDevueltas || 0).toFixed(1)} dev`,
+      : `${fmtNum((stats.cajasEntregadas || 0), 1)} ent • ${fmtNum((stats.cajasDevueltas || 0), 1)} dev`,
     kpi2X + 2.5,
     currentY + 13.8
   );
@@ -299,7 +300,7 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
   doc.text(isInicio ? 'EN TIEMPO' : 'LIQUIDADAS / CUMP.', kpi3X + 2.5, currentY + 4.5);
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text(isInicio ? `${stats.enTiempo}` : `${stats.liquidadasCount || 0} (${stats.cumplimientoPorc || '0'}%)`, kpi3X + 2.5, currentY + 10);
+  doc.text(isInicio ? `${stats.enTiempo}` : `${fmtNum(stats.liquidadasCount)} (${stats.cumplimientoPorc || '0'}%)`, kpi3X + 2.5, currentY + 10);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(100, 116, 139);
@@ -328,9 +329,9 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
   doc.text(
     isInicio
       ? (summaryTotals
-          ? `24h: ${summaryTotals.rutas24h?.totalPlan ?? 0} · 72h: ${summaryTotals.rutas72h?.totalPlan ?? 0} · +72h: ${summaryTotals.rutasMayor72h?.totalPlan ?? 0}`
+          ? `24h: ${fmtNum(summaryTotals.rutas24h?.totalPlan)} · 72h: ${fmtNum(summaryTotals.rutas72h?.totalPlan)} · +72h: ${fmtNum(summaryTotals.rutasMayor72h?.totalPlan)}`
           : `${stats.atrasadas} con 24 h o más`)
-      : `${stats.cajasEntregadas || 0} ent • ${stats.cajasDevueltas || 0} dev`,
+      : `${fmtNum(stats.cajasEntregadas)} ent • ${fmtNum(stats.cajasDevueltas)} dev`,
     kpi4X + 2.5,
     currentY + 13.8
   );
@@ -383,81 +384,81 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
         sectionDivider('POR ESTADO DE DESPACHO (categorías mutuamente excluyentes — suman el total de rutas)'),
         [
           'Total Rutas en Tránsito',
-          `${summaryTotals.enTransito.totalPlan}`,
+          `${fmtNum(summaryTotals.enTransito.totalPlan)}`,
           calcPerc(summaryTotals.enTransito.totalPlan, summaryTotals.totalRutasPlan),
-          summaryTotals.enTransito.cajasPlan.toFixed(1),
-          `${summaryTotals.enTransito.paradasPlan}`,
+          fmtNum(summaryTotals.enTransito.cajasPlan, 1),
+          `${fmtNum(summaryTotals.enTransito.paradasPlan)}`,
           'Rutas en ruta activa hacia clientes',
         ],
         ...(summaryTotals.recargasTransito && summaryTotals.recargasTransito.totalPlan > 0 ? [
           [
             'Total Recargas Programadas',
-            `${summaryTotals.recargasTransito.totalPlan}`,
+            `${fmtNum(summaryTotals.recargasTransito.totalPlan)}`,
             calcPerc(summaryTotals.recargasTransito.totalPlan, summaryTotals.totalRutasPlan),
-            summaryTotals.recargasTransito.cajasPlan.toFixed(1),
-            `${summaryTotals.recargasTransito.paradasPlan}`,
+            fmtNum(summaryTotals.recargasTransito.cajasPlan, 1),
+            `${fmtNum(summaryTotals.recargasTransito.paradasPlan)}`,
             'Programadas como Recarga (2° viaje)',
           ],
         ] : []),
         ...(summaryTotals.pendientes ? [
           [
             'Total Rutas Pendientes de Salida',
-            `${summaryTotals.pendientes.totalPlan}`,
+            `${fmtNum(summaryTotals.pendientes.totalPlan)}`,
             calcPerc(summaryTotals.pendientes.totalPlan, summaryTotals.totalRutasPlan),
-            summaryTotals.pendientes.cajasPlan.toFixed(1),
-            `${summaryTotals.pendientes.paradasPlan}`,
+            fmtNum(summaryTotals.pendientes.cajasPlan, 1),
+            `${fmtNum(summaryTotals.pendientes.paradasPlan)}`,
             'Programadas pendientes de asignación y despacho',
           ],
         ] : []),
         ...(summaryTotals.bolson && summaryTotals.bolson.totalPlan > 0 ? [
           [
             'Total Rutas Bolsón',
-            `${summaryTotals.bolson.totalPlan}`,
+            `${fmtNum(summaryTotals.bolson.totalPlan)}`,
             calcPerc(summaryTotals.bolson.totalPlan, summaryTotals.totalRutasPlan),
-            summaryTotals.bolson.cajasPlan.toFixed(1),
-            `${summaryTotals.bolson.paradasPlan}`,
+            fmtNum(summaryTotals.bolson.cajasPlan, 1),
+            `${fmtNum(summaryTotals.bolson.paradasPlan)}`,
             'Ruta Bolsón: sin asignación ni salida',
           ],
         ] : []),
         [
           'Total Rutas en Piso',
-          `${summaryTotals.enPiso.totalPlan}`,
+          `${fmtNum(summaryTotals.enPiso.totalPlan)}`,
           calcPerc(summaryTotals.enPiso.totalPlan, summaryTotals.totalRutasPlan),
-          summaryTotals.enPiso.cajasPlan.toFixed(1),
-          `${summaryTotals.enPiso.paradasPlan}`,
+          fmtNum(summaryTotals.enPiso.cajasPlan, 1),
+          `${fmtNum(summaryTotals.enPiso.paradasPlan)}`,
           'Retenidas / resguardadas en bodega',
         ],
         sectionDivider('POR ANTIGÜEDAD DESDE LO PLANIFICADO (todas las rutas sin importar su estado — se solapan con el bloque anterior)'),
         [
           'Rutas de 24 Horas',
-          `${summaryTotals.rutas24h.totalPlan}`,
+          `${fmtNum(summaryTotals.rutas24h.totalPlan)}`,
           calcPerc(summaryTotals.rutas24h.totalPlan, summaryTotals.totalRutasPlan),
-          summaryTotals.rutas24h.cajasPlan.toFixed(1),
-          `${summaryTotals.rutas24h.paradasPlan}`,
+          fmtNum(summaryTotals.rutas24h.cajasPlan, 1),
+          `${fmtNum(summaryTotals.rutas24h.paradasPlan)}`,
           'Tiempo transcurrido: 24h a 48h desde plan',
         ],
         [
           'Rutas de 72 Horas',
-          `${summaryTotals.rutas72h.totalPlan}`,
+          `${fmtNum(summaryTotals.rutas72h.totalPlan)}`,
           calcPerc(summaryTotals.rutas72h.totalPlan, summaryTotals.totalRutasPlan),
-          summaryTotals.rutas72h.cajasPlan.toFixed(1),
-          `${summaryTotals.rutas72h.paradasPlan}`,
+          fmtNum(summaryTotals.rutas72h.cajasPlan, 1),
+          `${fmtNum(summaryTotals.rutas72h.paradasPlan)}`,
           'Tiempo transcurrido: 48h a 72h desde plan',
         ],
         [
           'Rutas Mayores a 72 Horas',
-          `${summaryTotals.rutasMayor72h.totalPlan}`,
+          `${fmtNum(summaryTotals.rutasMayor72h.totalPlan)}`,
           calcPerc(summaryTotals.rutasMayor72h.totalPlan, summaryTotals.totalRutasPlan),
-          summaryTotals.rutasMayor72h.cajasPlan.toFixed(1),
-          `${summaryTotals.rutasMayor72h.paradasPlan}`,
+          fmtNum(summaryTotals.rutasMayor72h.cajasPlan, 1),
+          `${fmtNum(summaryTotals.rutasMayor72h.paradasPlan)}`,
           'Tiempo crítico: más de 72h de retraso acumulado',
         ],
         [
           'TOTAL GENERAL OPERATIVO (universo de rutas del reporte)',
-          `${summaryTotals.totalRutasPlan}`,
+          `${fmtNum(summaryTotals.totalRutasPlan)}`,
           '100.0%',
-          summaryTotals.totalCajasPlan.toFixed(1),
-          `${summaryTotals.totalParadasPlan}`,
+          fmtNum(summaryTotals.totalCajasPlan, 1),
+          `${fmtNum(summaryTotals.totalParadasPlan)}`,
           'Cuadre total de rutas del reporte (no es la suma de las 6 filas)',
         ],
       ]
@@ -465,43 +466,43 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
         sectionDivider('POR ESTADO DE DESPACHO (categorías mutuamente excluyentes — suman el total de rutas)'),
         [
           'Total Rutas en Tránsito',
-          `${summaryTotals.enTransito.totalPlan}`,
-          `${summaryTotals.enTransito.finLiquidadas}`,
-          `${summaryTotals.enTransito.finPendientes}`,
-          summaryTotals.enTransito.finCajasEntregadas.toFixed(1),
-          summaryTotals.enTransito.finCajasDevueltas.toFixed(1),
-          summaryTotals.enTransito.finPendientes === 0 ? 'Completadas al 100%' : `${summaryTotals.enTransito.finPendientes} aún en tránsito`,
+          `${fmtNum(summaryTotals.enTransito.totalPlan)}`,
+          `${fmtNum(summaryTotals.enTransito.finLiquidadas)}`,
+          `${fmtNum(summaryTotals.enTransito.finPendientes)}`,
+          fmtNum(summaryTotals.enTransito.finCajasEntregadas, 1),
+          fmtNum(summaryTotals.enTransito.finCajasDevueltas, 1),
+          summaryTotals.enTransito.finPendientes === 0 ? 'Completadas al 100%' : `${fmtNum(summaryTotals.enTransito.finPendientes)} aún en tránsito`,
         ],
         ...(summaryTotals.recargasTransito && summaryTotals.recargasTransito.totalPlan > 0 ? [
           [
             'Total Recargas Realizadas',
-            `${summaryTotals.recargasTransito.totalPlan}`,
-            `${summaryTotals.recargasTransito.finLiquidadas}`,
-            `${summaryTotals.recargasTransito.finPendientes}`,
-            summaryTotals.recargasTransito.finCajasEntregadas.toFixed(1),
-            summaryTotals.recargasTransito.finCajasDevueltas.toFixed(1),
+            `${fmtNum(summaryTotals.recargasTransito.totalPlan)}`,
+            `${fmtNum(summaryTotals.recargasTransito.finLiquidadas)}`,
+            `${fmtNum(summaryTotals.recargasTransito.finPendientes)}`,
+            fmtNum(summaryTotals.recargasTransito.finCajasEntregadas, 1),
+            fmtNum(summaryTotals.recargasTransito.finCajasDevueltas, 1),
             summaryTotals.recargasTransito.finPendientes === 0
               ? 'Completadas al 100%'
-              : `${summaryTotals.recargasTransito.finPendientes} recarga(s) aún en ruta`,
+              : `${fmtNum(summaryTotals.recargasTransito.finPendientes)} recarga(s) aún en ruta`,
           ],
         ] : []),
         ...(summaryTotals.pendientes ? [
           [
             'Total Rutas Pendientes de Salida',
-            `${summaryTotals.pendientes.totalPlan}`,
-            `${summaryTotals.pendientes.finLiquidadas}`,
-            `${summaryTotals.pendientes.finPendientes}`,
-            summaryTotals.pendientes.finCajasEntregadas.toFixed(1),
-            summaryTotals.pendientes.finCajasDevueltas.toFixed(1),
-            summaryTotals.pendientes.finPendientes === 0 ? 'Evacuadas al cierre' : `${summaryTotals.pendientes.finPendientes} sin despachar`,
+            `${fmtNum(summaryTotals.pendientes.totalPlan)}`,
+            `${fmtNum(summaryTotals.pendientes.finLiquidadas)}`,
+            `${fmtNum(summaryTotals.pendientes.finPendientes)}`,
+            fmtNum(summaryTotals.pendientes.finCajasEntregadas, 1),
+            fmtNum(summaryTotals.pendientes.finCajasDevueltas, 1),
+            summaryTotals.pendientes.finPendientes === 0 ? 'Evacuadas al cierre' : `${fmtNum(summaryTotals.pendientes.finPendientes)} sin despachar`,
           ],
         ] : []),
         ...(summaryTotals.bolson && summaryTotals.bolson.totalPlan > 0 ? [
           [
             'Total Rutas Bolsón',
-            `${summaryTotals.bolson.totalPlan}`,
+            `${fmtNum(summaryTotals.bolson.totalPlan)}`,
             '0',
-            `${summaryTotals.bolson.totalPlan}`,
+            `${fmtNum(summaryTotals.bolson.totalPlan)}`,
             '0.0',
             '0.0',
             'Sin asignación ni salida (por liquidar como rechazo)',
@@ -509,48 +510,48 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
         ] : []),
         [
           'Total Rutas en Piso',
-          `${summaryTotals.enPiso.totalPlan}`,
-          `${summaryTotals.enPiso.finLiquidadas}`,
-          `${summaryTotals.enPiso.finQuedan}`,
+          `${fmtNum(summaryTotals.enPiso.totalPlan)}`,
+          `${fmtNum(summaryTotals.enPiso.finLiquidadas)}`,
+          `${fmtNum(summaryTotals.enPiso.finQuedan)}`,
           '-',
           '-',
-          `${summaryTotals.enPiso.finQuedan} rutas resguardadas para mañana`,
+          `${fmtNum(summaryTotals.enPiso.finQuedan)} rutas resguardadas para mañana`,
         ],
         sectionDivider('POR ANTIGÜEDAD DESDE LO PLANIFICADO (todas las rutas sin importar su estado — se solapan con el bloque anterior)'),
         [
           'Rutas de 24 Horas',
-          `${summaryTotals.rutas24h.totalPlan}`,
-          `${summaryTotals.rutas24h.finLiquidadas}`,
-          `${summaryTotals.rutas24h.finPendientes}`,
-          summaryTotals.rutas24h.finCajasEntregadas.toFixed(1),
-          summaryTotals.rutas24h.finCajasDevueltas.toFixed(1),
-          `${summaryTotals.rutas24h.finLiquidadas} evacuadas con éxito`,
+          `${fmtNum(summaryTotals.rutas24h.totalPlan)}`,
+          `${fmtNum(summaryTotals.rutas24h.finLiquidadas)}`,
+          `${fmtNum(summaryTotals.rutas24h.finPendientes)}`,
+          fmtNum(summaryTotals.rutas24h.finCajasEntregadas, 1),
+          fmtNum(summaryTotals.rutas24h.finCajasDevueltas, 1),
+          `${fmtNum(summaryTotals.rutas24h.finLiquidadas)} evacuadas con éxito`,
         ],
         [
           'Rutas de 72 Horas',
-          `${summaryTotals.rutas72h.totalPlan}`,
-          `${summaryTotals.rutas72h.finLiquidadas}`,
-          `${summaryTotals.rutas72h.finPendientes}`,
-          summaryTotals.rutas72h.finCajasEntregadas.toFixed(1),
-          summaryTotals.rutas72h.finCajasDevueltas.toFixed(1),
-          summaryTotals.rutas72h.finPendientes > 0 ? `${summaryTotals.rutas72h.finPendientes} sin liquidar` : 'Evacuadas',
+          `${fmtNum(summaryTotals.rutas72h.totalPlan)}`,
+          `${fmtNum(summaryTotals.rutas72h.finLiquidadas)}`,
+          `${fmtNum(summaryTotals.rutas72h.finPendientes)}`,
+          fmtNum(summaryTotals.rutas72h.finCajasEntregadas, 1),
+          fmtNum(summaryTotals.rutas72h.finCajasDevueltas, 1),
+          summaryTotals.rutas72h.finPendientes > 0 ? `${fmtNum(summaryTotals.rutas72h.finPendientes)} sin liquidar` : 'Evacuadas',
         ],
         [
           'Rutas Mayores a 72 Horas',
-          `${summaryTotals.rutasMayor72h.totalPlan}`,
-          `${summaryTotals.rutasMayor72h.finLiquidadas}`,
-          `${summaryTotals.rutasMayor72h.finPendientes}`,
-          summaryTotals.rutasMayor72h.finCajasEntregadas.toFixed(1),
-          summaryTotals.rutasMayor72h.finCajasDevueltas.toFixed(1),
+          `${fmtNum(summaryTotals.rutasMayor72h.totalPlan)}`,
+          `${fmtNum(summaryTotals.rutasMayor72h.finLiquidadas)}`,
+          `${fmtNum(summaryTotals.rutasMayor72h.finPendientes)}`,
+          fmtNum(summaryTotals.rutasMayor72h.finCajasEntregadas, 1),
+          fmtNum(summaryTotals.rutasMayor72h.finCajasDevueltas, 1),
           summaryTotals.rutasMayor72h.finPendientes > 0 ? 'CRÍTICO: Pendientes de evacuar' : 'Completamente resueltas',
         ],
         [
           'TOTAL GENERAL OPERATIVO (universo de rutas del reporte)',
-          `${summaryTotals.totalRutasPlan}`,
-          `${stats.liquidadasCount || 0}`,
+          `${fmtNum(summaryTotals.totalRutasPlan)}`,
+          `${fmtNum(stats.liquidadasCount)}`,
           `${summaryTotals.totalRutasPlan - (stats.liquidadasCount || 0)}`,
-          summaryTotals.totalCajasEntregadas.toFixed(1),
-          summaryTotals.totalCajasDevueltas.toFixed(1),
+          fmtNum(summaryTotals.totalCajasEntregadas, 1),
+          fmtNum(summaryTotals.totalCajasDevueltas, 1),
           `Efectividad entrega: ${stats.efectividadEntregaPorc || '100'}% (no es la suma de las 6 filas)`,
         ],
       ];
@@ -601,7 +602,7 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
   if (data.segmentos && data.segmentos.rows.length) {
     const seg = data.segmentos, T = seg.total;
     const pc = (v: number, t: number) => (t > 0 ? ((v / t) * 100).toFixed(1) : '0.0') + '%';
-    const n1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('es-GT', { maximumFractionDigits: 1 });
+    const n1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('en-US', { maximumFractionDigits: 1 });
     if (currentY > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); currentY = 15; }
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
@@ -612,8 +613,8 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
       ? [['SEGMENTO', 'RUTAS', '% RUTAS', 'CAJAS (CJ)', '% CJ', 'PARADAS', 'PENDIENTES', 'EN TRÁNSITO', 'A PISO', 'ATRASADAS', 'CJ / RUTA']]
       : [['SEGMENTO', 'RUTAS PLAN', 'LIQUIDADAS', 'SIN LIQUIDAR', '% CUMPL.', 'CJ PLAN', '% CJ', 'CJ ENTREGADAS', 'CJ DEVUELTAS', 'CJ POR LIQUIDAR', '% EFECT.']];
     const row = (r: SegmentoPdfRow) => isInicio
-      ? [r.segmento, `${r.rutas}`, pc(r.rutas, T.rutas), n1(r.cjPlan), pc(r.cjPlan, T.cjPlan), `${r.paradas}`, `${r.pendientes}`, `${r.transito}`, `${r.piso}`, `${r.atrasadas}`, r.rutas ? n1(r.cjPlan / r.rutas) : '0']
-      : [r.segmento, `${r.rutas}`, `${r.liquidadas}`, `${r.noLiquidadas}`, r.cumplimiento.toFixed(1) + '%', n1(r.cjPlan), pc(r.cjPlan, T.cjPlan), n1(r.cjEnt), n1(r.cjDev), n1(r.cjPendientes), r.efectividad.toFixed(1) + '%'];
+      ? [r.segmento, `${r.rutas}`, pc(r.rutas, T.rutas), n1(r.cjPlan), pc(r.cjPlan, T.cjPlan), `${fmtNum(r.paradas)}`, `${r.pendientes}`, `${r.transito}`, `${r.piso}`, `${r.atrasadas}`, r.rutas ? n1(r.cjPlan / r.rutas) : '0']
+      : [r.segmento, `${r.rutas}`, `${r.liquidadas}`, `${fmtNum(r.noLiquidadas)}`, r.cumplimiento.toFixed(1) + '%', n1(r.cjPlan), pc(r.cjPlan, T.cjPlan), n1(r.cjEnt), n1(r.cjDev), n1(r.cjPendientes), r.efectividad.toFixed(1) + '%'];
     const body = [...seg.rows.map(row), row(T)];
     autoTable(doc, {
       startY: currentY,
@@ -639,7 +640,7 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
   // 3c. CIERRE: LIQUIDACIÓN POR SEGMENTO Y MOTIVO
   if (!isInicio && data.liqSegMotivo && data.liqSegMotivo.grupos.length) {
     const L = data.liqSegMotivo;
-    const n1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('es-GT', { maximumFractionDigits: 1 });
+    const n1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('en-US', { maximumFractionDigits: 1 });
     const pDev = (r: LiqSegMotivoRow) => (r.cjEnt + r.cjDev > 0 ? ((r.cjDev / (r.cjEnt + r.cjDev)) * 100).toFixed(1) : '0.0') + '%';
     if (currentY > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); currentY = 15; }
     doc.setFont('helvetica', 'bold');
@@ -678,8 +679,8 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
 
   // 3d. CIERRE: DETALLE POR SEGMENTO (excepciones para notificar)
   if (!isInicio && data.cierreSegmentos && data.cierreSegmentos.length) {
-    const n1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('es-GT', { maximumFractionDigits: 1 });
-    const q = (v: number) => 'Q ' + v.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const n1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('en-US', { maximumFractionDigits: 1 });
+    const q = (v: number) => 'Q ' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     data.cierreSegmentos.forEach((g) => {
       if (currentY > doc.internal.pageSize.getHeight() - 45) { doc.addPage(); currentY = 15; }
       doc.setFont('helvetica', 'bold');
@@ -689,7 +690,7 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.text(
-        `${g.liq}/${g.plan} liquidadas (${g.cumpl.toFixed(1)}%) · CJ plan ${n1(g.cjPlan)} · entregadas ${n1(g.cjEnt)} · devueltas ${n1(g.cjDev)} · por liquidar ${n1(g.cjPendiente)} · efectividad ${g.efect.toFixed(1)}% · paradas ok/rech ${g.paradasOk}/${g.paradasRech} · cajas abiertas ${g.cajasAbiertas.length}${g.montoCajas ? ' (' + q(g.montoCajas) + ')' : ''}`,
+        `${g.liq}/${g.plan} liquidadas (${g.cumpl.toFixed(1)}%) · CJ plan ${n1(g.cjPlan)} · entregadas ${n1(g.cjEnt)} · devueltas ${n1(g.cjDev)} · por liquidar ${n1(g.cjPendiente)} · efectividad ${g.efect.toFixed(1)}% · paradas ok/rech ${fmtNum(g.paradasOk)}/${fmtNum(g.paradasRech)} · cajas abiertas ${g.cajasAbiertas.length}${g.montoCajas ? ' (' + q(g.montoCajas) + ')' : ''}`,
         margin,
         currentY + 7.5,
         { maxWidth: pageWidth - margin * 2 }
@@ -753,8 +754,8 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
         r.fechaPlanificadaStr,
         r.fechaDespachadaStr,
         `${r.estaAtrasado ? 'CON RETRASO' : 'EN TIEMPO'} - ${r.indicadorDetalle}`,
-        `${r.cajasFisicasPlan}`,
-        `${r.paradasPlan}`,
+        `${fmtNum(r.cajasFisicasPlan)}`,
+        `${fmtNum(r.paradasPlan)}`,
         r.agencia,
         r.mercado || '-',
       ];
@@ -765,10 +766,10 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
         r.fechaDespachadaStr,
         r.horasTexto,
         r.estaAtrasado ? 'RETRASO' : 'A TIEMPO',
-        `${r.cajasFisicasPlan}`,
-        r.isLiquidada ? `${r.cajasFisicasEntregadas}` : '-',
-        r.isLiquidada ? `${r.cajasFisicasDevueltas}` : '-',
-        r.isLiquidada ? `${r.guiasExitosas}/${r.paradasPlan}` : `${r.paradasPlan}`,
+        `${fmtNum(r.cajasFisicasPlan)}`,
+        r.isLiquidada ? `${fmtNum(r.cajasFisicasEntregadas)}` : '-',
+        r.isLiquidada ? `${fmtNum(r.cajasFisicasDevueltas)}` : '-',
+        r.isLiquidada ? `${r.guiasExitosas}/${fmtNum(r.paradasPlan)}` : `${fmtNum(r.paradasPlan)}`,
         r.isLiquidada ? 'Liquidada' : (r as any).isBolson ? 'Ruta Bolsón' : r.isFloor ? 'En Piso' : 'Pendiente',
         r.agencia,
       ];
@@ -914,7 +915,7 @@ export function generateDailySummaryPdf(data: DailySummaryPdfData, action: 'save
       pageHeight - 4.5
     );
 
-    doc.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 4.5, { align: 'right' });
+    doc.text(`Página ${i} de ${fmtNum(totalPages)}`, pageWidth - margin, pageHeight - 4.5, { align: 'right' });
   }
 
   // Ejecución de la acción
