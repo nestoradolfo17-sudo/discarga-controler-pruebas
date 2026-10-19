@@ -71,8 +71,14 @@ export const PrestamoModal: React.FC<PrestamoModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const hoy = getGuatemalaDateForInput();
-    setOrigen(inicial?.agenciaOrigen || agenciaPorDefecto || '');
-    setDestino(inicial?.agenciaDestino || '');
+    // La agencia del usuario es la que RECIBE (solicita); la que presta se elige.
+    const destinoPorDefecto = agenciasDestino.includes(agenciaPorDefecto)
+      ? agenciaPorDefecto
+      : agenciasDestino.length === 1
+        ? agenciasDestino[0]
+        : '';
+    setOrigen(inicial?.agenciaOrigen || '');
+    setDestino(inicial ? inicial.agenciaDestino || '' : destinoPorDefecto);
     setDesde(inicial?.fechaInicio || hoy);
     setHasta(inicial?.fechaFin || hoy);
     setRecursos(inicial?.recursos || []);
@@ -283,6 +289,7 @@ export const PrestamoModal: React.FC<PrestamoModalProps> = ({
                     </option>
                   ))}
               </select>
+              <p className="mt-0.5 text-[10.5px] text-slate-400">Solo las agencias a las que tienes acceso.</p>
             </div>
             <div>
               <label htmlFor="preDesde" className={label}>Desde *</label>
