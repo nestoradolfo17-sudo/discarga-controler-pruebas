@@ -23,6 +23,7 @@ import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { formatDateToGuatemala } from '../../utils/date';
 
+import { fmtNum } from '../../utils/number';
 interface AssignmentDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -183,7 +184,7 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
                     <p className="text-[11px] text-sky-800 leading-relaxed">
                       Este camión también transporta:{' '}
                       <span className="font-semibold font-mono">
-                        {sharedRoutes.map((r) => `Ruta ${r.id} (${r.cajasFisicas} cjs)`).join(', ')}
+                        {sharedRoutes.map((r) => `Ruta ${r.id} (${fmtNum(r.cajasFisicas)} cjs)`).join(', ')}
                       </span>
                     </p>
                   </div>
@@ -355,8 +356,8 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
                       </span>
                     </div>
                     <div className="text-[10px] text-slate-500 font-mono">
-                      Entregadas: <b className="text-emerald-700">{d.cajasEntregadas}</b> | Devueltas:{' '}
-                      <b className="text-rose-700">{d.cajasDevueltas}</b>
+                      Entregadas: <b className="text-emerald-700">{fmtNum(d.cajasEntregadas)}</b> | Devueltas:{' '}
+                      <b className="text-rose-700">{fmtNum(d.cajasDevueltas)}</b>
                     </div>
                     {d.motivoDevolucion && (
                       <div className="text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60">
@@ -373,8 +374,8 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
         {/* Footer */}
         <div className="bg-slate-50 border-t border-slate-200 px-5 py-3 flex items-center justify-between shrink-0">
           <div className="text-[11px] text-slate-500">
-            Carga: <b className="text-slate-800">{route.cajasFisicas} cjs</b> · Paradas:{' '}
-            <b className="text-slate-800">{route.paradas}</b>
+            Carga: <b className="text-slate-800">{fmtNum(route.cajasFisicas)} cjs</b> · Paradas:{' '}
+            <b className="text-slate-800">{fmtNum(route.paradas)}</b>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" onClick={onClose}>
