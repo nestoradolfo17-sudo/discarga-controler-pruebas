@@ -6,9 +6,10 @@ import { RecargaModal, TIPOS_RECARGA } from './modals/RecargaModal';
 import { leerRecargas, guardarRecarga, guardarRecargas, eliminarRecarga, suscribirRecargas, nuevoIdRecarga, formatoCorrelativo } from '../services/recargas';
 import { imprimirBoletaRecarga } from '../utils/boletaRecarga';
 import { getGuatemalaDateForInput } from '../utils/date';
-import { loadXLSX } from '../utils/excel';
+import { loadXLSX, formatoMiles } from '../utils/excel';
 import { isDemoMode } from '../services/demoMode';
 
+import { fmtNum } from '../utils/number';
 // --- Módulo de Recargas ---
 // Registro de las recargas realizadas (manuales y las que se crean solas al
 // asignar una ruta como "Recarga"), con filtros por rango de fechas, agencia,
@@ -470,6 +471,8 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
     wsR['!cols'] = [20, 11, 12, 11, 15, 28].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, wsR, 'Resumen por agencia');
 
+    formatoMiles(wb);
+
     XLSX.writeFile(wb, `Recargas_${desde || 'inicio'}_a_${hasta || 'hoy'}${agencia ? '_' + agencia.replace(/\s+/g, '_') : ''}.xlsx`);
     onShowToast(`Reporte de ${filtradas.length} recarga(s) descargado.`, 'success');
   };
@@ -603,7 +606,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
         <div id="avisoPendientesRecarga" className="flex flex-wrap items-center gap-2 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-4 py-3 text-xs">
           <ShieldCheck className="w-4 h-4 shrink-0" />
           <span className="flex-1">
-            <b>{pendientesTotales} recarga(s) esperan tu autorización.</b> Mientras no las autorices no cuentan para pago.
+            <b>{fmtNum(pendientesTotales)} recarga(s) esperan tu autorización.</b> Mientras no las autorices no cuentan para pago.
           </span>
           {estado !== 'Pendiente' && (
             <button
