@@ -16,8 +16,8 @@ const tarifaDe = (puesto: string) => TARIFA[puesto] ?? (puesto === 'APP' ? 75 : 
 // Tipos de recarga: identidad (no estado) → paleta categórica en orden fijo.
 const COLOR_TIPO: Record<TipoRecarga, string> = { Simple: '#2a78d6', Doble: '#eb6834', Triple: '#1baf7a' };
 
-const n0 = (v: number) => Math.round(v).toLocaleString('es-GT');
-const q0 = (v: number) => `Q ${Math.round(v).toLocaleString('es-GT')}`;
+const n0 = (v: number) => Math.round(v).toLocaleString('en-US');
+const q0 = (v: number) => `Q ${Math.round(v).toLocaleString('en-US')}`;
 const pct = (v: number, t: number) => (t > 0 ? `${Math.round((v / t) * 100)}%` : '—');
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const hoyIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guatemala' }).format(new Date());
