@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X, Check, Eye, EyeOff } from 'lucide-react';
 
+import { fmtNum } from '../utils/number';
 // --- Buscador táctil de recursos (camiones / pilotos / auxiliares) ---
 //
 // Reemplaza las listas desplegables largas del modal de asignación: en una
@@ -139,7 +140,7 @@ export const ResourcePicker: React.FC<ResourcePickerProps> = ({
               {title}
               {multi && (
                 <span className="ml-2 text-xs font-semibold text-slate-500">
-                  ({selectedCount} de {maxSelect})
+                  ({fmtNum(selectedCount)} de {maxSelect})
                 </span>
               )}
             </h4>
@@ -189,7 +190,7 @@ export const ResourcePicker: React.FC<ResourcePickerProps> = ({
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <span className="text-xs text-slate-500">
               {results.length} resultado{results.length === 1 ? '' : 's'}
-              {!showAll && hiddenCount > 0 && ` · ${hiddenCount} oculto(s) por no estar disponibles hoy`}
+              {!showAll && hiddenCount > 0 && ` · ${fmtNum(hiddenCount)} oculto(s) por no estar disponibles hoy`}
             </span>
             <div className="flex items-center gap-2">
               {headerExtra}
