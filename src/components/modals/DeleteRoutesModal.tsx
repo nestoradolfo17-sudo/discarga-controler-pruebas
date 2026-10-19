@@ -3,7 +3,7 @@ import { Route } from '../../types';
 import { X, Trash2, Lock, AlertTriangle, KeyRound, Eye, EyeOff, ShieldAlert } from 'lucide-react';
 import { getRouteKey } from '../../utils/routeKey';
 import { Button } from '../ui/Button';
-import { toNum } from '../../utils/number';
+import { toNum, fmtNum } from '../../utils/number';
 
 interface DeleteRoutesModalProps {
   isOpen: boolean;
@@ -129,7 +129,7 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
           <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
             <span>Rutas afectadas ({routesToDelete.length})</span>
             <span className="font-mono text-slate-500 lowercase">
-              {routesToDelete.reduce((acc, r) => acc + (toNum(r.cajasFisicas) || 0), 0).toFixed(1)} cajas totales
+              {fmtNum(routesToDelete.reduce((acc, r) => acc + (toNum(r.cajasFisicas) || 0), 0), 1)} cajas totales
             </span>
           </div>
           <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-200/60">
@@ -143,7 +143,7 @@ export const DeleteRoutesModal: React.FC<DeleteRoutesModalProps> = ({
                   <span className="text-slate-400 text-[10px] truncate hidden sm:inline">({r.mercado || 'Mercado Abierto'})</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="font-mono text-[11px] text-slate-700">{r.cajasFisicas} cjs</span>
+                  <span className="font-mono text-[11px] text-slate-700">{fmtNum(r.cajasFisicas)} cjs</span>
                   <span
                     className={`px-1.5 py-0.2 rounded text-[10px] font-semibold ${
                       r.estado === 'En Tránsito'
