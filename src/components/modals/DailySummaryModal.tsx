@@ -35,7 +35,7 @@ import {
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { generateDailySummaryPdf } from '../../utils/dailySummaryPdf';
-import { toNum } from '../../utils/number';
+import { toNum, fmtNum } from '../../utils/number';
 import { getRouteKey } from '../../utils/routeKey';
 
 export type DailySummaryMode = 'inicio' | 'fin';
@@ -1236,28 +1236,28 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     Rutas Planificadas
                   </span>
                   <span className="w-6 h-6 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
-                    {inicioTotalRutas}
+                    {fmtNum(inicioTotalRutas)}
                   </span>
                 </div>
                 <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-slate-900">{inicioTotalRutas}</span>
+                  <span className="text-2xl font-black text-slate-900">{fmtNum(inicioTotalRutas)}</span>
                   <span className="text-xs font-semibold text-slate-500">rutas programadas</span>
                 </div>
                 <p className="text-[11px] text-blue-700 font-medium mt-0.5">
-                  {inicioTotalCajasPlan.toFixed(1)} cajas • {inicioTotalParadasPlan} paradas
+                  {fmtNum(inicioTotalCajasPlan, 1)} cajas • {fmtNum(inicioTotalParadasPlan)} paradas
                 </p>
                 <div className="mt-1.5 pt-1 border-t border-blue-100 flex items-center justify-between text-[10px] font-bold">
-                  <span className="text-amber-800">{inicioPendientesCount} pendientes</span>
+                  <span className="text-amber-800">{fmtNum(inicioPendientesCount)} pendientes</span>
                   {inicioBolsonCount > 0 && (
                     <>
                       <span className="text-slate-300">•</span>
-                      <span className="text-rose-800">{inicioBolsonCount} bolsón</span>
+                      <span className="text-rose-800">{fmtNum(inicioBolsonCount)} bolsón</span>
                     </>
                   )}
                   <span className="text-slate-300">•</span>
-                  <span className="text-blue-800">{inicioTransitoCount} en tránsito</span>
+                  <span className="text-blue-800">{fmtNum(inicioTransitoCount)} en tránsito</span>
                   <span className="text-slate-300">•</span>
-                  <span className="text-amber-700">{inicioPisoCount} en piso</span>
+                  <span className="text-amber-700">{fmtNum(inicioPisoCount)} en piso</span>
                 </div>
               </div>
 
@@ -1289,12 +1289,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </div>
                 <div className="mt-1 flex items-baseline space-x-1.5">
                   <span className="text-2xl font-black text-indigo-900">
-                    {inicioTotalCajasPlan.toLocaleString('es-GT', { maximumFractionDigits: 1 })}
+                    {inicioTotalCajasPlan.toLocaleString('en-US', { maximumFractionDigits: 1 })}
                   </span>
                   <span className="text-xs font-semibold text-slate-500">cajas programadas</span>
                 </div>
                 <p className="text-[11px] text-indigo-700 font-medium mt-0.5">
-                  {inicioTotalParadasPlan} paradas • {inicioTotalRutas} rutas en total
+                  {fmtNum(inicioTotalParadasPlan)} paradas • {fmtNum(inicioTotalRutas)} rutas en total
                 </p>
                 <div className="mt-1.5 pt-1 border-t border-indigo-100 flex items-center justify-between text-[10px] font-bold">
                   <span className="text-indigo-800">100% volumen planificado</span>
@@ -1324,11 +1324,11 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     En Tiempo
                   </span>
                   <span className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
-                    {inicioEnTiempoCount}
+                    {fmtNum(inicioEnTiempoCount)}
                   </span>
                 </div>
                 <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-emerald-800">{inicioEnTiempoCount}</span>
+                  <span className="text-2xl font-black text-emerald-800">{fmtNum(inicioEnTiempoCount)}</span>
                   <span className="text-xs font-semibold text-slate-500">en programación normal</span>
                 </div>
                 <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
@@ -1363,16 +1363,16 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       inicioAtrasadasCount > 0 ? 'bg-rose-100 text-rose-800 animate-pulse' : 'bg-slate-100 text-slate-600'
                     }`}
                   >
-                    {inicioAtrasadasCount}
+                    {fmtNum(inicioAtrasadasCount)}
                   </span>
                 </div>
                 <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-rose-700">{inicioAtrasadasCount}</span>
+                  <span className="text-2xl font-black text-rose-700">{fmtNum(inicioAtrasadasCount)}</span>
                   <span className="text-xs font-semibold text-slate-500">con retraso</span>
                 </div>
                 <p className="text-[11px] text-rose-600 font-bold mt-0.5">
                   {inicioAtrasadasCount > 0
-                    ? `${summaryTotals.rutas24h.totalPlan} de 24 h · ${summaryTotals.rutas72h.totalPlan} de 72 h · ${summaryTotals.rutasMayor72h.totalPlan} de +72 h`
+                    ? `${fmtNum(summaryTotals.rutas24h.totalPlan)} de 24 h · ${fmtNum(summaryTotals.rutas72h.totalPlan)} de 72 h · ${fmtNum(summaryTotals.rutasMayor72h.totalPlan)} de +72 h`
                     : '0 atrasos registrados'}
                 </p>
               </div>
@@ -1400,15 +1400,15 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     En Bodega / A Piso
                   </span>
                   <span className="w-6 h-6 rounded-md bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xs">
-                    {inicioPisoCount}
+                    {fmtNum(inicioPisoCount)}
                   </span>
                 </div>
                 <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-amber-800">{inicioPisoCount}</span>
+                  <span className="text-2xl font-black text-amber-800">{fmtNum(inicioPisoCount)}</span>
                   <span className="text-xs font-semibold text-slate-500">rutas retenidas</span>
                 </div>
                 <p className="text-[11px] text-amber-700 font-medium mt-0.5">
-                  {inicioRecargasCount} recargas programadas
+                  {fmtNum(inicioRecargasCount)} recargas programadas
                 </p>
               </div>
             </div>
@@ -1438,12 +1438,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     Rutas Liquidadas
                   </span>
                   <span className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
-                    {finLiquidadasCount}
+                    {fmtNum(finLiquidadasCount)}
                   </span>
                 </div>
                 <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-emerald-800">{finLiquidadasCount}</span>
-                  <span className="text-xs font-semibold text-slate-500">/ {finTotalPlanificadas} planificadas</span>
+                  <span className="text-2xl font-black text-emerald-800">{fmtNum(finLiquidadasCount)}</span>
+                  <span className="text-xs font-semibold text-slate-500">/ {fmtNum(finTotalPlanificadas)} planificadas</span>
                 </div>
                 <p className="text-[11px] text-emerald-700 font-bold mt-0.5">
                   {finCumplimientoPorc}% cumplimiento de rutas
@@ -1478,13 +1478,13 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </div>
                 <div className="mt-1 flex items-baseline space-x-1.5">
                   <span className="text-2xl font-black text-indigo-900">
-                    {finTotalCajasPlan.toLocaleString('es-GT', { maximumFractionDigits: 1 })}
+                    {finTotalCajasPlan.toLocaleString('en-US', { maximumFractionDigits: 1 })}
                   </span>
                   <span className="text-xs font-semibold text-slate-500">cajas del día</span>
                 </div>
                 <p className="text-[11px] text-indigo-700 font-semibold mt-0.5 flex items-center">
-                  <span className="text-emerald-700 font-bold mr-1.5">{finTotalCajasEntregadas.toLocaleString('es-GT', { maximumFractionDigits: 1 })} ent.</span>
-                  <span className="text-rose-600">({finTotalCajasDevueltas.toLocaleString('es-GT', { maximumFractionDigits: 1 })} dev.)</span>
+                  <span className="text-emerald-700 font-bold mr-1.5">{finTotalCajasEntregadas.toLocaleString('en-US', { maximumFractionDigits: 1 })} ent.</span>
+                  <span className="text-rose-600">({finTotalCajasDevueltas.toLocaleString('en-US', { maximumFractionDigits: 1 })} dev.)</span>
                 </p>
                 <div className="mt-1.5 pt-1 border-t border-indigo-100 flex items-center justify-between text-[10px] font-bold">
                   <span className="text-slate-600">Total planificado de la jornada</span>
@@ -1518,12 +1518,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   </span>
                 </div>
                 <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-slate-900">{finTotalCajasEntregadas.toFixed(1)}</span>
+                  <span className="text-2xl font-black text-slate-900">{fmtNum(finTotalCajasEntregadas, 1)}</span>
                   <span className="text-xs font-semibold text-slate-500">entregadas</span>
                 </div>
                 <p className="text-[11px] text-blue-700 font-semibold mt-0.5 flex items-center">
                   <span className="text-emerald-700 font-bold mr-1.5">{finEfectividadEntregaPorc}% efectividad</span>
-                  <span className="text-rose-600">({finTotalCajasDevueltas.toFixed(1)} devueltas)</span>
+                  <span className="text-rose-600">({fmtNum(finTotalCajasDevueltas, 1)} devueltas)</span>
                 </p>
               </div>
 
@@ -1550,24 +1550,24 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     Cierre: En Tiempo vs Atraso
                   </span>
                   <span className="w-6 h-6 rounded-md bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs">
-                    {finAtrasadasCount}
+                    {fmtNum(finAtrasadasCount)}
                   </span>
                 </div>
                 <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-emerald-700">{finEnTiempoCount}</span>
+                  <span className="text-2xl font-black text-emerald-700">{fmtNum(finEnTiempoCount)}</span>
                   <span className="text-xs font-bold text-slate-600">a tiempo</span>
                   <span className="text-slate-300">/</span>
-                  <span className="text-xl font-black text-rose-600">{finAtrasadasCount}</span>
+                  <span className="text-xl font-black text-rose-600">{fmtNum(finAtrasadasCount)}</span>
                   <span className="text-xs font-bold text-rose-600">atrasadas</span>
                 </div>
                 {/* Mismo desglose de atrasadas que Inicio de Día (días completos). */}
                 <p className="text-[11px] text-rose-600 font-bold mt-0.5">
                   {finAtrasadasCount > 0
-                    ? `${summaryTotals.rutas24h.totalPlan} de 24 h · ${summaryTotals.rutas72h.totalPlan} de 72 h · ${summaryTotals.rutasMayor72h.totalPlan} de +72 h`
+                    ? `${fmtNum(summaryTotals.rutas24h.totalPlan)} de 24 h · ${fmtNum(summaryTotals.rutas72h.totalPlan)} de 72 h · ${fmtNum(summaryTotals.rutasMayor72h.totalPlan)} de +72 h`
                     : '0 atrasos registrados'}
                 </p>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                  {finTotalParadasRealizadas} paradas completadas exitosas
+                  {fmtNum(finTotalParadasRealizadas)} paradas completadas exitosas
                 </p>
               </div>
 
@@ -1594,11 +1594,11 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     Quedan en Bodega
                   </span>
                   <span className="w-6 h-6 rounded-md bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xs">
-                    {finPisoCount}
+                    {fmtNum(finPisoCount)}
                   </span>
                 </div>
                 <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-amber-800">{finPisoCount}</span>
+                  <span className="text-2xl font-black text-amber-800">{fmtNum(finPisoCount)}</span>
                   <span className="text-xs font-semibold text-slate-500">rutas en piso</span>
                 </div>
                 <p className="text-[11px] text-amber-700 font-medium mt-0.5">
@@ -1633,7 +1633,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   }`}
                 >
                   <Clock className="w-3.5 h-3.5 mr-1" />
-                  Pendientes ({inicioPendientesCount})
+                  Pendientes ({fmtNum(inicioPendientesCount)})
                 </button>
                 {inicioBolsonCount > 0 && (
                   <button
@@ -1647,7 +1647,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     }`}
                   >
                     <Package className="w-3.5 h-3.5 mr-1" />
-                    Ruta Bolsón ({inicioBolsonCount})
+                    Ruta Bolsón ({fmtNum(inicioBolsonCount)})
                   </button>
                 )}
                 <button
@@ -1659,7 +1659,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   }`}
                 >
                   <Navigation className="w-3.5 h-3.5 mr-1" />
-                  En Tránsito ({inicioTransitoCount})
+                  En Tránsito ({fmtNum(inicioTransitoCount)})
                 </button>
                 <button
                   onClick={() => setInicioFilter('en_tiempo')}
@@ -1670,7 +1670,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   }`}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                  En Tiempo ({inicioEnTiempoCount})
+                  En Tiempo ({fmtNum(inicioEnTiempoCount)})
                 </button>
                 <button
                   onClick={() => setInicioFilter('atrasadas')}
@@ -1681,7 +1681,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   }`}
                 >
                   <AlertCircle className="w-3.5 h-3.5 mr-1" />
-                  Atrasadas ({inicioAtrasadasCount})
+                  Atrasadas ({fmtNum(inicioAtrasadasCount)})
                 </button>
                 <button
                   onClick={() => setInicioFilter('piso')}
@@ -1692,7 +1692,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   }`}
                 >
                   <Warehouse className="w-3.5 h-3.5 mr-1" />
-                  En Bodega / Piso ({inicioPisoCount})
+                  En Bodega / Piso ({fmtNum(inicioPisoCount)})
                 </button>
                 <button
                   onClick={() => setInicioFilter('recargas')}
@@ -1703,7 +1703,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   }`}
                 >
                   <RefreshCw className="w-3.5 h-3.5 mr-1" />
-                  Recargas ({inicioRecargasCount})
+                  Recargas ({fmtNum(inicioRecargasCount)})
                 </button>
               </div>
             ) : (
@@ -1728,7 +1728,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   }`}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                  Liquidadas ({finLiquidadasCount})
+                  Liquidadas ({fmtNum(finLiquidadasCount)})
                 </button>
                 <button
                   onClick={() => setFinFilter('en_tiempo')}
@@ -1739,7 +1739,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   }`}
                 >
                   <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                  En Tiempo ({finEnTiempoCount})
+                  En Tiempo ({fmtNum(finEnTiempoCount)})
                 </button>
                 <button
                   onClick={() => setFinFilter('atrasadas')}
@@ -1750,7 +1750,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   }`}
                 >
                   <AlertCircle className="w-3.5 h-3.5 mr-1" />
-                  Atrasadas ({finAtrasadasCount})
+                  Atrasadas ({fmtNum(finAtrasadasCount)})
                 </button>
                 <button
                   onClick={() => setFinFilter('pendientes')}
@@ -1772,7 +1772,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   }`}
                 >
                   <Warehouse className="w-3.5 h-3.5 mr-1" />
-                  En Bodega ({finPisoCount})
+                  En Bodega ({fmtNum(finPisoCount)})
                 </button>
               </div>
             )}
@@ -1860,7 +1860,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           {/* ============================================================== */}
           {showSection('segmento') && (() => {
             const T = segmentStats.total;
-            const n1 = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 1 });
+            const n1 = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 1 });
             const pc = (v: number, t: number) => (t > 0 ? ((v / t) * 100).toFixed(1) : '0.0') + '%';
             const Bar = ({ v, t, color }: { v: number; t: number; color: string }) => (
               <div className="h-1.5 w-full rounded-full bg-slate-100 mt-1 print:hidden">
@@ -1921,7 +1921,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                           <>{r.pendientes} pend. · {r.transito} tránsito · {r.piso} piso{r.atrasadas ? <span className="text-rose-600 font-bold"> · {r.atrasadas} atras.</span> : null}</>
                         ) : (
                           <>
-                            <span className="text-emerald-700 font-bold">{r.liquidadas} liq.</span> · {r.noLiquidadas} sin liquidar · cumpl. {r.cumplimiento.toFixed(1)}%
+                            <span className="text-emerald-700 font-bold">{r.liquidadas} liq.</span> · {fmtNum(r.noLiquidadas)} sin liquidar · cumpl. {r.cumplimiento.toFixed(1)}%
                           </>
                         )}
                       </div>
@@ -1974,7 +1974,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                               <>
                                 <td className={td}>{r.rutas}</td>
                                 <td className={td + ' text-emerald-700 font-bold'}>{r.liquidadas}</td>
-                                <td className={td + (r.noLiquidadas ? ' text-amber-700 font-bold' : '')}>{r.noLiquidadas}</td>
+                                <td className={td + (r.noLiquidadas ? ' text-amber-700 font-bold' : '')}>{fmtNum(r.noLiquidadas)}</td>
                                 <td className={td}>{r.cumplimiento.toFixed(1)}%</td>
                                 <td className={td + ' font-bold'}>{n1(r.cjPlan)}</td>
                                 <td className={td}>{pc(r.cjPlan, T.cjPlan)}</td>
@@ -2001,8 +2001,8 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           {/* ============================================================== */}
           {mode === 'fin' && showSection('liqsegmot') && (() => {
             const { total, motivos } = liqBySegMotivo;
-            const n1 = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 1 });
-            const q = (v: number) => 'Q ' + v.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const n1 = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 1 });
+            const q = (v: number) => 'Q ' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const pDev = (r: { cjDev: number; cjEnt: number }) => (r.cjEnt + r.cjDev > 0 ? ((r.cjDev / (r.cjEnt + r.cjDev)) * 100).toFixed(1) + '%' : '0.0%');
             const th = 'px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600 text-right whitespace-nowrap';
             const thl = th.replace('text-right', 'text-left');
@@ -2088,7 +2088,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                           <Chip l="CJ plan" v={n1(g.cjPlan)} />
                           <Chip l="CJ entregadas" v={n1(g.cjEnt)} tone="green" />
                           <Chip l="CJ devueltas" v={n1(g.cjDev)} tone={g.cjDev ? 'red' : 'slate'} />
-                          <Chip l="Paradas ok / rech." v={`${g.paradasOk} / ${g.paradasRech}`} />
+                          <Chip l="Paradas ok / rech." v={`${fmtNum(g.paradasOk)} / ${fmtNum(g.paradasRech)}`} />
                           <Chip l="Cajas abiertas" v={`${g.cajasAbiertas.length}${g.montoCajas ? ' · ' + q(g.montoCajas) : ''}`} tone={g.cajasAbiertas.length ? 'amber' : 'slate'} />
                         </div>
 
@@ -2244,7 +2244,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
 
               <div className="flex items-center space-x-2 text-xs">
                 <span className="px-2.5 py-1 rounded-lg bg-slate-800 print:bg-slate-200 text-indigo-200 print:text-slate-800 border border-slate-700 print:border-slate-300 font-bold">
-                  {summaryTotals.totalRutasPlan} rutas analizadas
+                  {fmtNum(summaryTotals.totalRutasPlan)} rutas analizadas
                 </span>
               </div>
             </div>
@@ -2306,7 +2306,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     {/* Rutas: Inicio o Plan */}
                     <td className="px-3.5 py-3 text-center">
                       <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-black bg-blue-100 text-blue-800 border border-blue-200 shadow-2xs">
-                        {summaryTotals.enTransito.totalPlan}
+                        {fmtNum(summaryTotals.enTransito.totalPlan)}
                       </span>
                     </td>
 
@@ -2322,11 +2322,11 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                         <div className="inline-flex flex-col items-center">
                           <div className="flex items-center space-x-1.5">
                             <span className="px-2 py-0.5 rounded-md text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              {summaryTotals.enTransito.finLiquidadas} liquidadas
+                              {fmtNum(summaryTotals.enTransito.finLiquidadas)} liquidadas
                             </span>
                             {summaryTotals.enTransito.finPendientes > 0 && (
                               <span className="px-2 py-0.5 rounded-md text-xs font-black bg-blue-100 text-blue-800 border border-blue-300">
-                                {summaryTotals.enTransito.finPendientes} en ruta
+                                {fmtNum(summaryTotals.enTransito.finPendientes)} en ruta
                               </span>
                             )}
                           </div>
@@ -2339,18 +2339,18 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       {mode === 'inicio' ? (
                         <div>
                           <span className="text-xs font-black text-slate-900">
-                            {summaryTotals.enTransito.cajasPlan.toFixed(1)}
+                            {fmtNum(summaryTotals.enTransito.cajasPlan, 1)}
                           </span>
                           <span className="text-[10px] text-slate-500 ml-1">cajas</span>
                         </div>
                       ) : (
                         <div>
                           <div className="text-xs font-black text-emerald-800">
-                            {summaryTotals.enTransito.finCajasEntregadas.toFixed(1)} ent.
+                            {fmtNum(summaryTotals.enTransito.finCajasEntregadas, 1)} ent.
                           </div>
                           {summaryTotals.enTransito.finCajasDevueltas > 0 && (
                             <div className="text-[10px] font-bold text-rose-600">
-                              ({summaryTotals.enTransito.finCajasDevueltas.toFixed(1)} dev.)
+                              ({fmtNum(summaryTotals.enTransito.finCajasDevueltas, 1)} dev.)
                             </div>
                           )}
                         </div>
@@ -2380,7 +2380,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-100 text-blue-800 border border-blue-300">
                           <Clock className="w-3.5 h-3.5 mr-1" />
-                          {summaryTotals.enTransito.finPendientes} En Ruta Sin Liquidar
+                          {fmtNum(summaryTotals.enTransito.finPendientes)} En Ruta Sin Liquidar
                         </span>
                       )}
                     </td>
@@ -2411,7 +2411,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     {/* Rutas: Inicio o Plan */}
                     <td className="px-3.5 py-3 text-center">
                       <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-black bg-blue-100 text-blue-800 border border-blue-200 shadow-2xs">
-                        {summaryTotals.recargasTransito.totalPlan}
+                        {fmtNum(summaryTotals.recargasTransito.totalPlan)}
                       </span>
                     </td>
 
@@ -2427,11 +2427,11 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                         <div className="inline-flex flex-col items-center">
                           <div className="flex items-center space-x-1.5">
                             <span className="px-2 py-0.5 rounded-md text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              {summaryTotals.recargasTransito.finLiquidadas} liquidadas
+                              {fmtNum(summaryTotals.recargasTransito.finLiquidadas)} liquidadas
                             </span>
                             {summaryTotals.recargasTransito.finPendientes > 0 && (
                               <span className="px-2 py-0.5 rounded-md text-xs font-black bg-blue-100 text-blue-800 border border-blue-300">
-                                {summaryTotals.recargasTransito.finPendientes} en ruta
+                                {fmtNum(summaryTotals.recargasTransito.finPendientes)} en ruta
                               </span>
                             )}
                           </div>
@@ -2444,18 +2444,18 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       {mode === 'inicio' ? (
                         <div>
                           <span className="text-xs font-black text-slate-900">
-                            {summaryTotals.recargasTransito.cajasPlan.toFixed(1)}
+                            {fmtNum(summaryTotals.recargasTransito.cajasPlan, 1)}
                           </span>
                           <span className="text-[10px] text-slate-500 ml-1">cajas</span>
                         </div>
                       ) : (
                         <div>
                           <div className="text-xs font-black text-emerald-800">
-                            {summaryTotals.recargasTransito.finCajasEntregadas.toFixed(1)} ent.
+                            {fmtNum(summaryTotals.recargasTransito.finCajasEntregadas, 1)} ent.
                           </div>
                           {summaryTotals.recargasTransito.finCajasDevueltas > 0 && (
                             <div className="text-[10px] font-bold text-rose-600">
-                              ({summaryTotals.recargasTransito.finCajasDevueltas.toFixed(1)} dev.)
+                              ({fmtNum(summaryTotals.recargasTransito.finCajasDevueltas, 1)} dev.)
                             </div>
                           )}
                         </div>
@@ -2485,7 +2485,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-100 text-blue-800 border border-blue-300">
                           <Clock className="w-3.5 h-3.5 mr-1" />
-                          {summaryTotals.recargasTransito.finPendientes} En Ruta Sin Liquidar
+                          {fmtNum(summaryTotals.recargasTransito.finPendientes)} En Ruta Sin Liquidar
                         </span>
                       )}
                     </td>
@@ -2512,7 +2512,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     {/* Rutas: Inicio o Plan */}
                     <td className="px-3.5 py-3 text-center">
                       <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
-                        {summaryTotals.pendientes.totalPlan}
+                        {fmtNum(summaryTotals.pendientes.totalPlan)}
                       </span>
                     </td>
 
@@ -2528,11 +2528,11 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                         <div className="inline-flex flex-col items-center">
                           <div className="flex items-center space-x-1.5">
                             <span className="px-2 py-0.5 rounded-md text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              {summaryTotals.pendientes.finLiquidadas} liq.
+                              {fmtNum(summaryTotals.pendientes.finLiquidadas)} liq.
                             </span>
                             {summaryTotals.pendientes.finPendientes > 0 && (
                               <span className="px-2 py-0.5 rounded-md text-xs font-black bg-amber-100 text-amber-900 border border-amber-300">
-                                {summaryTotals.pendientes.finPendientes} sin despachar
+                                {fmtNum(summaryTotals.pendientes.finPendientes)} sin despachar
                               </span>
                             )}
                           </div>
@@ -2545,18 +2545,18 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       {mode === 'inicio' ? (
                         <div>
                           <span className="text-xs font-black text-slate-900">
-                            {summaryTotals.pendientes.cajasPlan.toFixed(1)}
+                            {fmtNum(summaryTotals.pendientes.cajasPlan, 1)}
                           </span>
                           <span className="text-[10px] text-slate-500 ml-1">cajas</span>
                         </div>
                       ) : (
                         <div>
                           <div className="text-xs font-black text-emerald-800">
-                            {summaryTotals.pendientes.finCajasEntregadas.toFixed(1)} ent.
+                            {fmtNum(summaryTotals.pendientes.finCajasEntregadas, 1)} ent.
                           </div>
                           {summaryTotals.pendientes.finCajasDevueltas > 0 && (
                             <div className="text-[10px] font-bold text-rose-600">
-                              ({summaryTotals.pendientes.finCajasDevueltas.toFixed(1)} dev.)
+                              ({fmtNum(summaryTotals.pendientes.finCajasDevueltas, 1)} dev.)
                             </div>
                           )}
                         </div>
@@ -2586,7 +2586,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-300">
                           <Clock className="w-3.5 h-3.5 mr-1" />
-                          {summaryTotals.pendientes.finPendientes} Sin Despachar
+                          {fmtNum(summaryTotals.pendientes.finPendientes)} Sin Despachar
                         </span>
                       )}
                     </td>
@@ -2610,7 +2610,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     </td>
                     <td className="px-3.5 py-3 text-center">
                       <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-black bg-rose-100 text-rose-900 border border-rose-300 shadow-2xs">
-                        {summaryTotals.bolson.totalPlan}
+                        {fmtNum(summaryTotals.bolson.totalPlan)}
                       </span>
                     </td>
                     <td className="px-3.5 py-3 text-center">
@@ -2621,11 +2621,11 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       </span>
                     </td>
                     <td className="px-3.5 py-3 text-right">
-                      <span className="text-xs font-black text-slate-900">{summaryTotals.bolson.cajasPlan.toFixed(1)}</span>
+                      <span className="text-xs font-black text-slate-900">{fmtNum(summaryTotals.bolson.cajasPlan, 1)}</span>
                       <span className="text-[10px] text-slate-500 ml-1">cajas</span>
                     </td>
                     <td className="px-3.5 py-3 text-center">
-                      <span className="text-xs font-bold text-slate-800">{summaryTotals.bolson.paradasPlan}</span>
+                      <span className="text-xs font-bold text-slate-800">{fmtNum(summaryTotals.bolson.paradasPlan)}</span>
                     </td>
                     <td className="px-3.5 py-3 text-center">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-300">
@@ -2654,7 +2654,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     {/* Rutas: Inicio o Plan */}
                     <td className="px-3.5 py-3 text-center">
                       <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-black bg-amber-100 text-amber-800 border border-amber-200 shadow-2xs">
-                        {summaryTotals.enPiso.totalPlan}
+                        {fmtNum(summaryTotals.enPiso.totalPlan)}
                       </span>
                     </td>
 
@@ -2668,7 +2668,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                         </span>
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-black bg-amber-100 text-amber-800 border border-amber-300">
-                          {summaryTotals.enPiso.finQuedan} en bodega al cierre
+                          {fmtNum(summaryTotals.enPiso.finQuedan)} en bodega al cierre
                         </span>
                       )}
                     </td>
@@ -2678,14 +2678,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       {mode === 'inicio' ? (
                         <div>
                           <span className="text-xs font-black text-slate-900">
-                            {summaryTotals.enPiso.cajasPlan.toFixed(1)}
+                            {fmtNum(summaryTotals.enPiso.cajasPlan, 1)}
                           </span>
                           <span className="text-[10px] text-slate-500 ml-1">cajas</span>
                         </div>
                       ) : (
                         <div>
                           <span className="text-xs font-black text-amber-900">
-                            {summaryTotals.enPiso.finCajasQuedan.toFixed(1)}
+                            {fmtNum(summaryTotals.enPiso.finCajasQuedan, 1)}
                           </span>
                           <span className="text-[10px] text-amber-700 font-semibold ml-1">en bodega</span>
                         </div>
@@ -2739,7 +2739,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     {/* Rutas: Inicio o Plan */}
                     <td className="px-3.5 py-3 text-center">
                       <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-black bg-orange-100 text-orange-800 border border-orange-200 shadow-2xs">
-                        {summaryTotals.rutas24h.totalPlan}
+                        {fmtNum(summaryTotals.rutas24h.totalPlan)}
                       </span>
                     </td>
 
@@ -2754,7 +2754,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       ) : (
                         <div className="inline-flex items-center space-x-1">
                           <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-100 text-emerald-800">
-                            {summaryTotals.rutas24h.finLiquidadas} liq.
+                            {fmtNum(summaryTotals.rutas24h.finLiquidadas)} liq.
                           </span>
                           <span className="text-slate-400">/</span>
                           <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${
@@ -2762,7 +2762,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                               ? 'bg-rose-100 text-rose-800 font-black'
                               : 'bg-slate-100 text-slate-600'
                           }`}>
-                            {summaryTotals.rutas24h.finPendientes} pend.
+                            {fmtNum(summaryTotals.rutas24h.finPendientes)} pend.
                           </span>
                         </div>
                       )}
@@ -2773,18 +2773,18 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       {mode === 'inicio' ? (
                         <div>
                           <span className="text-xs font-black text-slate-900">
-                            {summaryTotals.rutas24h.cajasPlan.toFixed(1)}
+                            {fmtNum(summaryTotals.rutas24h.cajasPlan, 1)}
                           </span>
                           <span className="text-[10px] text-slate-500 ml-1">cajas</span>
                         </div>
                       ) : (
                         <div>
                           <div className="text-xs font-black text-slate-900">
-                            {summaryTotals.rutas24h.finCajasEntregadas.toFixed(1)} ent.
+                            {fmtNum(summaryTotals.rutas24h.finCajasEntregadas, 1)} ent.
                           </div>
                           {summaryTotals.rutas24h.finCajasDevueltas > 0 && (
                             <div className="text-[10px] font-bold text-rose-600">
-                              ({summaryTotals.rutas24h.finCajasDevueltas.toFixed(1)} dev.)
+                              ({fmtNum(summaryTotals.rutas24h.finCajasDevueltas, 1)} dev.)
                             </div>
                           )}
                         </div>
@@ -2818,7 +2818,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-200">
                           <AlertTriangle className="w-3.5 h-3.5 mr-1" />
-                          {summaryTotals.rutas24h.finPendientes} Pendientes
+                          {fmtNum(summaryTotals.rutas24h.finPendientes)} Pendientes
                         </span>
                       )}
                     </td>
@@ -2848,7 +2848,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     {/* Rutas: Inicio o Plan */}
                     <td className="px-3.5 py-3 text-center">
                       <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-black bg-rose-100 text-rose-800 border border-rose-200 shadow-2xs">
-                        {summaryTotals.rutas72h.totalPlan}
+                        {fmtNum(summaryTotals.rutas72h.totalPlan)}
                       </span>
                     </td>
 
@@ -2863,7 +2863,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       ) : (
                         <div className="inline-flex items-center space-x-1">
                           <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-100 text-emerald-800">
-                            {summaryTotals.rutas72h.finLiquidadas} liq.
+                            {fmtNum(summaryTotals.rutas72h.finLiquidadas)} liq.
                           </span>
                           <span className="text-slate-400">/</span>
                           <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${
@@ -2871,7 +2871,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                               ? 'bg-rose-100 text-rose-800 font-black'
                               : 'bg-slate-100 text-slate-600'
                           }`}>
-                            {summaryTotals.rutas72h.finPendientes} pend.
+                            {fmtNum(summaryTotals.rutas72h.finPendientes)} pend.
                           </span>
                         </div>
                       )}
@@ -2882,18 +2882,18 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       {mode === 'inicio' ? (
                         <div>
                           <span className="text-xs font-black text-slate-900">
-                            {summaryTotals.rutas72h.cajasPlan.toFixed(1)}
+                            {fmtNum(summaryTotals.rutas72h.cajasPlan, 1)}
                           </span>
                           <span className="text-[10px] text-slate-500 ml-1">cajas</span>
                         </div>
                       ) : (
                         <div>
                           <div className="text-xs font-black text-slate-900">
-                            {summaryTotals.rutas72h.finCajasEntregadas.toFixed(1)} ent.
+                            {fmtNum(summaryTotals.rutas72h.finCajasEntregadas, 1)} ent.
                           </div>
                           {summaryTotals.rutas72h.finCajasDevueltas > 0 && (
                             <div className="text-[10px] font-bold text-rose-600">
-                              ({summaryTotals.rutas72h.finCajasDevueltas.toFixed(1)} dev.)
+                              ({fmtNum(summaryTotals.rutas72h.finCajasDevueltas, 1)} dev.)
                             </div>
                           )}
                         </div>
@@ -2927,7 +2927,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-200">
                           <AlertTriangle className="w-3.5 h-3.5 mr-1" />
-                          {summaryTotals.rutas72h.finPendientes} Pendientes
+                          {fmtNum(summaryTotals.rutas72h.finPendientes)} Pendientes
                         </span>
                       )}
                     </td>
@@ -2957,7 +2957,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     {/* Rutas: Inicio o Plan */}
                     <td className="px-3.5 py-3 text-center">
                       <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-black bg-red-100 text-red-800 border border-red-200 shadow-2xs">
-                        {summaryTotals.rutasMayor72h.totalPlan}
+                        {fmtNum(summaryTotals.rutasMayor72h.totalPlan)}
                       </span>
                     </td>
 
@@ -2972,7 +2972,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       ) : (
                         <div className="inline-flex items-center space-x-1">
                           <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-100 text-emerald-800">
-                            {summaryTotals.rutasMayor72h.finLiquidadas} liq.
+                            {fmtNum(summaryTotals.rutasMayor72h.finLiquidadas)} liq.
                           </span>
                           <span className="text-slate-400">/</span>
                           <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${
@@ -2980,7 +2980,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                               ? 'bg-red-100 text-red-800 font-black'
                               : 'bg-slate-100 text-slate-600'
                           }`}>
-                            {summaryTotals.rutasMayor72h.finPendientes} pend.
+                            {fmtNum(summaryTotals.rutasMayor72h.finPendientes)} pend.
                           </span>
                         </div>
                       )}
@@ -2991,18 +2991,18 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       {mode === 'inicio' ? (
                         <div>
                           <span className="text-xs font-black text-slate-900">
-                            {summaryTotals.rutasMayor72h.cajasPlan.toFixed(1)}
+                            {fmtNum(summaryTotals.rutasMayor72h.cajasPlan, 1)}
                           </span>
                           <span className="text-[10px] text-slate-500 ml-1">cajas</span>
                         </div>
                       ) : (
                         <div>
                           <div className="text-xs font-black text-slate-900">
-                            {summaryTotals.rutasMayor72h.finCajasEntregadas.toFixed(1)} ent.
+                            {fmtNum(summaryTotals.rutasMayor72h.finCajasEntregadas, 1)} ent.
                           </div>
                           {summaryTotals.rutasMayor72h.finCajasDevueltas > 0 && (
                             <div className="text-[10px] font-bold text-rose-600">
-                              ({summaryTotals.rutasMayor72h.finCajasDevueltas.toFixed(1)} dev.)
+                              ({fmtNum(summaryTotals.rutasMayor72h.finCajasDevueltas, 1)} dev.)
                             </div>
                           )}
                         </div>
@@ -3036,7 +3036,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-black bg-red-100 text-red-800 border border-red-200">
                           <AlertCircle className="w-3.5 h-3.5 mr-1" />
-                          {summaryTotals.rutasMayor72h.finPendientes} Críticas Pendientes
+                          {fmtNum(summaryTotals.rutasMayor72h.finPendientes)} Críticas Pendientes
                         </span>
                       )}
                     </td>
@@ -3059,7 +3059,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                     </td>
                     <td className="px-3.5 py-3 text-center">
                       <span className="text-sm font-black text-white print:text-slate-900">
-                        {summaryTotals.totalRutasPlan}
+                        {fmtNum(summaryTotals.totalRutasPlan)}
                       </span>
                     </td>
                     <td className="px-3.5 py-3 text-center">
@@ -3067,23 +3067,23 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                         <span className="text-xs font-bold text-slate-300 print:text-slate-700">100.0%</span>
                       ) : (
                         <span className="text-xs font-bold text-emerald-300 print:text-emerald-800">
-                          {summaryTotals.total?.finLiquidadasCount ?? 0} liq. / {summaryTotals.total?.finPendientesCount ?? 0} pend.
+                          {fmtNum(summaryTotals.total?.finLiquidadasCount)} liq. / {fmtNum(summaryTotals.total?.finPendientesCount)} pend.
                         </span>
                       )}
                     </td>
                     <td className="px-3.5 py-3 text-right">
                       {mode === 'inicio' ? (
                         <span className="text-xs font-black text-white print:text-slate-900">
-                          {summaryTotals.totalCajasPlan.toFixed(1)}
+                          {fmtNum(summaryTotals.totalCajasPlan, 1)}
                         </span>
                       ) : (
                         <div>
                           <div className="text-xs font-black text-emerald-400 print:text-emerald-800">
-                            {summaryTotals.totalCajasEntregadas.toFixed(1)} ent.
+                            {fmtNum(summaryTotals.totalCajasEntregadas, 1)} ent.
                           </div>
                           {summaryTotals.totalCajasDevueltas > 0 && (
                             <div className="text-[10px] text-rose-300 print:text-rose-700">
-                              {summaryTotals.totalCajasDevueltas.toFixed(1)} dev.
+                              {fmtNum(summaryTotals.totalCajasDevueltas, 1)} dev.
                             </div>
                           )}
                         </div>
@@ -3400,23 +3400,23 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                           <td className="px-3.5 py-3 text-right whitespace-nowrap font-black text-slate-900">
                             {mode === 'inicio' ? (
                               <span className="text-sm font-black text-slate-900">
-                                {item.cajasFisicasPlan.toFixed(1)}
+                                {fmtNum(item.cajasFisicasPlan, 1)}
                               </span>
                             ) : (
                               <div className="flex flex-col items-end">
                                 <div className="flex items-center space-x-1.5 text-xs font-black">
                                   <span className="text-slate-500 font-semibold" title="Planificadas">
-                                    P: {item.cajasFisicasPlan.toFixed(1)}
+                                    P: {fmtNum(item.cajasFisicasPlan, 1)}
                                   </span>
                                   <span className="text-slate-300">|</span>
                                   <span className="text-emerald-700 font-black" title="Entregadas">
-                                    E: {item.isLiquidada ? item.cajasFisicasEntregadas.toFixed(1) : '-'}
+                                    E: {item.isLiquidada ? fmtNum(item.cajasFisicasEntregadas, 1) : '-'}
                                   </span>
                                   {item.cajasFisicasDevueltas > 0 && (
                                     <>
                                       <span className="text-slate-300">|</span>
                                       <span className="text-rose-700 font-black" title="Devueltas">
-                                        D: {item.cajasFisicasDevueltas.toFixed(1)}
+                                        D: {fmtNum(item.cajasFisicasDevueltas, 1)}
                                       </span>
                                     </>
                                   )}
@@ -3434,12 +3434,12 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                           <td className="px-3.5 py-3 text-center whitespace-nowrap font-bold text-slate-800">
                             {mode === 'inicio' ? (
                               <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-xs">
-                                {item.paradasPlan} paradas
+                                {fmtNum(item.paradasPlan)} paradas
                               </span>
                             ) : (
                               <div className="flex flex-col items-center">
                                 <span className="text-xs font-bold text-slate-800">
-                                  {item.isLiquidada ? `${item.guiasExitosas} / ${item.paradasPlan}` : `${item.paradasPlan} prog.`}
+                                  {item.isLiquidada ? `${item.guiasExitosas} / ${fmtNum(item.paradasPlan)}` : `${fmtNum(item.paradasPlan)} prog.`}
                                 </span>
                                 {item.isLiquidada && item.guiasRechazadas > 0 && (
                                   <span className="text-[10px] font-bold text-rose-600">
