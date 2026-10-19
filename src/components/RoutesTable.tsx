@@ -28,7 +28,7 @@ import { RouteRowActions } from './RouteRowActions';
 import { Button } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 import { getRouteKey, isSameSplitGroup } from '../utils/routeKey';
-import { toNum } from '../utils/number';
+import { toNum, fmtNum } from '../utils/number';
 import type { ResumenGrupo } from '../utils/splitGroup';
 
 interface RoutesTableProps {
@@ -349,11 +349,11 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
             <span className="inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl bg-white border border-blue-200 text-blue-800 shadow-2xs">
               <span className="text-[10px] font-bold uppercase tracking-wide text-blue-500">Subtotal</span>
               <span className="text-sm font-extrabold font-mono">
-                {subtotalCajas.toLocaleString('es-GT', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                {subtotalCajas.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
               </span>
               <span className="text-[11px] font-semibold">cajas</span>
               <span className="text-slate-300">·</span>
-              <span className="text-sm font-bold">{subtotalParadas}</span>
+              <span className="text-sm font-bold">{fmtNum(subtotalParadas)}</span>
               <span className="text-[11px] font-semibold">paradas</span>
             </span>
           </div>
@@ -603,7 +603,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   <td className="px-2 2xl:px-3 py-2 md:py-2.5">
                     <div className="space-y-0.5">
                       <div className="font-bold text-slate-800 text-xs flex items-center whitespace-nowrap">
-                        {route.paradas} paradas
+                        {fmtNum(route.paradas)} paradas
                         {route.isSplitRoute && (
                           <span className="bg-purple-100 text-purple-800 border border-purple-200 px-1.5 py-0.2 rounded text-[10px] font-bold ml-1">
                             V{route.tripNumber}/{route.totalTrips}
@@ -611,23 +611,23 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                         )}
                       </div>
                       <div className="text-[11px] md:text-xs font-mono text-slate-700 whitespace-nowrap">
-                        Cajas: <b className="text-blue-700 font-bold">{route.cajasFisicas || 0}</b>
+                        Cajas: <b className="text-blue-700 font-bold">{fmtNum(route.cajasFisicas)}</b>
                       </div>
                       {(() => {
                         const g = resumenGrupoDe ? resumenGrupoDe(route) : null;
                         if (!g) return null;
-                        const f = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 1 });
+                        const f = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 1 });
                         return (
                           <div
                             className="text-[10px] font-semibold text-purple-800 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 whitespace-nowrap"
-                            title={`Ruta ${g.padre}: total ${f(g.total)} cajas · entregadas ${f(g.entregado)} · devueltas ${f(g.devuelto)} · pendientes de entregar ${f(g.pendiente)} en ${g.viajesPendientes} viaje(s)`}
+                            title={`Ruta ${g.padre}: total ${f(g.total)} cajas · entregadas ${f(g.entregado)} · devueltas ${f(g.devuelto)} · pendientes de entregar ${f(g.pendiente)} en ${fmtNum(g.viajesPendientes)} viaje(s)`}
                           >
                             Grupo: pend. {f(g.pendiente)} de {f(g.total)}
                           </div>
                         );
                       })()}
                       <div className="text-[10px] md:text-[11px] font-mono text-slate-500 whitespace-nowrap">
-                        12 Oz: <b className="text-slate-700 font-bold">{route.cajas12Oz || 0}</b>
+                        12 Oz: <b className="text-slate-700 font-bold">{fmtNum(route.cajas12Oz)}</b>
                       </div>
                       {route.clientesRuta && route.clientesRuta.length > 0 && (
                         <button
