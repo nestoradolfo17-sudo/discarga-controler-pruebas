@@ -7,6 +7,7 @@ import { DeleteAuthModal } from './modals/DeleteAuthModal';
 import { downloadStaffExcelTemplate, downloadTruckExcelTemplate } from '../utils/excel';
 import { formatDateToGuatemala } from '../utils/date';
 
+import { fmtNum } from '../utils/number';
 // --- Filtro por disponibilidad (solo vista: no modifica ningún dato) ---
 // Usa el mismo criterio que la ventana de Asignación: un motivo de no
 // asignación solo cuenta si se registró HOY; personal en BAJA no se asigna.
@@ -179,7 +180,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
         className="flex-1 min-w-[200px] max-w-sm min-h-[44px] px-3 text-sm border border-slate-300 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500"
       />
       <span className="text-xs text-slate-500">
-        Mostrando {shown} de {total}
+        Mostrando {shown} de {fmtNum(total)}
       </span>
     </div>
   );
