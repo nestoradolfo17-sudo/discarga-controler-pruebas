@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Lock, Trash2, ShieldAlert } from 'lucide-react';
 import { Button } from '../ui/Button';
 
+import { fmtNum } from '../../utils/number';
 // Eliminar camiones o personal se confirma con la CONTRASEÑA del usuario en
 // sesión (antes era un código fijo escrito dentro de la app, visible para
 // cualquiera que revisara el código descargado en el navegador).
@@ -109,7 +110,7 @@ export const DeleteAuthModal: React.FC<DeleteAuthModalProps> = ({
           <div className="p-2.5 bg-rose-100 border-2 border-rose-300 rounded-xl text-rose-950 space-y-2">
             <div className="flex items-center gap-1.5 font-black text-rose-900">
               <ShieldAlert className="w-3.5 h-3.5 text-rose-700 shrink-0" />
-              <span>Eliminación masiva ({itemCount} registros) — Confirmación Adicional</span>
+              <span>Eliminación masiva ({fmtNum(itemCount)} registros) — Confirmación Adicional</span>
             </div>
             <p className="text-[11px] text-rose-900">
               Para continuar, escribe <strong>{CONFIRM_WORD}</strong> abajo.
