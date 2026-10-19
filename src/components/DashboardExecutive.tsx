@@ -14,7 +14,7 @@ import {
   Layers,
   Building2,
 } from 'lucide-react';
-import { toNum, fmtNum } from '../utils/number';
+import { toNum } from '../utils/number';
 
 // --- Dashboard ejecutivo (propuesta nueva) ---
 // Solo LEE los datos que ya existen (rutas del tablero, liquidadas, camiones y
@@ -111,8 +111,22 @@ export const Kpi: React.FC<{
   icon: React.ReactNode;
   progress?: number; // 0..1
   status?: string;
-}> = ({ label, value, sub, accent, icon, progress, status }) => (
-  <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col gap-2 min-w-0">
+  // Detalle que aparece al pasar el cursor (o al tocar la tarjeta).
+  detalle?: React.ReactNode;
+}> = ({ label, value, sub, accent, icon, progress, status, detalle }) => (
+  <div
+    className={`bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col gap-2 min-w-0 ${detalle ? 'relative group cursor-help focus:outline-none focus:ring-2 focus:ring-slate-300' : ''}`}
+    tabIndex={detalle ? 0 : undefined}
+  >
+    {detalle && (
+      <div
+        data-no-pdf
+        role="tooltip"
+        className="hidden group-hover:block group-focus:block absolute right-0 top-full mt-2 z-30 w-[22rem] max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl p-3 text-left"
+      >
+        {detalle}
+      </div>
+    )}
     <div className="flex items-center justify-between gap-2">
       <span className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wide truncate">{label}</span>
       <span className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${accent}1A`, color: accent }}>
@@ -319,7 +333,6 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
     });
     return buckets;
   }, [liqPeriodo, trendDays, porSemana]);
-  const trendRutas = trend.map((d) => ({ key: d.key, label: d.label, value: d.rutas, tip: `${d.label}: ${d.rutas} ruta${d.rutas !== 1 ? 's' : ''} liquidada${d.rutas !== 1 ? 's' : ''}` }));
   const trendEfect = trend.map((d) => {
     const v = d.ent + d.dev > 0 ? (d.ent / (d.ent + d.dev)) * 100 : 0;
     return { key: d.key, label: d.label, value: v, tip: d.ent + d.dev > 0 ? `${d.label}: ${v.toFixed(1)}% efectividad (${n1(d.ent)} ent. / ${n1(d.dev)} dev.)` : `${d.label}: sin liquidaciones` };
@@ -369,7 +382,6 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   }, [dayRoutes]);
   const segTotRutas = porSegmento.reduce((a, s) => a + s.rutas, 0);
   const segTotCj = porSegmento.reduce((a, s) => a + s.cj, 0);
-  const segMaxCj = Math.max(1, ...porSegmento.map((s) => s.cj));
 
   // ---------- Devoluciones del periodo ----------
   const motivos = useMemo(() => {
@@ -386,12 +398,12 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
         m.set(k, x);
       });
     });
-    return Array.from(m.entries()).map(([motivo, v]) => ({ motivo, ...v })).sort((a, b) => b.cajas - a.cajas).slice(0, 6);
+    return Array.from(m.entries()).map(([motivo, v]) => ({ motivo, ...v })).sort((a, b) => b.cajas - a.cajas);
   }, [liqPeriodo]);
-  const motMax = Math.max(1, ...motivos.map((m) => m.cajas));
+  const motTotCj = motivos.reduce((a, m) => a + m.cajas, 0);
+  const motTotRutas = liqPeriodo.filter((r) => Number(r.liquidacion?.cajasDevueltas || 0) > 0).length;
 
-  // ---------- Alertas ----------
-  const cajasAbiertas = liquidatedRoutes.filter((r) => r.liquidacion?.cajaAbierta && !r.liquidacion?.cajaAbiertaResuelta).length;
+  // ---------- Recursos ----------
   const truckSinMotivo = trucks.filter((t) => t.estado === 'Disponible' && !t.motivoNoAsignado).length;
   const truckConMotivo = trucks.filter((t) => !!t.motivoNoAsignado).length;
 
@@ -517,14 +529,40 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           value={n0(atrasadas.length)}
           accent={atrasadas.length ? C_CRIT : C_GOOD}
           status={atrasadas.length ? (crit72 ? `${crit72} > 72 h` : 'Revisar') : 'Al día'}
-          sub="Todo el tablero, sin importar el periodo"
+          sub="Todo el tablero · pasa el cursor para ver cuáles"
           icon={<AlertTriangle className="w-4 h-4" />}
+          detalle={
+            atrasadas.length === 0 ? (
+              <p className="text-xs text-slate-500">No hay rutas con más de 24 h sin entregar ni liquidar. 👍</p>
+            ) : (
+              <>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                  {n0(atrasadas.length)} ruta(s) con más de 24 h sin entregar ni liquidar
+                </p>
+                <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 pr-1">
+                  {atrasadas.map(({ r, h }) => (
+                    <div key={getRouteKey(r) + '|' + (r.tripNumber || 1)} className="flex items-center justify-between gap-2 py-1.5 text-xs">
+                      <span className="font-mono font-bold text-slate-800 shrink-0">{r.id}</span>
+                      <span className="text-slate-500 truncate flex-1">
+                        {r.agencia} · {r.estado}
+                        {r.asignacion?.camionPlaca ? ` · ${r.asignacion.camionPlaca}` : ''}
+                      </span>
+                      <span className="font-bold tabular-nums shrink-0" style={{ color: h > 72 ? C_CRIT : C_SERIOUS }}>
+                        {h >= 48 ? `${Math.floor(h / 24)} d ${Math.floor(h % 24)} h` : `${Math.floor(h)} h`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )
+          }
         />
       </div>
 
-      {/* 2. Embudo + recursos */}
+      {/* 2. Embudo + recursos: solo cuando se filtra UN día */}
+      {unDia && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card title={isHoy ? 'Avance del día' : 'Avance del periodo'} sub="De lo planificado a lo liquidado" icon={<CheckCircle2 className="w-4 h-4 text-slate-500" />} className="lg:col-span-2">
+        <Card title="Avance del día" sub="De lo planificado a lo liquidado" icon={<CheckCircle2 className="w-4 h-4 text-slate-500" />} className="lg:col-span-2">
           <div className="space-y-2.5">
             {funnel.map((f) => (
               <HBar key={f.label} label={f.label} value={f.value} max={Math.max(1, totalPlan)} color={f.color} display={`${n0(f.value)} · ${pctTxt(f.value, totalPlan)}`} />
@@ -576,24 +614,10 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           </div>
         </Card>
       </div>
+      )}
 
-      {/* 3. Tendencia del periodo (dos gráficos, una medida cada uno) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card
-          title={`Rutas liquidadas · ${tendTxt}`}
-          sub={`${n0(sem.rutas)} rutas liquidadas ${isHoy ? 'hoy' : 'en el periodo'}${unDia ? '' : ` · promedio ${n1(sem.rutas / Math.max(1, trendDays.length))} por día`}`}
-        >
-          {unDia ? (
-            <div className="space-y-2.5">
-              {porAgencia.map((a) => (
-                <HBar key={a.ag} label={a.ag} value={a.liq} max={Math.max(1, ...porAgencia.map((x) => x.liq))} color={C_INFO} display={`${n0(a.liq)} de ${n0(a.rutas)}`} />
-              ))}
-              {porAgencia.length === 0 && <p className="text-xs text-slate-400">Sin rutas {isHoy ? 'hoy' : 'en el día'}.</p>}
-            </div>
-          ) : (
-            <Columns data={trendRutas} color={C_INFO} />
-          )}
-        </Card>
+      {/* 3. Efectividad de entrega del periodo */}
+      <div className="grid grid-cols-1 gap-4">
         <Card
           title={`Efectividad de entrega · ${tendTxt}`}
           sub={`${isHoy ? 'Hoy' : 'Periodo'}: ${sem.ent + sem.dev > 0 ? ((sem.ent / (sem.ent + sem.dev)) * 100).toFixed(1) + '%' : '—'} (${n1(sem.ent)} CJ entregadas / ${n1(sem.dev)} devueltas)`}
@@ -657,70 +681,90 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
             </table>
           </div>
         </Card>
-        <Card title="Por segmento · Rutas y CJ" sub={`${n0(segTotRutas)} rutas · ${n0(segTotCj)} CJ`} icon={<Layers className="w-4 h-4 text-slate-500" />} className="xl:col-span-2">
-          <div className="space-y-2.5">
-            {porSegmento.map((s) => (
-              <HBar
-                key={s.seg}
-                label={s.seg}
-                value={s.cj}
-                max={segMaxCj}
-                color={C_INFO}
-                display={`${n0(s.cj)} CJ`}
-                tip={`${s.seg}: ${s.rutas} rutas (${pctTxt(s.rutas, segTotRutas)}) · ${n0(s.cj)} CJ (${pctTxt(s.cj, segTotCj)})`}
-              />
-            ))}
-            {porSegmento.length === 0 && <p className="text-xs text-slate-400">Sin datos.</p>}
+        <Card title="Por segmento · Rutas y CJ" sub={`${periodLabel} · % sobre el total del filtro`} icon={<Layers className="w-4 h-4 text-slate-500" />} className="xl:col-span-2">
+          <div className="overflow-x-auto -mx-1">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                  <th className="text-left py-2 px-1">Segmento</th>
+                  <th className="text-right py-2 px-1">Rutas</th>
+                  <th className="text-right py-2 px-1">% rutas</th>
+                  <th className="text-right py-2 px-1">CJ</th>
+                  <th className="text-right py-2 px-1">% CJ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {porSegmento.map((s) => (
+                  <tr key={s.seg} className="hover:bg-slate-50">
+                    <td className="py-2 px-1 font-semibold text-slate-800">{s.seg}</td>
+                    <td className="py-2 px-1 text-right tabular-nums">{n0(s.rutas)}</td>
+                    <td className="py-2 px-1 text-right tabular-nums text-slate-500">{pctTxt(s.rutas, segTotRutas)}</td>
+                    <td className="py-2 px-1 text-right tabular-nums font-semibold">{n0(s.cj)}</td>
+                    <td className="py-2 px-1 text-right tabular-nums font-bold" style={{ color: C_INFO }}>{pctTxt(s.cj, segTotCj)}</td>
+                  </tr>
+                ))}
+                {porSegmento.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-slate-400">Sin rutas en el periodo.</td>
+                  </tr>
+                )}
+              </tbody>
+              {porSegmento.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-slate-300 font-black text-slate-900">
+                    <td className="py-2 px-1">Total</td>
+                    <td className="py-2 px-1 text-right tabular-nums">{n0(segTotRutas)}</td>
+                    <td className="py-2 px-1 text-right tabular-nums">100%</td>
+                    <td className="py-2 px-1 text-right tabular-nums">{n0(segTotCj)}</td>
+                    <td className="py-2 px-1 text-right tabular-nums">100%</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
           </div>
-          {porSegmento.length > 0 && (
-            <p className="text-[11px] text-slate-500 mt-3">
-              Mayor volumen: <b className="text-slate-700">{porSegmento[0].seg}</b> con {pctTxt(porSegmento[0].cj, segTotCj)} de las cajas y {porSegmento[0].rutas} rutas.
-            </p>
-          )}
         </Card>
       </div>
 
-      {/* 5. Devoluciones + alertas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title="Principales motivos de devolución" sub={`Cajas devueltas · ${periodLabel}`} icon={<PackageX className="w-4 h-4 text-slate-500" />}>
-          <div className="space-y-2.5">
-            {motivos.map((m) => (
-              <HBar key={m.motivo} label={m.motivo} value={m.cajas} max={motMax} color={C_SERIOUS} display={`${n1(m.cajas)} CJ`} tip={`${m.motivo}: ${n1(m.cajas)} CJ en ${m.rutas} ruta(s)`} />
-            ))}
-            {motivos.length === 0 && <p className="text-xs text-slate-500">Sin devoluciones {isHoy ? 'hoy' : 'en el periodo'}. 👍</p>}
-          </div>
-        </Card>
-        <Card title="Alertas para atender" sub="Lo que requiere acción hoy" icon={<AlertTriangle className="w-4 h-4" style={{ color: C_CRIT }} />}>
-          <ul className="space-y-2 text-xs">
-            <li className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2">
-              <span className="text-slate-700">Rutas sin liquidar con más de 72 h</span>
-              <b className="tabular-nums" style={{ color: crit72 ? C_CRIT : C_GOOD }}>{crit72}</b>
-            </li>
-            <li className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2">
-              <span className="text-slate-700">Cajas abiertas pendientes de validar</span>
-              <b className="tabular-nums" style={{ color: cajasAbiertas ? C_WARN : C_GOOD }}>{fmtNum(cajasAbiertas)}</b>
-            </li>
-            <li className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2">
-              <span className="text-slate-700">Rutas en bolsón por liquidar</span>
-              <b className="tabular-nums" style={{ color: bolsonCount ? C_WARN : C_GOOD }}>{fmtNum(bolsonCount)}</b>
-            </li>
-          </ul>
-          {atrasadas.length > 0 && (
-            <div className="mt-3">
-              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Más antiguas sin liquidar</p>
-              <div className="divide-y divide-slate-100">
-                {atrasadas.slice(0, 5).map(({ r, h }) => (
-                  <div key={getRouteKey(r)} className="flex items-center justify-between gap-2 py-1.5 text-xs">
-                    <span className="font-mono font-bold text-slate-800">{r.id}</span>
-                    <span className="text-slate-500 truncate flex-1">{r.agencia} · {r.estado}</span>
-                    <span className="font-bold tabular-nums" style={{ color: h > 72 ? C_CRIT : C_SERIOUS }}>{Math.floor(h)} h</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </Card>
-      </div>
+      {/* 5. Motivos de devolución */}
+      <Card title="Principales motivos de devolución" sub={`Cajas devueltas · ${periodLabel} · % sobre el total del filtro`} icon={<PackageX className="w-4 h-4 text-slate-500" />}>
+        <div className="overflow-x-auto -mx-1">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                <th className="text-left py-2 px-1">Motivo</th>
+                <th className="text-right py-2 px-1">Rutas</th>
+                <th className="text-right py-2 px-1">CJ devueltas</th>
+                <th className="text-right py-2 px-1">% CJ devueltas</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {motivos.map((m) => (
+                <tr key={m.motivo} className="hover:bg-slate-50">
+                  <td className="py-2 px-1 font-semibold text-slate-800">{m.motivo}</td>
+                  <td className="py-2 px-1 text-right tabular-nums">{n0(m.rutas)}</td>
+                  <td className="py-2 px-1 text-right tabular-nums font-semibold">{n1(m.cajas)}</td>
+                  <td className="py-2 px-1 text-right tabular-nums font-bold" style={{ color: C_SERIOUS }}>{pctTxt(m.cajas, motTotCj)}</td>
+                </tr>
+              ))}
+              {motivos.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-6 text-center text-slate-500">Sin devoluciones {isHoy ? 'hoy' : 'en el periodo'}. 👍</td>
+                </tr>
+              )}
+            </tbody>
+            {motivos.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-slate-300 font-black text-slate-900">
+                  <td className="py-2 px-1">Total</td>
+                  <td className="py-2 px-1 text-right tabular-nums" title="Una ruta con varios motivos cuenta en cada uno">{n0(motTotRutas)}</td>
+                  <td className="py-2 px-1 text-right tabular-nums">{n1(motTotCj)}</td>
+                  <td className="py-2 px-1 text-right tabular-nums">100%</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </Card>
     </div>
   );
 };
