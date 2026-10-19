@@ -7,7 +7,7 @@ import { Button } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 import { ClientesRutaList } from './ClientesRutaList';
 import { getRouteKey, isSameSplitGroup } from '../utils/routeKey';
-import { toNum } from '../utils/number';
+import { toNum, fmtNum } from '../utils/number';
 
 // Indicadores del módulo de Rutas Liquidadas. Se calculan con los filtros
 // aplicados (búsqueda, agencia, fechas) y se muestran arriba, en la barra de
@@ -351,15 +351,15 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
         <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
           <span className="text-[11px] text-emerald-700 font-medium uppercase tracking-wider">Cajas Entregadas</span>
           <div className="flex items-baseline space-x-2 mt-0.5">
-            <h4 className="text-xl font-extrabold text-emerald-700">{totalCajasEntregadas.toFixed(3)}</h4>
-            <span className="text-[10px] text-emerald-600 font-medium">de {totalCajasSalida.toFixed(3)}</span>
+            <h4 className="text-xl font-extrabold text-emerald-700">{fmtNum(totalCajasEntregadas, 3)}</h4>
+            <span className="text-[10px] text-emerald-600 font-medium">de {fmtNum(totalCajasSalida, 3)}</span>
           </div>
         </div>
 
         <div className="p-3 bg-rose-50 rounded-xl border border-rose-200">
           <span className="text-[11px] text-rose-700 font-medium uppercase tracking-wider">Cajas Devueltas / Rechazos</span>
           <div className="flex items-baseline space-x-2 mt-0.5">
-            <h4 className="text-xl font-extrabold text-rose-700">{totalCajasDevueltas.toFixed(3)}</h4>
+            <h4 className="text-xl font-extrabold text-rose-700">{fmtNum(totalCajasDevueltas, 3)}</h4>
             <span className="text-[10px] text-rose-500 font-medium">físicas</span>
           </div>
         </div>
@@ -376,7 +376,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
           <div className="p-3 bg-amber-50 rounded-xl border border-amber-300">
             <span className="text-[11px] text-amber-800 font-medium uppercase tracking-wider">Caja Abierta</span>
             <div className="flex items-baseline space-x-2 mt-0.5">
-              <h4 className="text-xl font-extrabold text-amber-700">{cajaAbiertaCount}</h4>
+              <h4 className="text-xl font-extrabold text-amber-700">{fmtNum(cajaAbiertaCount)}</h4>
               <span className="text-[10px] text-amber-600 font-medium">pendiente(s) de validar</span>
             </div>
           </div>
@@ -577,13 +577,13 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                         )}
                         {typeof liq.montoDiferenciaCaja === 'number' && (
                           <span className="block text-[10px] text-amber-800 font-bold font-mono">
-                            Diferencia: Q {liq.montoDiferenciaCaja.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            Diferencia: Q {liq.montoDiferenciaCaja.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         )}
                         {liq.abonosCaja && liq.abonosCaja.length > 0 && (() => {
                           const ab = liq.abonosCaja.reduce((a, x) => a + (Number(x.monto) || 0), 0);
                           const tot = Number(liq.montoDiferenciaCaja) || 0;
-                          const f = (n: number) => n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                          const f = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                           return (
                             <span className="block text-[10px] font-bold font-mono text-emerald-700">
                               Abonado: Q {f(ab)}
@@ -729,7 +729,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
 
                   {/* Paradas */}
                   <td className="px-5 py-4 font-mono text-xs sm:text-sm">
-                    <div className="font-semibold text-slate-700">Prog: {r.paradas}</div>
+                    <div className="font-semibold text-slate-700">Prog: {fmtNum(r.paradas)}</div>
                     <div className="text-[11px] sm:text-xs text-emerald-700 font-semibold">
                       Entregadas: {liq.guiasExitosas !== undefined ? liq.guiasExitosas : r.paradas}
                     </div>
@@ -744,13 +744,13 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                   {/* Balance Cajas */}
                   <td className="px-5 py-4 font-mono text-xs sm:text-sm">
                     <div className="text-slate-500 text-[11px]">
-                      Salida: <b>{cajasSalida.toFixed(3)}</b>
+                      Salida: <b>{fmtNum(cajasSalida, 3)}</b>
                     </div>
                     <div className="text-emerald-700 font-bold">
-                      Entregadas: {cajasEntregadas.toFixed(3)}
+                      Entregadas: {fmtNum(cajasEntregadas, 3)}
                     </div>
                     <div className={`text-[11px] sm:text-xs ${cajasDevueltas > 0 ? 'text-rose-700 font-bold' : 'text-slate-400'}`}>
-                      Devueltas: {cajasDevueltas.toFixed(3)}
+                      Devueltas: {fmtNum(cajasDevueltas, 3)}
                     </div>
                   </td>
 
