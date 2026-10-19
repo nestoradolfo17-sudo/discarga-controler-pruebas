@@ -35,7 +35,7 @@ const segDe = (r: Route) => {
   const s = String(r.segmento || '').trim().toUpperCase();
   return s && s !== '-' ? s : 'SIN SEGMENTO';
 };
-const fmtVol = (n: number) => n.toLocaleString('es-GT', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const fmtVol = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
 interface Bloque {
   rutas: number;
