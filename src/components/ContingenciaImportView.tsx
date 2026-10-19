@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { ShieldAlert, Download, UploadCloud, CheckCircle, AlertTriangle, AlertCircle, X, FileSpreadsheet } from 'lucide-react';
 import { ContParsed, ContPlan, ContResultado, parseContingenciaWorkbook } from '../utils/contingencia';
-import { loadXLSX } from '../utils/excel';
+import { loadXLSX, formatoMiles } from '../utils/excel';
 import { descargarPlantillaContingencia } from '../utils/contingenciaPlantilla';
 import { Truck, Staff } from '../types';
 
@@ -123,6 +123,7 @@ export const ContingenciaImportView: React.FC<Props> = ({ trucks, staff, agencie
     ws['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 6 }, { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 8 }, { wch: 90 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Resultado');
+    formatoMiles(wb);
     XLSX.writeFile(wb, 'Resultado_Carga_Contingencia.xlsx');
   };
 
