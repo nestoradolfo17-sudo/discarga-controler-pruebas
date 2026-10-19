@@ -57,7 +57,7 @@ export const FinalizeCajaAbiertaModal: React.FC<FinalizeCajaAbiertaModalProps> =
             <span className="font-semibold">Motivo pendiente de validar:</span> {liq.motivoCajaAbierta}
             {typeof liq.montoDiferenciaCaja === 'number' && (
               <span className="block mt-0.5">
-                <span className="font-semibold">Diferencia:</span> Q {liq.montoDiferenciaCaja.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="font-semibold">Diferencia:</span> Q {liq.montoDiferenciaCaja.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             )}
           </div>
