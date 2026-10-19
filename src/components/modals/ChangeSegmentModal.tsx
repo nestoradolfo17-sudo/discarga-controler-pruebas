@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Route } from '../../types';
 import { SEGMENTO_OPTIONS } from '../../data/segmentos';
 
+import { fmtNum } from '../../utils/number';
 // --- Cambiar el segmento de una ruta del Tablero ---
 // Solo se aplica con usuario y contraseña de un ADMINISTRADOR (si quien opera
 // no es administrador, un administrador escribe sus datos para autorizar).
@@ -109,7 +110,7 @@ export const ChangeSegmentModal: React.FC<ChangeSegmentModalProps> = ({
                 onChange={(e) => setApplyAll(e.target.checked)}
                 className="mt-0.5 w-5 h-5"
               />
-              <span>Aplicar también a los otros viajes de esta ruta partida ({splitCount} viajes en total)</span>
+              <span>Aplicar también a los otros viajes de esta ruta partida ({fmtNum(splitCount)} viajes en total)</span>
             </label>
           )}
 
