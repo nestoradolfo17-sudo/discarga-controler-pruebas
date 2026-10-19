@@ -14,7 +14,7 @@ import {
   Layers,
   Building2,
 } from 'lucide-react';
-import { toNum } from '../utils/number';
+import { toNum, fmtNum } from '../utils/number';
 
 // --- Dashboard ejecutivo (propuesta nueva) ---
 // Solo LEE los datos que ya existen (rutas del tablero, liquidadas, camiones y
@@ -68,8 +68,8 @@ const routeDayKey = (r: Route) => {
 };
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-const n0 = (v: number) => Math.round(v).toLocaleString('es-GT');
-const n1 = (v: number) => v.toLocaleString('es-GT', { maximumFractionDigits: 1 });
+const n0 = (v: number) => Math.round(v).toLocaleString('en-US');
+const n1 = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 1 });
 const pctTxt = (v: number, t: number) => (t > 0 ? `${((v / t) * 100).toFixed(1)}%` : '—');
 const isPiso = (r: Route) => !!(r.aPiso || r.tipoAsignacion === 'Ruta a Piso' || r.asignacion?.tipoAsignacion === 'Ruta a Piso');
 const isBolson = (r: Route) => !!(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
@@ -698,11 +698,11 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
             </li>
             <li className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2">
               <span className="text-slate-700">Cajas abiertas pendientes de validar</span>
-              <b className="tabular-nums" style={{ color: cajasAbiertas ? C_WARN : C_GOOD }}>{cajasAbiertas}</b>
+              <b className="tabular-nums" style={{ color: cajasAbiertas ? C_WARN : C_GOOD }}>{fmtNum(cajasAbiertas)}</b>
             </li>
             <li className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2">
               <span className="text-slate-700">Rutas en bolsón por liquidar</span>
-              <b className="tabular-nums" style={{ color: bolsonCount ? C_WARN : C_GOOD }}>{bolsonCount}</b>
+              <b className="tabular-nums" style={{ color: bolsonCount ? C_WARN : C_GOOD }}>{fmtNum(bolsonCount)}</b>
             </li>
           </ul>
           {atrasadas.length > 0 && (
