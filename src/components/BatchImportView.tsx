@@ -18,6 +18,7 @@ import { clavesDuplicado } from '../utils/routeKey';
 import { FileSpreadsheet, Download, UploadCloud, CheckCircle, X, Layers, AlertCircle, Users, MapPin, Tag, Calendar } from 'lucide-react';
 import { SegmentedSelect } from './ui/SegmentedSelect';
 
+import { fmtNum } from '../utils/number';
 export interface BatchImportTarget {
   agencia: string;
   segmento: string;
@@ -636,7 +637,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
 
               {selectedClientesSheet && clientesSummary && (
                 <div className="text-[11px] text-blue-800 font-medium">
-                  {clientesSummary.totalClientes} cliente(s) listos para {clientesSummary.matchedRoutes} de{' '}
+                  {fmtNum(clientesSummary.totalClientes)} cliente(s) listos para {clientesSummary.matchedRoutes} de{' '}
                   {previewRoutes.length} ruta(s) de esta hoja.
                   {clientesSummary.unmatchedRutas.length > 0 && (
                     <span className="text-amber-700">
@@ -676,7 +677,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
               <div className="flex items-center gap-1.5 font-bold">
                 <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
                 <span>
-                  Se leyeron {importReport.totalRows} filas con datos: {importReport.imported} se importaron y{' '}
+                  Se leyeron {fmtNum(importReport.totalRows)} filas con datos: {fmtNum(importReport.imported)} se importaron y{' '}
                   {importReport.discarded} se descartaron.
                 </span>
               </div>
@@ -745,7 +746,7 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                         <td className="py-2 px-2 text-center">
                           {clienteCount > 0 ? (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-sans">
-                              <Users className="w-2.5 h-2.5" /> {clienteCount}
+                              <Users className="w-2.5 h-2.5" /> {fmtNum(clienteCount)}
                             </span>
                           ) : (
                             <span className="text-slate-300">–</span>
@@ -757,12 +758,12 @@ export const BatchImportView: React.FC<BatchImportViewProps> = ({
                       <td className="py-2 px-2 text-center text-slate-600">{r.descanso || '-'}</td>
                       <td className="py-2 px-2 text-center font-bold text-slate-900">{r.total || '-'}</td>
                       <td className="py-2 px-3 text-right">{r.distancia}</td>
-                      <td className="py-2 px-3 text-center font-bold">{r.paradas}</td>
+                      <td className="py-2 px-3 text-center font-bold">{fmtNum(r.paradas)}</td>
                       <td className="py-2 px-3 text-center text-cyan-700 font-semibold">{r.equipoFrio}</td>
                       <td className="py-2 px-3 text-right font-medium text-indigo-700">{r.capacidadPorc}</td>
-                      <td className="py-2 px-3 text-right text-slate-700">{r.cajas12Oz}</td>
-                      <td className="py-2 px-3 text-right text-slate-700">{r.pesoKg}</td>
-                      <td className="py-2 px-3 text-right font-bold text-blue-700">{r.cajasFisicas}</td>
+                      <td className="py-2 px-3 text-right text-slate-700">{fmtNum(r.cajas12Oz)}</td>
+                      <td className="py-2 px-3 text-right text-slate-700">{fmtNum(r.pesoKg)}</td>
+                      <td className="py-2 px-3 text-right font-bold text-blue-700">{fmtNum(r.cajasFisicas)}</td>
                     </tr>
                   );
                 })}
