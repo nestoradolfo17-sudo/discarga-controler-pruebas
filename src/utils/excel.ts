@@ -8,6 +8,42 @@ import type * as XLSXTypes from 'xlsx';
 // que SheetJS: "A1", {r, c} con base 0).
 export const loadXLSX = () => import('xlsx');
 
+// --- Coma de miles en los Excel que descarga la app ---
+// Las cantidades se guardan como NÚMERO (para poder sumar en Excel) y se les
+// pone el formato "#,##0" (enteros) o "#,##0.00#" (con decimales): 8,561 ·
+// 1,234.50. No se aplica a columnas de identificación (ID/ruta, código,
+// DPI, teléfono, placa, correlativo, viaje, año…) ni a fechas u horas.
+const NO_MILES = /(^|\s)(id|no\.?|#|viaje|a[ñn]o|mes|semana|d[ií]a)$|^ruta$|^id\b|\bid de|ruta id|c[óo]d|dpi|tel[eé]f|celular|placa|correlativo|\bnit\b|\bcui\b|licencia|n[úu]mero|fecha|hora/i;
+export function formatoMiles(wb: XLSXTypes.WorkBook) {
+  for (const nombre of wb.SheetNames) {
+    const ws = wb.Sheets[nombre];
+    if (!ws) continue;
+    // Encabezado de cada columna = último texto encontrado arriba de la celda.
+    const celdas = Object.keys(ws)
+      .filter((k) => k[0] !== '!')
+      .map((k) => {
+        const m = /^([A-Z]+)(\d+)$/.exec(k);
+        return m ? { k, col: m[1], fila: Number(m[2]) } : null;
+      })
+      .filter((x): x is { k: string; col: string; fila: number } => !!x)
+      .sort((a, b) => a.fila - b.fila);
+    // Solo cuentan como encabezado los textos de filas SIN números (la fila de
+    // títulos), no un texto suelto dentro de los datos (p. ej. "TOTAL").
+    const filasConNumero = new Set(celdas.filter(({ k }) => (ws[k] as XLSXTypes.CellObject).t === 'n').map((x) => x.fila));
+    const encabezado = new Map<string, string>();
+    for (const { k, col, fila } of celdas) {
+      const c = ws[k] as XLSXTypes.CellObject;
+      if (c.t === 's' && typeof c.v === 'string' && c.v.trim()) {
+        if (!filasConNumero.has(fila)) encabezado.set(col, c.v.trim());
+        continue;
+      }
+      if (c.t !== 'n' || typeof c.v !== 'number' || c.z) continue;
+      if (NO_MILES.test(encabezado.get(col) || '')) continue;
+      c.z = Number.isInteger(c.v) ? '#,##0' : '#,##0.00#';
+    }
+  }
+}
+
 const colLettersToIndex = (letters: string) => {
   let n = 0;
   for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
@@ -91,6 +127,7 @@ export async function downloadExcelTemplate() {
   const ws = XLSX.utils.aoa_to_sheet(templateData);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Base_Rutas");
+  formatoMiles(wb);
   XLSX.writeFile(wb, "Plantilla_Rutas_Logistica.xlsx");
 }
 
@@ -852,6 +889,7 @@ export async function exportRoutesToExcel(routes: Route[], staffList: Staff[], f
 
   const todayStr = getGuatemalaDateForInput(new Date());
   // Si el Tablero tiene una fecha filtrada, el archivo lleva esa fecha.
+  formatoMiles(wb);
   XLSX.writeFile(wb, `Reporte_Control_Rutas_${fechaArchivo ? fechaArchivo.split('/').reverse().join('-') : todayStr}.xlsx`);
   return true;
 }
@@ -955,6 +993,7 @@ export async function exportHistoricalToExcel(historicalRoutes: Route[], staffLi
   XLSX.utils.book_append_sheet(wb, ws, "Historico_Liquidaciones");
 
   const todayStr = getGuatemalaDateForInput(new Date());
+  formatoMiles(wb);
   XLSX.writeFile(wb, `Historico_Rutas_Liquidadas_${todayStr}.xlsx`);
   return true;
 }
@@ -983,6 +1022,7 @@ export async function downloadStaffExcelTemplate() {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Personal");
+  formatoMiles(wb);
   XLSX.writeFile(wb, "Plantilla_Carga_Personal.xlsx");
 }
 
@@ -1231,6 +1271,7 @@ export async function downloadTruckExcelTemplate() {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Camiones");
+  formatoMiles(wb);
   XLSX.writeFile(wb, "Plantilla_Carga_Camiones.xlsx");
 }
 
@@ -1454,6 +1495,7 @@ export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Tru
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Rutas_Prioridades');
   const todayStr = getGuatemalaDateForInput(new Date());
+  formatoMiles(wb);
   XLSX.writeFile(wb, `Rutas_Prioridades_${fechaArchivo ? fechaArchivo.split('/').reverse().join('-') : todayStr}.xlsx`);
   return true;
 }
