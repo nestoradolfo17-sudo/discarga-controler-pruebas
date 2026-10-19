@@ -105,7 +105,7 @@ import { PrestamosView } from './components/PrestamosView';
 import { leerPrestamos, suscribirPrestamos } from './services/prestamos';
 import { prestamosVigentes, infoDePrestamo } from './utils/prestamos';
 import { registrarRecargaAuto, idRecargaAuto } from './services/recargas';
-import { toNum } from './utils/number';
+import { toNum, fmtNum } from './utils/number';
 import { viajesQueRecibenCajas, resumenGrupo, repartirParejo } from './utils/splitGroup';
 
 const STORAGE_KEY_ROUTES = 'rutamaster_routes_v6';
@@ -3040,7 +3040,7 @@ export default function App() {
 
     showToast(
       `${eligibleRoutes.length} ruta(s) enviada(s) a Piso para despacho de mañana` +
-        (skippedCount > 0 ? ` (${skippedCount} omitida(s): ya estaban a Piso o Liquidadas).` : '.'),
+        (skippedCount > 0 ? ` (${fmtNum(skippedCount)} omitida(s): ya estaban a Piso o Liquidadas).` : '.'),
       'success',
       { label: 'Deshacer', onClick: undo }
     );
@@ -3249,7 +3249,7 @@ export default function App() {
         motivoDevolucion: data.guiasRechazadas > 0 ? data.motivoDevolucion : '',
       };
       showToast(
-        `${cajasTransferidas} cajas devueltas del viaje ${targetRoute.id} pasaron a ${receptores.map((v) => v.id).join(', ')}.`,
+        `${fmtNum(cajasTransferidas)} cajas devueltas del viaje ${targetRoute.id} pasaron a ${receptores.map((v) => v.id).join(', ')}.`,
         'info'
       );
     }
@@ -3580,7 +3580,7 @@ export default function App() {
     ];
     const abonado = totalAbonado(abonos);
     const completo = abonado >= total - 0.005;
-    const fmt = (n: number) => n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const historial = [
       ...(target.liquidacion.historialEstados || []),
       { estado: `Abono Q ${fmt(abono.monto)} (${abono.fecha})`, fecha: ahora },
@@ -3824,7 +3824,7 @@ export default function App() {
     const msg =
       scopedBacklog.length > 0
         ? `Se importaron ${freshDailyRoutes.length} rutas a ${destino}. Se preservaron ${scopedBacklog.length} ruta(s) vigente(s) de ${target.agencia}${
-            scopedPendientes > 0 ? ` (${scopedPendientes} pendiente(s) de días anteriores)` : ''
+            scopedPendientes > 0 ? ` (${fmtNum(scopedPendientes)} pendiente(s) de días anteriores)` : ''
           }.`
         : `Se importaron ${freshDailyRoutes.length} rutas a ${destino}, listas para asignar.`;
     if (bloqueadasMsg) {
@@ -3996,8 +3996,8 @@ export default function App() {
 
       const message =
         updatedCount > 0
-          ? `Carga masiva completada: ${newCount} colaboradores agregados y ${updatedCount} omitidos (ya existían en el sistema).`
-          : `Carga masiva completada: ${newCount} colaboradores agregados desde Excel.`;
+          ? `Carga masiva completada: ${fmtNum(newCount)} colaboradores agregados y ${fmtNum(updatedCount)} omitidos (ya existían en el sistema).`
+          : `Carga masiva completada: ${fmtNum(newCount)} colaboradores agregados desde Excel.`;
       showToast(message, 'success');
 
       return updatedList;
@@ -4051,8 +4051,8 @@ export default function App() {
 
       const message =
         updatedCount > 0
-          ? `Carga masiva completada: ${newCount} camiones agregados y ${updatedCount} omitidos (ya existían en el sistema).`
-          : `Carga masiva completada: ${newCount} camiones agregados desde Excel.`;
+          ? `Carga masiva completada: ${fmtNum(newCount)} camiones agregados y ${fmtNum(updatedCount)} omitidos (ya existían en el sistema).`
+          : `Carga masiva completada: ${fmtNum(newCount)} camiones agregados desde Excel.`;
       showToast(message, 'success');
 
       return updatedList;
