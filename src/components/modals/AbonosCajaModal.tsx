@@ -11,7 +11,7 @@ import { getRouteKey } from '../../utils/routeKey';
 export const totalAbonado = (abonos?: AbonoCaja[]) =>
   Math.round((abonos || []).reduce((a, x) => a + (Number(x.monto) || 0), 0) * 100) / 100;
 
-const fmtQ = (n: number) => `Q ${n.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtQ = (n: number) => `Q ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const hoyISO = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Guatemala' }).format(new Date());
 
 interface Props {
