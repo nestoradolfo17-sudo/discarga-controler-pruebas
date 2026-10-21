@@ -1,9 +1,9 @@
 import React from 'react';
-import { Search, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, ShieldCheck, Gauge, PanelLeftClose, PanelLeftOpen, Repeat, ArrowLeftRight, Sun, Moon, LayoutGrid, ChevronDown } from 'lucide-react';
+import { Search, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, ShieldCheck, Gauge, PanelLeftClose, PanelLeftOpen, Repeat, ArrowLeftRight, Sun, Moon, LayoutGrid, ChevronDown, Banknote } from 'lucide-react';
 import { Button, IconButton } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 
-export type ActiveTab = 'dashboard' | 'board' | 'liquidated' | 'recargas' | 'prestamos' | 'trucks' | 'staff' | 'batch' | 'users';
+export type ActiveTab = 'dashboard' | 'board' | 'liquidated' | 'recargas' | 'prestamos' | 'trucks' | 'staff' | 'batch' | 'zr' | 'users';
 
 interface TabNavProps {
   activeTab: ActiveTab;
@@ -43,6 +43,7 @@ interface TabNavProps {
   showStaff?: boolean;
   showBatch?: boolean;
   showUsers?: boolean;
+  showZr?: boolean;
   // Solo los administradores ven el submenú "Administración" (Carga Masiva / Usuarios)
   // y el botón "Demo" para restablecer datos de prueba, evitando que un operador de
   // agencia lo confunda con una acción normal del día a día.
@@ -101,6 +102,7 @@ export const TabNav: React.FC<TabNavProps> = ({
   showStaff = true,
   showBatch = true,
   showUsers = false,
+  showZr = false,
   isAdmin = false,
   mode = 'toolbar',
   leading,
@@ -119,13 +121,14 @@ export const TabNav: React.FC<TabNavProps> = ({
     { key: 'trucks', label: 'Camiones', short: 'Camiones', icon: Truck, count: trucksCount, activeClass: 'bg-blue-600 text-white', iconClass: 'text-blue-600', show: showTrucks },
     { key: 'staff', label: 'Personal', short: 'Personal', icon: Users, count: staffCount, activeClass: 'bg-indigo-600 text-white', iconClass: 'text-indigo-600', show: showStaff },
     { key: 'batch', label: 'Cargar Rutas', short: 'Cargar Rutas', icon: FileSpreadsheet, activeClass: 'bg-emerald-600 text-white', iconClass: 'text-emerald-600', show: showBatch },
+    { key: 'zr', label: 'ZR', short: 'ZR', icon: Banknote, activeClass: 'bg-rose-700 text-white', iconClass: 'text-rose-700', show: showZr },
     { key: 'users', label: 'Usuarios', short: 'Usuarios', icon: ShieldCheck, count: usersCount, activeClass: 'bg-slate-700 text-white', iconClass: 'text-slate-500', show: showUsers },
   ].filter((i) => i.show) as NavItem[];
 
   // Menú lateral: a la vista solo Dashboard, Asignación, Liquidadas y Carga
   // Excel; lo demás (Recargas, Préstamos, Camiones, Personal, Usuarios) queda
   // agrupado en "Otros", que se despliega al tocarlo.
-  const PRINCIPALES: ActiveTab[] = ['dashboard', 'board', 'liquidated', 'batch'];
+  const PRINCIPALES: ActiveTab[] = ['dashboard', 'board', 'liquidated', 'batch', 'zr'];
   const principales = PRINCIPALES.map((k) => items.find((i) => i.key === k)).filter(Boolean) as NavItem[];
   const otros = items.filter((i) => !PRINCIPALES.includes(i.key));
   const otroActivo = otros.some((i) => i.key === activeTab);
