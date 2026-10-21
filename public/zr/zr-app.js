@@ -1207,10 +1207,11 @@ document.addEventListener("click",e=>{
 });
 
 /* ---------- pilotos ---------- */
-function pilotos(){ return (S.pil||[]).slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,"es")); }
+/* DISCARGA: primero los pilotos de la agencia de ZR en uso */
+function pilotos(){ const ag=window.__zrAgencia; return (S.pil||[]).slice().sort((a,b)=>((a.agencia===ag?0:1)-(b.agencia===ag?0:1))||a.nombre.localeCompare(b.nombre,"es")); }
 function renderPilotoSelect(keep){
   const sel=$("#fPiloto"); const cur=keep!==undefined?keep:sel.value; const list=pilotos();
-  let html=`<option value="">${list.length?"Seleccione un piloto…":"No hay pilotos cargados"}</option>`+list.map(p=>`<option value="${esc(p.nombre)}">${esc(p.nombre)}${p.codigo?" · "+esc(p.codigo):""}</option>`).join("");
+  let html=`<option value="">${list.length?"Seleccione un piloto…":"No hay pilotos en Personal"}</option>`+list.map(p=>`<option value="${esc(p.nombre)}">${esc(p.nombre)}${p.codigo?" · "+esc(p.codigo):""}</option>`).join("");
   if(cur && !list.some(p=>p.nombre===cur)) html+=`<option value="${esc(cur)}">${esc(cur)}</option>`;
   sel.innerHTML=html; sel.value=cur||"";
 }
@@ -1220,7 +1221,7 @@ function renderPilotos(){
   const list=pilotos();
   $("#tblPil").innerHTML= list.length? `<thead><tr><th>Piloto</th><th>Código / licencia</th><th>Teléfono</th><th class="r">Retiros del mes</th><th></th></tr></thead><tbody>${list.map(p=>{ const n=pagosMes().filter(x=>x.piloto===p.nombre).length;
     return `<tr><td><b>${esc(p.nombre)}</b></td><td class="num">${esc(p.codigo||"—")}</td><td class="num">${esc(p.telefono||"—")}</td><td class="r num">${n}</td><td class="r">${S.readOnly||!S.P?.admin?"":`<button class="btn small ghost danger-ghost" data-pdel="${esc(p.id)}"><svg class="ico"><use href="#i-trash"/></svg>Eliminar</button>`}</td></tr>`; }).join("")}</tbody>`
-    : `<tbody><tr><td class="empty-state">Aún no hay pilotos. Cargue un archivo o agréguelos uno por uno.</td></tr></tbody>`;
+    : `<tbody><tr><td class="empty-state">No hay pilotos (conductores) activos en Personal para sus agencias.</td></tr></tbody>`;
   const T=$("#tblPil");
   T.querySelectorAll("[data-pdel]").forEach(b=>b.onclick=async()=>{ const p=(S.pil||[]).find(x=>x.id===b.dataset.pdel); if(!p) return; if(await askAdminPass(`Eliminar al piloto ${p.nombre}.`)) savePil((S.pil||[]).filter(x=>x.id!==p.id),"Piloto eliminado"); });
   T.querySelectorAll("[data-pdel-no]").forEach(b=>b.onclick=()=>{ S.confirmPil=null; renderPilotos(); });
@@ -1420,7 +1421,7 @@ let gastoPend=null;
 function openGastoModal(list,filename){
   list=(list||[]).filter(Boolean);
   if(!list.length){ toast("No hay solicitudes de gasto pendientes"); return; }
-  if(!pilotos().length){ toast("Cargue primero la lista de pilotos en Configuración › Pilotos"); return; }
+  if(!pilotos().length){ toast("No hay pilotos (conductores) en Personal de DISCARGA CONTROLER para sus agencias"); return; }
   gastoPend={list,filename};
   const opts=`<option value="">Seleccione…</option>`+pilotos().map(p=>`<option value="${esc(p.nombre)}">${esc(p.nombre)}${p.codigo?" · "+esc(p.codigo):""}</option>`).join("");
   $("#gmSub").textContent= list.length>1? `${list.length} sectores · ${list[0].fecha.split("-").reverse().join("/")}` : `${list[0].corr} · ${list[0].s.nombre}`;
@@ -2084,7 +2085,8 @@ function applyPerms(){
 function fdLocal(t){ const d=new Date(t); return isNaN(d)?"":`${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`; }
 function curMes(){ return todayISO.slice(0,7); }
 function myUsr(){ return findMe(S.usuarios||[]); }
-function brand(){ const a=String(window.__zrAgencia||myUsr()?.agencia||"").trim(); if(!a) return "ZR Atanasio"; return /^zr\b/i.test(a)? a : "ZR "+a; }
+/* DISCARGA: el módulo se llama solo "ZR" (la agencia se elige arriba, en DISCARGA). */
+function brand(){ return "ZR"; }
 function cargaLock(kind){ if(S.P?.admin) return false; return !!S.cargas?.[curMes()]?.[kind]; }
 async function markCarga(kind,mesPres){
   const mk=curMes(); const prev=S.cargas||{};
@@ -2398,7 +2400,8 @@ try{ const t=localStorage.getItem("zr.tab"); if(t && document.querySelector(`[da
 function pickMes(){ const keys=Object.keys(S.budgets).sort(); if(S.mes && S.budgets[S.mes]) return; S.mes = S.budgets[todayISO.slice(0,7)]? todayISO.slice(0,7) : keys[keys.length-1] || todayISO.slice(0,7); }
 
 // Local preview until the shared store answers
-S.budgets={[FALLBACK.mes]:FALLBACK}; pickMes(); renderAll();
+/* DISCARGA: sin datos de ejemplo mientras carga la agencia */
+S.budgets={}; pickMes(); renderAll();
 
 (async()=>{
   const db = window.claude?.use ? await window.claude.use("db") : null;
@@ -2423,8 +2426,8 @@ S.budgets={[FALLBACK.mes]:FALLBACK}; pickMes(); renderAll();
   db.collection("historial_meses").onSnapshot(snap=>{ const m={}; snap.docs.forEach(d=>m[d.id]=d.data()); S.respaldos=m; if(S.tab==="historial") renderHistorial(); }, ()=>{});
   db.doc("config/cargas").onSnapshot(d=>{ S.cargas=d.exists? {...d.data()} : {}; applyPerms(); }, ()=>{});
   db.doc("config/seguridad").onSnapshot(d=>{ S.seg=d.exists? {...d.data()} : null; if(S.tab==="presupuesto") renderMeses(); }, ()=>{});
-  db.doc("config/pilotos").onSnapshot(d=>{ S.pil=d.exists? (d.data().lista||[]) : []; safeRender(); }, ()=>{});
-  db.doc("config/pilotos").get().then(d=>{ if(d.exists){ S.pil=d.data().lista||[]; safeRender(); } }).catch(()=>{});
+  /* DISCARGA: pilotos = conductores de Personal de las agencias asignadas al usuario */
+  window.__zrPilotos(list=>{ S.pil=list; safeRender(); });
   db.doc("config/general").onSnapshot(d=>{ S.cfg=d.exists? {...d.data()} : {}; }, ()=>{});
   db.collection("pagos").onSnapshot(snap=>{
     S.pagos=snap.docs.map(d=>({id:d.id,...d.data()})); safeRender(); scheduleReminder();
