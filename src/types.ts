@@ -408,6 +408,8 @@ export interface TablePermissions {
   // de administrador ni permisos que él mismo no tenga). Solo un administrador
   // puede otorgarlo. Ausente = no permitido.
   canCreateUsers?: boolean;
+  // Módulo ZR (Control de pagos de zonas rojas). Sin el permiso no se ve.
+  zr?: boolean;
 }
 
 export interface AppUser {
