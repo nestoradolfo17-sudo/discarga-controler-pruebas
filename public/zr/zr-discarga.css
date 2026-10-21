@@ -13,3 +13,10 @@ select[data-urol],
 #uaBack .field:has(.rolseg),
 #tblUsr th:nth-child(3),
 #tblUsr td:nth-child(3) { display: none !important; }
+
+/* Pilotos: vienen de Personal de DISCARGA CONTROLER (no se cargan ni se borran aquí). */
+[data-pdel],
+[data-pdel-ok],
+[data-pdel-no] { display: none !important; }
+body.no-carga [data-panel="pilotos"] .card:first-child::after { content: none !important; }
+.zr-oculto { display: none !important; }
