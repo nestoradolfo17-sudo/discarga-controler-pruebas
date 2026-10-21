@@ -35,6 +35,21 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 grant execute on function public.is_agency_admin(text) to authenticated;
 
+-- Si se corrió antes una versión anterior de este script (sin agencias), se
+-- adapta la tabla sin perder nada: lo existente queda en la agencia Atanasio.
+do $$
+begin
+  if to_regclass('public.app_zr') is not null
+     and not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'app_zr' and column_name = 'agencia') then
+    alter table public.app_zr add column agencia text not null default 'Atanasio';
+    alter table public.app_zr alter column agencia drop default;
+    alter table public.app_zr drop constraint if exists app_zr_pkey;
+    alter table public.app_zr drop constraint if exists app_zr_ruta_valida;
+    alter table public.app_zr add primary key (agencia, col, doc);
+  end if;
+end $$;
+drop trigger if exists trg_zr_sello on public.app_zr;
+
 -- 1) Tabla (agencia + colección + documento)
 create table if not exists public.app_zr (
   agencia    text not null,
