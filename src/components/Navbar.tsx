@@ -20,6 +20,8 @@ interface NavbarProps {
   adminAgencias?: string[];
   onLogout?: () => void;
   saveIndicator?: React.ReactNode;
+  // Campana de pendientes por autorizar (solo administradores).
+  notificaciones?: React.ReactNode;
   onDownloadBackup?: () => void | Promise<void>;
   onResetDemo?: () => void;
 }
@@ -33,6 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   adminAgencias = [],
   onLogout,
   saveIndicator,
+  notificaciones,
   onDownloadBackup,
   onResetDemo,
 }) => {
@@ -95,6 +98,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
+            {notificaciones}
             {saveIndicator && <div className="hidden sm:block">{saveIndicator}</div>}
 
             {currentUsername && (
