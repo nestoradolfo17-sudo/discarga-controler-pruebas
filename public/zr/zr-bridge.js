@@ -28,7 +28,7 @@
   const bad = () => { throw { code: "invalid_argument", message: "Ruta no válida" }; };
   const err = (e) => {
     const m = String((e && (e.message || e.code)) || e || "");
-    if (/row-level security|permission|42501|not allowed|forbidden/i.test(m)) return { code: "invalid_argument", message: "Sin permiso" };
+    if (/row-level security|permission|42501|not allowed|forbidden|Solo el administrador|necesita una solicitud|otra agencia/i.test(m)) return { code: "invalid_argument", message: m };
     if (/JWT|session|auth/i.test(m)) return { code: "unauthenticated" };
     return { code: "unavailable", message: m };
   };
@@ -46,7 +46,9 @@
     canal = B.supabase
       .channel("zr-" + Math.random().toString(36).slice(2))
       .on("postgres_changes", { event: "*", schema: "public", table: "app_zr" }, (p) => {
-        const c = (p.new && p.new.col) || (p.old && p.old.col);
+        const r = (p.new && p.new.col ? p.new : p.old) || {};
+        if (r.agencia && r.agencia !== B.agencia) return; // otra agencia
+        const c = r.col;
         const avisar = (k) => (subs[k] || new Set()).forEach((f) => { try { f(); } catch (e) {} });
         if (c) avisar(c); else Object.keys(subs).forEach(avisar);
       })
@@ -58,7 +60,7 @@
   // --- Datos (tabla app_zr: col + doc + data) ---
   async function leerDoc(c, id) {
     const B = await bridgeP;
-    const { data, error } = await B.supabase.from("app_zr").select("data").eq("col", c).eq("doc", id).maybeSingle();
+    const { data, error } = await B.supabase.from("app_zr").select("data").eq("agencia", B.agencia).eq("col", c).eq("doc", id).maybeSingle();
     if (error) throw err(error);
     return data ? clone(data.data) : undefined;
   }
@@ -66,7 +68,7 @@
     const B = await bridgeP;
     const out = [];
     for (let desde = 0; ; desde += 1000) {
-      const { data, error } = await B.supabase.from("app_zr").select("doc,data").eq("col", c).order("doc").range(desde, desde + 999);
+      const { data, error } = await B.supabase.from("app_zr").select("doc,data").eq("agencia", B.agencia).eq("col", c).order("doc").range(desde, desde + 999);
       if (error) throw err(error);
       out.push(...(data || []));
       if (!data || data.length < 1000) break;
@@ -75,18 +77,18 @@
   }
   async function guardar(c, id, data) {
     const B = await bridgeP;
-    const { error } = await B.supabase.from("app_zr").upsert({ col: c, doc: id, data: clone(data) }, { onConflict: "col,doc" });
+    const { error } = await B.supabase.from("app_zr").upsert({ agencia: B.agencia, col: c, doc: id, data: clone(data) }, { onConflict: "agencia,col,doc" });
     if (error) throw err(error);
   }
   async function actualizar(c, id, parcial) {
     const B = await bridgeP;
-    const { data, error } = await B.supabase.rpc("zr_actualizar", { p_col: c, p_doc: id, p_datos: clone(parcial) });
+    const { data, error } = await B.supabase.rpc("zr_actualizar", { p_agencia: B.agencia, p_col: c, p_doc: id, p_datos: clone(parcial) });
     if (error) throw err(error);
     if (data === false) throw { code: "not_found" };
   }
   async function borrar(c, id) {
     const B = await bridgeP;
-    const { error } = await B.supabase.from("app_zr").delete().eq("col", c).eq("doc", id);
+    const { error } = await B.supabase.from("app_zr").delete().eq("agencia", B.agencia).eq("col", c).eq("doc", id);
     if (error) throw err(error);
   }
 
@@ -150,11 +152,11 @@
       const a = new Uint8Array(16); crypto.getRandomValues(a);
       const id = Array.from(a, (x) => x.toString(16).padStart(2, "0")).join("");
       const cuerpo = B.blob(await file.arrayBuffer(), type);
-      const { error } = await B.supabase.storage.from("zr").upload(id, cuerpo, { contentType: type, upsert: false });
+      const { error } = await B.supabase.storage.from("zr").upload(B.agencia + "/" + id, cuerpo, { contentType: type, upsert: false });
       if (error) { const m = String(error.message || ""); if (/size|large/i.test(m)) throw { code: "too_large" }; if (/mime|type/i.test(m)) throw { code: "unsupported_type" }; throw err(error); }
       return { id, url: "/_blob/" + id, sizeBytes: file.size, contentType: type };
     },
-    delete: async (id) => { const B = await bridgeP; await B.supabase.storage.from("zr").remove([String(id)]); },
+    delete: async (id) => { const B = await bridgeP; await B.supabase.storage.from("zr").remove([B.agencia + "/" + String(id)]); },
     list: async () => ({ assets: [], usage: {} }),
   };
 
@@ -167,7 +169,7 @@
     const w = window.open("", "_blank");
     try {
       const B = await bridgeP;
-      const { data, error } = await B.supabase.storage.from("zr").createSignedUrl(id, 3600);
+      const { data, error } = await B.supabase.storage.from("zr").createSignedUrl(B.agencia + "/" + id, 3600);
       if (error || !data) throw error || new Error("sin enlace");
       if (w) { w.opener = null; w.location.href = data.signedUrl; } else location.href = data.signedUrl;
     } catch (x) {
@@ -194,6 +196,7 @@
   window.__zrVerificar = async (pw) => { try { return !!(await (await bridgeP).verifyPassword(String(pw || ""))); } catch (e) { return false; } };
 
   // Aviso de versión DEMO.
+  bridgeP.then((B) => { window.__zrAgencia = B.agencia; });
   bridgeP.then((B) => {
     if (!B.demo) return;
     const poner = () => { const b = document.getElementById("banner"); if (b) { b.hidden = false; b.textContent = "Versión DEMO: puede probar todo, pero los cambios no se guardan."; } };
