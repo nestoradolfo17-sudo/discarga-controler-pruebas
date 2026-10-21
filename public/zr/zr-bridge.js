@@ -26,8 +26,16 @@
   const clone = (x) => (x === undefined ? undefined : JSON.parse(JSON.stringify(x)));
   const SEG = /^[A-Za-z0-9_\-.~:@+]{1,200}$/;
   const bad = () => { throw { code: "invalid_argument", message: "Ruta no válida" }; };
+  // Si la tabla de ZR no existe aún en Supabase, se avisa claramente.
+  let avisoTabla = false;
+  const faltaTabla = () => {
+    if (avisoTabla) return; avisoTabla = true;
+    const poner = () => { const b = document.getElementById("banner"); if (b) { b.hidden = false; b.textContent = "La base de datos de ZR aún no está creada: un administrador debe correr supabase/fase11_zr.sql en Supabase. Mientras tanto no se guarda nada."; } };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", poner); else poner();
+  };
   const err = (e) => {
     const m = String((e && (e.message || e.code)) || e || "");
+    if (/PGRST205|42P01|app_zr.*(does not exist|schema cache)|Could not find the (table|function)/i.test(m)) { faltaTabla(); return { code: "unavailable", message: m }; }
     if (/row-level security|permission|42501|not allowed|forbidden|Solo el administrador|necesita una solicitud|otra agencia/i.test(m)) return { code: "invalid_argument", message: m };
     if (/JWT|session|auth/i.test(m)) return { code: "unauthenticated" };
     return { code: "unavailable", message: m };
@@ -190,6 +198,15 @@
   };
 
   window.claude = { use: async (n) => ({ db, user, assets, downloads })[n] || null };
+
+  // Pilotos: conductores activos de Personal de DISCARGA en las agencias del usuario.
+  window.__zrPilotos = (cb) => {
+    bridgeP.then((B) => {
+      const enviar = (l) => { try { cb(clone(l || [])); } catch (e) {} };
+      enviar(B.pilotos());
+      B.onPilotos(enviar);
+    });
+  };
 
   // Verificación de la contraseña del usuario (la de DISCARGA CONTROLER) para
   // eliminar o autorizar dentro de ZR.
