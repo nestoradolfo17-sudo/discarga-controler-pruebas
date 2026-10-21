@@ -126,9 +126,9 @@ export const TabNav: React.FC<TabNavProps> = ({
   ].filter((i) => i.show) as NavItem[];
 
   // Menú lateral: a la vista solo Dashboard, Asignación, Liquidadas y Carga
-  // Excel; lo demás (Recargas, Préstamos, Camiones, Personal, Usuarios) queda
+  // Excel; lo demás (Recargas, Préstamos, Camiones, Personal, ZR, Usuarios) queda
   // agrupado en "Otros", que se despliega al tocarlo.
-  const PRINCIPALES: ActiveTab[] = ['dashboard', 'board', 'liquidated', 'batch', 'zr'];
+  const PRINCIPALES: ActiveTab[] = ['dashboard', 'board', 'liquidated', 'batch'];
   const principales = PRINCIPALES.map((k) => items.find((i) => i.key === k)).filter(Boolean) as NavItem[];
   const otros = items.filter((i) => !PRINCIPALES.includes(i.key));
   const otroActivo = otros.some((i) => i.key === activeTab);
