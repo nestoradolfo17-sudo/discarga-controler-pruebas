@@ -4,7 +4,7 @@ import { supabase } from '../services/supabaseClient';
 import { verifyOwnPassword } from '../services/auth';
 import { isDemoMode } from '../services/demoMode';
 import { AGENCIA_LOCATION_OPTIONS } from '../data/agencies';
-import type { AppUser } from '../types';
+import type { AppUser, Staff } from '../types';
 
 // --- Módulo ZR (Control de pagos de zonas rojas) ---
 // La aplicación ZR vive en /zr/index.html y se muestra aquí dentro, siempre
@@ -32,7 +32,15 @@ export function agenciasZr(u: AppUser): string[] {
   return AGENCIA_LOCATION_OPTIONS.filter((a) => set.has(a)).concat([...set].filter((a) => !AGENCIA_LOCATION_OPTIONS.includes(a)));
 }
 
-export const ZRView: React.FC<{ usuario: AppUser; agenciaSugerida?: string }> = ({ usuario, agenciaSugerida }) => {
+interface PilotoZr {
+  id: string;
+  nombre: string;
+  codigo: string;
+  telefono: string;
+  agencia: string;
+}
+
+export const ZRView: React.FC<{ usuario: AppUser; agenciaSugerida?: string; staff: Staff[] }> = ({ usuario, agenciaSugerida, staff }) => {
   const agencias = useMemo(() => agenciasZr(usuario), [usuario]);
   const [agencia, setAgencia] = useState<string>(() => {
     if (agenciaSugerida && agenciaSugerida !== 'TODAS' && agencias.includes(agenciaSugerida)) return agenciaSugerida;
@@ -54,6 +62,36 @@ export const ZRView: React.FC<{ usuario: AppUser; agenciaSugerida?: string }> = 
   }, [agenciaSugerida, agencias]);
 
   const esAdminAgencia = !!usuario.isAdmin || (usuario.adminAgencies || []).includes(agencia);
+
+  // Pilotos para ZR: conductores activos de Personal en las agencias asignadas
+  // al usuario. Los de otra agencia llevan la agencia junto al código.
+  const pilotos = useMemo<PilotoZr[]>(() => {
+    const permitidas = new Set(agencias);
+    return staff
+      .filter((s) => s.rol === 'Conductor' && s.estatus !== 'BAJA' && s.estado !== 'Baja' && !!s.agencia && permitidas.has(s.agencia))
+      .map((s) => {
+        const cod = s.codigo || s.codigoCorto || '';
+        return {
+          id: s.id,
+          nombre: (s.nombre || '').trim(),
+          codigo: s.agencia === agencia ? cod : [cod, s.agencia].filter(Boolean).join(' · '),
+          telefono: s.telefono || '',
+          agencia: s.agencia || '',
+        };
+      })
+      .filter((p) => p.nombre);
+  }, [staff, agencias, agencia]);
+  const pilotosRef = useRef<PilotoZr[]>(pilotos);
+  const oyentes = useRef(new Set<(l: PilotoZr[]) => void>());
+  // Al cambiar de agencia se recarga ZR: se olvidan los avisos de la anterior.
+  useEffect(() => {
+    const lista = oyentes.current;
+    return () => lista.clear();
+  }, [agencia]);
+  useEffect(() => {
+    pilotosRef.current = pilotos;
+    oyentes.current.forEach((f) => f(pilotos));
+  }, [pilotos]);
 
   useEffect(() => {
     if (!supabase || !agencia) return;
@@ -90,6 +128,10 @@ export const ZRView: React.FC<{ usuario: AppUser; agenciaSugerida?: string }> = 
         }
         ids.forEach((id) => (out[id] = out[id] || { id, name: '', email: null }));
         return out;
+      },
+      pilotos: () => pilotosRef.current,
+      onPilotos: (f: (l: PilotoZr[]) => void) => {
+        oyentes.current.add(f);
       },
       // Archivo creado en esta ventana (para subirlo con la conexión de la app).
       blob: (buf: ArrayBuffer, type: string) => new Blob([buf], { type }),
