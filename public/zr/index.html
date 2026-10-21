@@ -1,4 +1,4 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/zr/zr-bridge.js"></script><link rel="stylesheet" href="/zr/zr-discarga.css"></head><body><title>Control ZR Atanasio</title>
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/zr/zr-bridge.js"></script><link rel="stylesheet" href="/zr/zr-discarga.css"></head><body><title>Control ZR</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <script src="/zr/vendor/xlsx.full.min.js"></script>
@@ -632,7 +632,7 @@ body.no-carga .carga-pil,body.no-carga .carga-pres,body.lock-pil .carga-pil,body
     <div class="side-top">
       <div class="brand">
         <div class="brand-mark"><svg class="ico"><use href="#i-shield"/></svg></div>
-        <div><b id="brandName">ZR Atanasio</b><small>Control de pagos · zonas rojas</small></div>
+        <div><b id="brandName">ZR</b><small>Control de pagos · zonas rojas</small></div>
       </div>
       <div class="theme-sw" role="group" aria-label="Apariencia">
         <button type="button" data-theme-set="light" aria-pressed="false" title="Modo claro" aria-label="Modo claro"><svg class="ico"><use href="#i-sun"/></svg></button>
@@ -925,6 +925,10 @@ body.no-carga .carga-pil,body.no-carga .carga-pres,body.lock-pil .carga-pil,body
       <section data-panel="pilotos" hidden>
         <div class="grid-2 halves">
           <div class="card stack">
+            <div><h2>Pilotos de DISCARGA CONTROLER</h2><p class="muted" style="margin:4px 0 0;font-size:13px">La lista sale de <b>Personal</b> de DISCARGA CONTROLER: los <b>pilotos (conductores)</b> activos de las agencias que tiene asignadas su usuario. Para agregar, corregir o dar de baja un piloto, hágalo en <b>Personal</b>; aquí se actualiza solo.</p></div>
+            <div class="hint" style="font-size:12.5px"><span>Primero aparecen los pilotos de la agencia de ZR que está usando; los de otras agencias muestran su agencia junto al código.</span></div>
+          </div>
+          <div class="card stack zr-oculto" hidden>
             <div><h2>Cargar datos de pilotos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Excel o CSV con una columna <em>Piloto</em> o <em>Nombre</em>. Opcional: <em>Código</em>, <em>Licencia</em>, <em>Teléfono</em>.</p></div>
             <div class="hint" id="pilLock" hidden></div>
             <label class="drop carga-pil" id="pilDrop" for="pilFile">
@@ -949,7 +953,7 @@ body.no-carga .carga-pil,body.no-carga .carga-pres,body.lock-pil .carga-pil,body
             <div class="form-actions admin-only"><button class="btn" type="button" id="btnPilOne"><svg class="ico"><use href="#i-plus"/></svg>Agregar piloto</button></div>
           </div>
           <div class="card stack">
-            <div class="card-head" style="margin:0"><div><h2>Lista de pilotos</h2><p>Aparecen en el campo Piloto del registro ZR</p></div></div>
+            <div class="card-head" style="margin:0"><div><h2>Lista de pilotos</h2><p>Aparecen en el campo Piloto del registro ZR · desde Personal de DISCARGA CONTROLER</p></div></div>
             <div class="tbl-wrap"><table id="tblPil"></table></div>
           </div>
         </div>
