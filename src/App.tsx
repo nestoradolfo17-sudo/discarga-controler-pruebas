@@ -79,6 +79,7 @@ import { ChangeTruckStatusModal } from './components/modals/ChangeTruckStatusMod
 import { RevertSplitModal } from './components/modals/RevertSplitModal';
 import { RepartirCajasModal } from './components/modals/RepartirCajasModal';
 import { ZRView } from './components/ZRView';
+import { NotificationBell, DestinoNotificacion } from './components/NotificationBell';
 import { AssignModal } from './components/modals/AssignModal';
 import { LiquidateModal } from './components/modals/LiquidateModal';
 import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiertaModal';
@@ -1449,6 +1450,17 @@ export default function App() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routes, currentUser]);
+  // Campana de pendientes: abre la pantalla correspondiente en la agencia del aviso.
+  const [zrAgenciaPedida, setZrAgenciaPedida] = useState('');
+  const irANotificacion = (tipo: DestinoNotificacion, agencia: string) => {
+    if (tipo === 'zr') {
+      if (agencia) setZrAgenciaPedida(agencia);
+    } else if (agencia && boardAgencies.includes(agencia)) {
+      setSelectedAgency(agencia);
+    }
+    setActiveTab(tipo);
+  };
+
 
   // Si la agencia elegida en el filtro superior ya no tiene rutas activas (o el
   // usuario perdió el permiso), se vuelve a "Todas las Agencias".
@@ -4448,6 +4460,17 @@ export default function App() {
         isAdmin={currentUser.isAdmin}
         adminAgencias={adminAgenciasSesion}
         onLogout={handleLogout}
+        notificaciones={
+          isSupabaseConfigured && (currentUser.isAdmin || adminAgenciasSesion.length > 0) ? (
+            <NotificationBell
+              isAdmin={!!currentUser.isAdmin}
+              adminAgencias={adminAgenciasSesion}
+              prestamos={prestamos}
+              puedeVer={{ recargas: true, prestamos: true, zr: canViewZr }}
+              onIr={irANotificacion}
+            />
+          ) : undefined
+        }
         saveIndicator={
           isSupabaseConfigured ? (
             <SaveIndicator isOnline={isOnline} pending={pendingSaves} failed={lastSaveFailed} compact />
@@ -4831,7 +4854,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'zr' && currentUser && canViewZr && <ZRView usuario={currentUser} agenciaSugerida={selectedAgency} staff={staffLive} />}
+        {activeTab === 'zr' && currentUser && canViewZr && <ZRView usuario={currentUser} agenciaSugerida={zrAgenciaPedida || selectedAgency} staff={staffLive} />}
 
         {activeTab === 'prestamos' && currentUser && (
           <PrestamosView
