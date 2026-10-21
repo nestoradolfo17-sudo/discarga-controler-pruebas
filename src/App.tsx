@@ -78,6 +78,7 @@ import { ChangeSegmentModal } from './components/modals/ChangeSegmentModal';
 import { ChangeTruckStatusModal } from './components/modals/ChangeTruckStatusModal';
 import { RevertSplitModal } from './components/modals/RevertSplitModal';
 import { RepartirCajasModal } from './components/modals/RepartirCajasModal';
+import { ZRView } from './components/ZRView';
 import { AssignModal } from './components/modals/AssignModal';
 import { LiquidateModal } from './components/modals/LiquidateModal';
 import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiertaModal';
@@ -1066,6 +1067,8 @@ export default function App() {
 
   // Permisos efectivos del usuario en sesión (un administrador siempre tiene acceso total)
   const canView = (key: keyof TablePermissions) => !!currentUser && (currentUser.isAdmin || !!currentUser.permissions[key]);
+  // Módulo ZR: administrador o permiso "ZR".
+  const canViewZr = !!currentUser && (currentUser.isAdmin || !!currentUser.permissions.zr);
   // Pantalla Usuarios: administradores, o usuarios con el permiso "Crear usuarios"
   // (estos solo ven el formulario de creación, con permisos limitados a los suyos).
   const canManageUsers = !!currentUser && (currentUser.isAdmin || currentUser.permissions.canCreateUsers === true);
@@ -1192,6 +1195,10 @@ export default function App() {
     };
     if (activeTab === 'users') {
       if (!canManageUsers) setActiveTab('board');
+      return;
+    }
+    if (activeTab === 'zr') {
+      if (!canViewZr) setActiveTab('board');
       return;
     }
     const key = tabPermissionKey[activeTab];
@@ -4475,6 +4482,7 @@ export default function App() {
           showStaff={canView('staff')}
           showBatch={canView('batch')}
           showUsers={canManageUsers}
+          showZr={canViewZr}
           isAdmin={!!currentUser.isAdmin}
         />
         </aside>
@@ -4501,6 +4509,7 @@ export default function App() {
           showStaff={canView('staff')}
           showBatch={canView('batch')}
           showUsers={canManageUsers}
+          showZr={canViewZr}
           isAdmin={!!currentUser.isAdmin}
         />
         </div>
@@ -4573,6 +4582,7 @@ export default function App() {
           showStaff={canView('staff')}
           showBatch={canView('batch')}
           showUsers={canManageUsers}
+          showZr={canViewZr}
           isAdmin={!!currentUser.isAdmin}
         />
         </div>
@@ -4819,6 +4829,8 @@ export default function App() {
             prestamos={prestamos}
           />
         )}
+
+        {activeTab === 'zr' && currentUser && canViewZr && <ZRView usuario={currentUser} />}
 
         {activeTab === 'prestamos' && currentUser && (
           <PrestamosView
