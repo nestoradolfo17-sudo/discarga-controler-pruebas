@@ -36,7 +36,13 @@ from (values
   (11, 'Fase 9 (versión actual)', 'Préstamos: extensión y admin de la agencia origen',
         exists (select 1 from fn where proname = 'dc_prestamos_control' and prosrc like '%historialExtensiones%' and prosrc like '%is_agency_admin%')),
   (12, 'Fase 10 (admin de agencias)', 'Columna admin_agencies en usuarios',
-        exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'app_users' and column_name = 'admin_agencies'))
+        exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'app_users' and column_name = 'admin_agencies')),
+  (13, 'Fase 11 (módulo ZR)', 'Base de datos de ZR por agencia (tabla app_zr)',
+        exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'app_zr' and column_name = 'agencia')),
+  (14, 'Fase 11 (módulo ZR)', 'ZR: autorizaciones controladas por la base',
+        exists (select 1 from pg_trigger where tgname = 'trg_zr_control' and not tgisinternal)),
+  (15, 'Fase 11 (módulo ZR)', 'ZR: almacenamiento de fotos y PDF',
+        exists (select 1 from storage.buckets where id = 'zr'))
 ) as t(orden, fase, que_revisa, ok)
 order by orden;
 
