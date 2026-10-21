@@ -72,6 +72,18 @@ GitHub Desktop → commit + push → esperar a Netlify (1–3 min) → abrir htt
 2. Edge Functions → `admin-users` → **Code** → reemplaza todo por el nuevo `supabase/functions/admin-users/index.ts` → **Deploy**.
 3. En **Usuarios**, el administrador general marca las agencias en "Administrador de agencias" (al crear el usuario o en la columna *Admin. de agencias*). Solo puede administrar agencias que también puede ver.
 
+## Módulo ZR (Fase 11)
+
+1. Supabase → **SQL Editor → New query** → pega TODO el contenido de `supabase/fase11_zr.sql` → **Run**. Al final deben salir 3 filas con **SÍ**.
+2. (Una sola vez) para traer los datos de la versión anterior de Control ZR: pega TODO `zr_datos_iniciales.sql` → **Run**.
+3. En **Usuarios** de DISCARGA CONTROLER, activa el permiso **ZR** a cada persona que use el módulo (el administrador general ya lo tiene).
+4. Dentro de ZR → **Usuarios** se asignan los accesos de ZR (Operación, Análisis, Configuración, Carga) y quién es administrador de ZR.
+
+- ZR entra con el **mismo usuario y contraseña** de DISCARGA CONTROLER (ya no tiene contraseñas propias).
+- Para eliminar o autorizar dentro de ZR se confirma con la contraseña de DISCARGA CONTROLER.
+- Fotos y PDF: almacenamiento privado `zr` (máx. 20 MB, solo imágenes y PDF).
+- Los datos de ZR no entran en el respaldo diario automático de la Fase 3: descarga un respaldo desde Supabase (Table Editor → app_zr → Export) junto con los demás.
+
 ## ¿Qué fases tiene aplicada mi base?
 Supabase → SQL Editor → pega `supabase/diagnostico_fases.sql` → Run. Solo lee: muestra cada fase con SÍ/NO, las tablas sin seguridad por filas (debe salir vacío) y los administradores activos.
 
