@@ -4,3 +4,12 @@
 #uaBack .field:has(#uaPw2),
 #uaGen,
 #usrStats .usr-stat:nth-child(4) { display: none !important; }
+
+/* El administrador de ZR es el administrador general o el de la agencia
+   (se asigna en Usuarios de DISCARGA CONTROLER), no dentro de ZR. */
+[data-uarol="admin"],
+select[data-urol],
+[data-uadm-off] { display: none !important; }
+#uaBack .field:has(.rolseg),
+#tblUsr th:nth-child(3),
+#tblUsr td:nth-child(3) { display: none !important; }
