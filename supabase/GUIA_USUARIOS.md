@@ -75,14 +75,17 @@ GitHub Desktop → commit + push → esperar a Netlify (1–3 min) → abrir htt
 ## Módulo ZR (Fase 11)
 
 1. Supabase → **SQL Editor → New query** → pega TODO el contenido de `supabase/fase11_zr.sql` → **Run**. Al final deben salir 3 filas con **SÍ**.
-2. (Una sola vez) para traer los datos de la versión anterior de Control ZR: pega TODO `zr_datos_iniciales.sql` → **Run**.
-3. En **Usuarios** de DISCARGA CONTROLER, activa el permiso **ZR** a cada persona que use el módulo (el administrador general ya lo tiene).
-4. Dentro de ZR → **Usuarios** se asignan los accesos de ZR (Operación, Análisis, Configuración, Carga) y quién es administrador de ZR.
+2. (Una sola vez) para traer los datos de la versión anterior de Control ZR (agencia Atanasio): pega TODO `zr_datos_iniciales.sql` → **Run**.
+3. En **Usuarios** de DISCARGA CONTROLER activa el permiso **ZR** a quien lo use. Ve ZR de las agencias a las que tiene acceso.
 
-- ZR entra con el **mismo usuario y contraseña** de DISCARGA CONTROLER (ya no tiene contraseñas propias).
-- Para eliminar o autorizar dentro de ZR se confirma con la contraseña de DISCARGA CONTROLER.
-- Fotos y PDF: almacenamiento privado `zr` (máx. 20 MB, solo imágenes y PDF).
-- Los datos de ZR no entran en el respaldo diario automático de la Fase 3: descarga un respaldo desde Supabase (Table Editor → app_zr → Export) junto con los demás.
+Reglas (iguales a Recargas y Préstamos):
+- Cada agencia tiene sus propios datos de ZR; arriba del módulo se elige la agencia.
+- **Autoriza, rechaza y elimina** el administrador general o el **administrador de esa agencia** (se asigna en Usuarios de DISCARGA). La base de datos lo hace cumplir.
+- El administrador de agencia entra a ZR de sus agencias aunque no tenga el permiso ZR marcado.
+- Dentro de ZR → Usuarios solo se asignan los accesos de ZR (Operación, Análisis, Configuración, Carga).
+- ZR entra con el **mismo usuario y contraseña** de DISCARGA CONTROLER; para eliminar o autorizar se confirma con esa contraseña.
+- Fotos y PDF: almacenamiento privado `zr`, una carpeta por agencia (máx. 20 MB, solo imágenes y PDF).
+- Los datos de ZR no entran en el respaldo diario automático de la Fase 3: descarga un respaldo desde Supabase (Table Editor → app_zr → Export).
 
 ## ¿Qué fases tiene aplicada mi base?
 Supabase → SQL Editor → pega `supabase/diagnostico_fases.sql` → Run. Solo lee: muestra cada fase con SÍ/NO, las tablas sin seguridad por filas (debe salir vacío) y los administradores activos.
