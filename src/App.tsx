@@ -1067,8 +1067,9 @@ export default function App() {
 
   // Permisos efectivos del usuario en sesión (un administrador siempre tiene acceso total)
   const canView = (key: keyof TablePermissions) => !!currentUser && (currentUser.isAdmin || !!currentUser.permissions[key]);
-  // Módulo ZR: administrador o permiso "ZR".
-  const canViewZr = !!currentUser && (currentUser.isAdmin || !!currentUser.permissions.zr);
+  // Módulo ZR: administrador general, administrador de agencia o permiso "ZR".
+  const canViewZr =
+    !!currentUser && (currentUser.isAdmin || !!currentUser.permissions.zr || (currentUser.adminAgencies || []).length > 0);
   // Pantalla Usuarios: administradores, o usuarios con el permiso "Crear usuarios"
   // (estos solo ven el formulario de creación, con permisos limitados a los suyos).
   const canManageUsers = !!currentUser && (currentUser.isAdmin || currentUser.permissions.canCreateUsers === true);
@@ -4830,7 +4831,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'zr' && currentUser && canViewZr && <ZRView usuario={currentUser} />}
+        {activeTab === 'zr' && currentUser && canViewZr && <ZRView usuario={currentUser} agenciaSugerida={selectedAgency} />}
 
         {activeTab === 'prestamos' && currentUser && (
           <PrestamosView
