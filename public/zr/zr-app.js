@@ -2061,7 +2061,7 @@ function perms(){
   if(!list.length) return {op:true,an:true,cfg:true,carga:true,admin:false};
   const u=findMe(list);
   if(!u) return {op:true,an:false,cfg:false,carga:false,admin:false};
-  if(u.admin) return ALLP;
+  /* DISCARGA: el administrador de ZR es el general o el de la agencia (S.me.owner) */
   return {op:!!u.op,an:!!u.an,cfg:!!u.cfg,carga:!!u.carga,admin:false};
 }
 function applyPerms(){
@@ -2084,7 +2084,7 @@ function applyPerms(){
 function fdLocal(t){ const d=new Date(t); return isNaN(d)?"":`${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`; }
 function curMes(){ return todayISO.slice(0,7); }
 function myUsr(){ return findMe(S.usuarios||[]); }
-function brand(){ const a=String(myUsr()?.agencia||"").trim(); if(!a) return "ZR Atanasio"; return /^zr\b/i.test(a)? a : "ZR "+a; }
+function brand(){ const a=String(window.__zrAgencia||myUsr()?.agencia||"").trim(); if(!a) return "ZR Atanasio"; return /^zr\b/i.test(a)? a : "ZR "+a; }
 function cargaLock(kind){ if(S.P?.admin) return false; return !!S.cargas?.[curMes()]?.[kind]; }
 async function markCarga(kind,mesPres){
   const mk=curMes(); const prev=S.cargas||{};
