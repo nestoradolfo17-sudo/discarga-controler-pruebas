@@ -1,0 +1,1200 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/zr/zr-bridge.js"></script><link rel="stylesheet" href="/zr/zr-discarga.css"></head><body><title>Control ZR Atanasio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="/zr/vendor/xlsx.full.min.js"></script>
+<style>
+:root{
+  --ground:#EEF2F8; --surface:#FFFFFF; --sunk:#F4F7FB; --line:#D5DDEA; --line-strong:#A9B6CC;
+  --ink:#0B1A33; --muted:#4F5E78; --faint:#7F8BA2;
+  --accent:#00215C; --accent-ink:#FFFFFF; --accent-soft:#E1E9F7; --accent-2:#2F7BFF;
+  --track:#D9E1EE;
+  --side:#00215C; --side-ink:#F1F5FF; --side-muted:#A8B8D8; --side-line:#1A3A75; --side-hover:#0C2F70; --side-active:#123C85;
+  --ok:#157347; --ok-soft:#DCF3E6; --warn:#A15C00; --warn-soft:#FDEFD3; --crit:#C0281F; --crit-soft:#FCE1DE; --info:#0B79B8; --info-soft:#DDF0FA;
+  --hero-a:#00215C; --hero-b:#0A3D91;
+  --shadow:0 1px 2px rgba(0,33,92,.07),0 6px 18px rgba(0,33,92,.07);
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]):not([data-zr-theme="light"]){
+    color-scheme:dark;
+  --ground:#070E1F; --surface:#0F1A33; --sunk:#0B152B; --line:#22325A; --line-strong:#3A4E7E;
+  --ink:#E8EEFB; --muted:#A3B1CE; --faint:#7282A6;
+  --accent:#6FA2FF; --accent-ink:#04122E; --accent-soft:#16295A; --accent-2:#8DB6FF;
+  --track:#27385F;
+  --side:#050C1E; --side-ink:#E8EEFB; --side-muted:#8B9BC0; --side-line:#17244A; --side-hover:#0E1B3C; --side-active:#16295A;
+  --ok:#5FD39A; --ok-soft:#10301F; --warn:#F2B654; --warn-soft:#3A2A0E; --crit:#FF8A80; --crit-soft:#3D1B1A; --info:#5CC4F2; --info-soft:#0E2C3F;
+  --hero-a:#0A1A40; --hero-b:#153A86;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.25);
+  }
+}
+:root[data-theme="dark"]:not([data-zr-theme="light"]){
+  color-scheme:dark;
+  --ground:#070E1F; --surface:#0F1A33; --sunk:#0B152B; --line:#22325A; --line-strong:#3A4E7E;
+  --ink:#E8EEFB; --muted:#A3B1CE; --faint:#7282A6;
+  --accent:#6FA2FF; --accent-ink:#04122E; --accent-soft:#16295A; --accent-2:#8DB6FF;
+  --track:#27385F;
+  --side:#050C1E; --side-ink:#E8EEFB; --side-muted:#8B9BC0; --side-line:#17244A; --side-hover:#0E1B3C; --side-active:#16295A;
+  --ok:#5FD39A; --ok-soft:#10301F; --warn:#F2B654; --warn-soft:#3A2A0E; --crit:#FF8A80; --crit-soft:#3D1B1A; --info:#5CC4F2; --info-soft:#0E2C3F;
+  --hero-a:#0A1A40; --hero-b:#153A86;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.25);
+}
+:root[data-zr-theme="dark"]{
+  color-scheme:dark;
+  --ground:#070E1F; --surface:#0F1A33; --sunk:#0B152B; --line:#22325A; --line-strong:#3A4E7E;
+  --ink:#E8EEFB; --muted:#A3B1CE; --faint:#7282A6;
+  --accent:#6FA2FF; --accent-ink:#04122E; --accent-soft:#16295A; --accent-2:#8DB6FF;
+  --track:#27385F;
+  --side:#050C1E; --side-ink:#E8EEFB; --side-muted:#8B9BC0; --side-line:#17244A; --side-hover:#0E1B3C; --side-active:#16295A;
+  --ok:#5FD39A; --ok-soft:#10301F; --warn:#F2B654; --warn-soft:#3A2A0E; --crit:#FF8A80; --crit-soft:#3D1B1A; --info:#5CC4F2; --info-soft:#0E2C3F;
+  --hero-a:#0A1A40; --hero-b:#153A86;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.25);
+}
+:root[data-zr-theme="light"]{
+  color-scheme:light;
+  --ground:#EEF2F8; --surface:#FFFFFF; --sunk:#F4F7FB; --line:#D5DDEA; --line-strong:#A9B6CC;
+  --ink:#0B1A33; --muted:#4F5E78; --faint:#7F8BA2;
+  --accent:#00215C; --accent-ink:#FFFFFF; --accent-soft:#E1E9F7; --accent-2:#2F7BFF;
+  --track:#D9E1EE;
+  --side:#00215C; --side-ink:#F1F5FF; --side-muted:#A8B8D8; --side-line:#1A3A75; --side-hover:#0C2F70; --side-active:#123C85;
+  --ok:#157347; --ok-soft:#DCF3E6; --warn:#A15C00; --warn-soft:#FDEFD3; --crit:#C0281F; --crit-soft:#FCE1DE; --info:#0B79B8; --info-soft:#DDF0FA;
+  --hero-a:#00215C; --hero-b:#0A3D91;
+  --shadow:0 1px 2px rgba(0,33,92,.07),0 6px 18px rgba(0,33,92,.07);
+}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45}
+h1,h2,h3{font-family:var(--display);font-stretch:85%;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:28px;font-weight:760}
+h2{font-size:17px;font-weight:700}
+h3{font-size:14px;font-weight:650}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.muted{color:var(--muted)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+svg{display:block}
+.ico{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- shell ---------- */
+.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}
+.side{background:var(--side);color:var(--side-ink);padding:22px 16px;display:flex;flex-direction:column;gap:22px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{display:flex;gap:11px;align-items:center;padding:0 6px}
+.brand-mark{width:38px;height:38px;border-radius:10px;background:linear-gradient(145deg,var(--accent-2),var(--accent));display:grid;place-items:center;color:#fff;flex:none}
+.brand-mark .ico{width:20px;height:20px}
+.brand b{font-family:var(--display);font-stretch:85%;font-size:17px;font-weight:750;display:block;line-height:1.1}
+.brand small{color:var(--side-muted);font-size:12px}
+.side .field label{color:var(--side-muted)}
+.side select{background:var(--side-hover);border-color:var(--side-line);color:var(--side-ink)}
+.nav{display:grid;gap:3px}
+.nav-label{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--side-muted);font-weight:600;padding:0 10px 6px}
+.tab{display:flex;align-items:center;gap:11px;width:100%;background:none;border:0;border-radius:8px;padding:10px 10px;cursor:pointer;font-weight:550;color:var(--side-muted);text-align:left}
+.tab:hover{background:var(--side-hover);color:var(--side-ink)}
+.tab[aria-selected="true"]{background:var(--side-active);color:var(--side-ink)}
+.tab[aria-selected="true"] .ico{color:var(--accent-2)}
+.tab .count{margin-left:auto;font-family:var(--mono);font-size:11px;background:var(--side-line);border-radius:10px;padding:1px 8px;color:var(--side-ink)}
+.side-actions{margin-top:auto;display:grid;gap:8px}
+.side .btn{background:transparent;border-color:var(--side-line);color:var(--side-ink);justify-content:flex-start}
+.side .btn:hover{background:var(--side-hover);border-color:var(--side-muted)}
+.side .btn.primary{background:var(--accent-2);border-color:var(--accent-2);color:#04201A}
+.main{min-width:0;padding-inline:28px;padding-block:24px 56px}
+.inner{max-width:1240px;margin:0 auto;display:grid;gap:20px}
+.topbar{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;justify-content:space-between}
+.topbar .title-block{display:grid;gap:3px}
+.topbar-actions{display:none;gap:8px;flex-wrap:wrap}
+
+@media (max-width:980px){
+  .app{grid-template-columns:1fr}
+  .side{position:static;height:auto;padding:14px 16px;gap:12px;flex-direction:column}
+  .side-top{display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap}
+  .nav{display:flex;overflow-x:auto;gap:4px;margin-inline:-4px;padding-bottom:2px}
+  .nav-label{display:none}
+  .tab{width:auto;white-space:nowrap;padding:8px 12px}
+  .side-actions{display:none}
+  .topbar-actions{display:flex}
+  .main{padding-inline:16px;padding-block:18px 48px}
+}
+@media (min-width:981px){ .side-top{display:grid;gap:22px} }
+
+/* ---------- controls ---------- */
+.field{display:grid;gap:5px}
+.field label{font-size:12px;font-weight:600;color:var(--muted)}
+input[type=text],input[type=password],input[type=number],input[type=date],input[type=month],select{
+  background:var(--surface);border:1px solid var(--line-strong);border-radius:8px;padding:8px 11px;min-height:40px;width:100%;
+}
+input:focus,select:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+input[readonly]{background:var(--sunk);color:var(--ink);font-family:var(--mono);font-weight:600;border-style:dashed}
+.btn{display:inline-flex;align-items:center;gap:8px;justify-content:center;border-radius:8px;padding:8px 14px;min-height:40px;border:1px solid var(--line-strong);background:var(--surface);cursor:pointer;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover:not(:disabled){filter:brightness(1.08)}
+.btn.small{min-height:30px;padding:4px 10px;font-size:12.5px;border-radius:6px}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn.ghost:hover{color:var(--ink);border-color:var(--line)}
+.btn.danger{color:var(--crit);border-color:var(--crit)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.4)}
+.btn.block{width:100%}
+
+.banner{border:1px solid var(--line);background:var(--warn-soft);color:var(--ink);padding:10px 14px;border-radius:10px;font-size:13px}
+
+/* ---------- cards ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px}
+.card-head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+.card-head p{margin:2px 0 0;color:var(--muted);font-size:12.5px}
+.stack{display:grid;gap:14px;grid-template-columns:minmax(0,1fr)}
+.grid-2{display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:20px;align-items:start}
+.grid-2.halves{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.grid-2.cal-layout{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+@media (max-width:1100px){.grid-2,.grid-2.halves,.grid-2.cal-layout{grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- overview ---------- */
+.overview{display:grid;grid-template-columns:minmax(0,1.35fr) repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:1380px){.overview{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1180px){.overview{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.overview{grid-template-columns:minmax(0,1fr)}}
+.hero{background:linear-gradient(150deg,var(--hero-a) 0%,var(--hero-b) 100%);color:#EAF4F1;border:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center}
+.hero .eyebrow{color:#B9C9EE}
+.hero .big{font-family:var(--mono);font-size:clamp(17px,1.6vw,22px);word-break:break-word;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+.hero .sub{font-size:12.5px;color:#C4D2F2}
+.hero .rows{display:grid;gap:8px}
+.ring-wrap{position:relative;width:118px;height:118px}
+.ring-wrap .pct{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.ring-wrap .pct b{font-family:var(--display);font-stretch:85%;font-size:28px;font-weight:760;line-height:1}
+.ring-wrap .pct span{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#B9C9EE}
+.kpi{display:grid;gap:10px;align-content:start}
+.kpi-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.chip-ico{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
+.chip-ico.warn{background:var(--warn-soft);color:var(--warn)} .chip-ico.crit{background:var(--crit-soft);color:var(--crit)} .chip-ico.info{background:var(--info-soft);color:var(--info)}
+.kpi .v{font-family:var(--mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
+.kpi .s{font-size:12px;color:var(--muted)}
+.seg{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;background:var(--surface)}
+.seg i{display:block;height:100%}
+.seg-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--muted)}
+.seg-legend span{display:inline-flex;align-items:center;gap:5px}
+.seg-legend i{width:8px;height:8px;border-radius:2px;display:inline-block}
+
+/* ---------- forms ---------- */
+.form-card{padding:0;overflow:hidden}
+.form-card .fc-head{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center}
+.form-card .fc-body{padding:18px 20px;display:grid;gap:18px}
+.form-card .fc-foot{padding:14px 20px;border-top:1px solid var(--line);background:var(--sunk);display:grid;gap:8px}
+.fs{display:grid;gap:12px;border:0;margin:0;padding:0;min-width:0}
+.fs-title{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.fs-title::after{content:"";flex:1;height:1px;background:var(--line)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-grid .full{grid-column:1/-1}
+@media (max-width:420px){.form-grid{grid-template-columns:1fr}}
+.amount input{font-family:var(--mono);font-size:20px;font-weight:600;min-height:48px}
+.hint{border-radius:10px;padding:10px 12px;background:var(--sunk);font-size:13px;display:grid;gap:4px;border:1px solid var(--line)}
+.hint.ok{background:var(--ok-soft);border-color:transparent} .hint.warn{background:var(--warn-soft);border-color:transparent} .hint.crit{background:var(--crit-soft);border-color:transparent}
+.hint b{font-family:var(--mono);font-weight:600}
+.err{color:var(--crit);font-size:12.5px;font-weight:500}
+.form-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.save-note{font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:flex-start}
+.save-note::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--warn);margin-top:6px;flex:none}
+
+/* ---------- tables ---------- */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;background:var(--surface)}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;background:var(--sunk);white-space:nowrap}
+td.r,th.r{text-align:right}
+td.num,td .num{white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:var(--sunk)}
+tfoot td{font-weight:700;background:var(--sunk);border-top:1px solid var(--line-strong);border-bottom:0}
+tr.clickable{cursor:pointer}
+tr.clickable:hover td{background:var(--accent-soft)}
+tr.detail td,tr.detail:hover td{background:var(--sunk);padding:14px}
+tr.current td{background:var(--accent-soft)}
+.sector-name{font-weight:600;max-width:340px}
+#tblPagos .sector-name{min-width:130px;max-width:190px;font-size:12.5px;line-height:1.3}
+#tblPagos th,#tblPagos td,#tblReint th,#tblReint td{padding:8px 9px;font-size:12.5px}
+#tblReint .sub-l{font-size:11px;color:var(--muted);margin-top:2px}
+#tblReint th{font-size:10px;letter-spacing:.05em}
+#tblReint .sector-name{min-width:150px;font-size:12.5px}
+#tblPagos .sub-l{font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap}
+#tblPagos th{font-size:10px;letter-spacing:.05em}
+#tblPagos td.num,#tblPagos .num{font-size:12px}
+#tblPagos .pill{font-size:10.5px;padding:2px 7px}
+section[data-panel="pagos"] .tbl-wrap{max-height:calc(100vh - 230px);overflow:auto}
+section[data-panel="pagos"] thead th{position:sticky;top:0;z-index:1}
+section[data-panel="pagos"] tfoot td{position:sticky;bottom:0}
+.sector-note{font-size:12px;color:var(--faint);font-weight:400}
+.neg{color:var(--crit)} .pos{color:var(--ok)}
+.corr-in{width:104px!important;min-height:32px!important;padding:4px 8px!important}
+.corr-badge{display:inline-block;font-family:var(--mono);font-size:11.5px;font-weight:600;background:var(--accent-soft);color:var(--accent);border-radius:5px;padding:1px 6px;margin-right:6px}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.crit{background:var(--crit-soft);color:var(--crit)}
+.pill.info{background:var(--info-soft);color:var(--info)}
+.pill.neutral{background:var(--sunk);color:var(--muted);border:1px solid var(--line)}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--surface);display:grid;gap:1px;min-width:124px;font-size:12px;border-top-width:3px}
+.chip .d{font-weight:700}
+.chip.ok{border-top-color:var(--ok)} .chip.crit{border-top-color:var(--crit)} .chip.warn{border-top-color:var(--warn)}
+
+/* ---------- charts ---------- */
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.bars{display:grid;gap:10px}
+.bar-row{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr) auto;gap:14px;align-items:center;padding:3px 0;border-radius:6px;cursor:default}
+.bar-row:hover{background:var(--sunk)}
+.bar-row .nm{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-row .nm .corr-badge{font-size:10.5px}
+.bar-track{position:relative;height:14px}
+.bar-track .bud{position:absolute;left:0;top:0;bottom:0;background:var(--track);border-radius:4px}
+.bar-track .reg{position:absolute;left:0;top:3px;bottom:3px;background:var(--accent);border-radius:3px;box-shadow:0 0 0 2px var(--surface)}
+.bar-track .reg.crit{background:var(--crit)}
+.bar-row .val{font-family:var(--mono);font-size:12px;white-space:nowrap;text-align:right;min-width:150px}
+.bar-row .val b{font-weight:600}
+@media (max-width:640px){.bar-row{grid-template-columns:minmax(0,1fr) auto}.bar-row .bar-track{grid-column:1/-1;order:3}.bar-row .val{min-width:0}}
+.chart-scroll{overflow-x:auto}
+.daily svg{min-width:640px;width:100%;height:auto}
+.daily text{font-family:var(--mono);font-size:10px;fill:var(--muted)}
+.daily .grid{stroke:var(--line);stroke-width:1}
+.daily .b-bud{fill:var(--track)}
+.daily .b-reg{fill:var(--accent)}
+.daily .b-reg.crit{fill:var(--crit)}
+.daily .hit{fill:transparent;cursor:pointer}
+.daily .hit:hover{fill:var(--accent-soft);fill-opacity:.55}
+.daily .sel{fill:var(--accent-soft)}
+.daily .today-line{stroke:var(--accent);stroke-dasharray:3 3;stroke-width:1.2}
+.tip{position:fixed;z-index:20;pointer-events:none;background:var(--ink);color:var(--ground);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:260px}
+.tip b{font-family:var(--mono);font-weight:600}
+
+/* ---------- alerts ---------- */
+.alerts{display:grid;gap:6px}
+.alert-head{display:flex;align-items:center;gap:8px;color:var(--crit);font-weight:700;font-size:13px}
+.alert-row{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:8px;background:var(--crit-soft);font-size:13px}
+
+/* ---------- calendar ---------- */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.cal .wd{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;padding:0 4px}
+.day{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:7px 8px;min-height:84px;display:grid;align-content:start;gap:2px;cursor:pointer;text-align:left;position:relative;overflow:hidden}
+.day::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:transparent}
+.day:hover{border-color:var(--accent)}
+.day.empty{background:transparent;border:1px dashed var(--line);cursor:default}
+.day.ok::before{background:var(--ok)} .day.warn::before{background:var(--warn)} .day.crit::before{background:var(--crit)} .day.pend::before{background:var(--line-strong)}
+.day.crit{background:linear-gradient(var(--crit-soft),var(--surface) 70%)}
+.day.ok{background:linear-gradient(var(--ok-soft),var(--surface) 70%)}
+.day.sel{outline:2px solid var(--accent);outline-offset:1px}
+.day .n{font-family:var(--display);font-weight:760;font-size:17px;font-stretch:85%}
+.day .b,.day .p{font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums}
+.day .b{color:var(--muted)}
+.day .p{color:var(--accent);font-weight:600}
+.day.today .n::after{content:" hoy";font-size:10px;font-family:var(--body);color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+@media (max-width:640px){.day{min-height:60px;padding:5px}.day .b,.day .p{font-size:9.5px}.day .n{font-size:14px}}
+
+/* ---------- day list ---------- */
+.dlist{display:grid;gap:8px}
+.dr{border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:10px;padding:10px 12px;display:grid;gap:8px}
+.dr-ok{border-left-color:var(--ok)} .dr-warn{border-left-color:var(--warn)} .dr-crit{border-left-color:var(--crit)}
+.dr-top{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+.dr-name{font-weight:600;font-size:13px;min-width:0}
+.dr-name small{display:block;color:var(--muted);font-weight:400;font-size:12px;margin-top:2px}
+.dr-nums,.dr-total{display:flex;flex-wrap:wrap;gap:6px 22px}
+.dr-nums span,.dr-total span{display:grid;gap:1px}
+.dr-nums em,.dr-total em{font-style:normal;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.dr-nums b,.dr-total b{font-family:var(--mono);font-weight:600;font-size:13px}
+.dr-total{margin-top:10px;padding:12px;border-radius:10px;background:var(--sunk);border:1px solid var(--line)}
+.dr-total b{font-size:14.5px}
+.app{background:linear-gradient(to right,var(--side) 248px,transparent 248px)}
+@media (max-width:980px){.app{background:none}}
+/* ---------- autorizaciones ---------- */
+.btn.auth{background:var(--info-soft);border-color:var(--info);color:var(--info)}
+.save-note.info::before{background:var(--info)}
+textarea{background:var(--surface);border:1px solid var(--line-strong);border-radius:8px;padding:8px 11px;width:100%;font:inherit;color:inherit;resize:vertical}
+textarea:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+.auth-box{border:1px solid var(--info);background:var(--surface);border-radius:12px;padding:14px;display:grid;gap:12px}
+.auth-box-head{display:flex;gap:10px;align-items:flex-start;color:var(--info)}
+.auth-box-head b{display:block;color:var(--ink)} .auth-box-head small{color:var(--muted);font-size:12.5px}
+.auth-tag{display:flex;align-items:center;gap:4px;margin-top:4px;font-size:11.5px;color:var(--info);font-weight:600}
+.auth-tag .ico{width:13px;height:13px}
+.auth-tag a,.sol a{color:var(--info)}
+.aut-list{display:grid;gap:12px}
+.sol{border:1px solid var(--line);border-radius:12px;display:grid;overflow:hidden}
+.sol-head{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--sunk);border-bottom:1px solid var(--line)}
+.sol-head .no{font-family:var(--mono);font-weight:700;font-size:14px}
+.sol-body{padding:14px 16px;display:grid;gap:14px}
+.sol-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 18px}
+.sol-grid > span{display:grid;gap:1px;min-width:0}
+.sol-grid > span > em{font-style:normal;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.sol-grid > span > b{font-weight:600;font-size:13px;overflow-wrap:anywhere}
+.sol-grid > span > b.num{font-family:var(--mono)}
+.sol-steps{display:flex;gap:6px;flex-wrap:wrap}
+.step{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:3px 10px 3px 4px}
+.step i{width:18px;height:18px;border-radius:50%;background:var(--sunk);display:grid;place-items:center;font-style:normal;font-size:11px;border:1px solid var(--line)}
+.step.done{color:var(--ok);border-color:var(--ok-soft);background:var(--ok-soft)} .step.done i{background:var(--ok);color:#fff;border-color:var(--ok)}
+.step.now{color:var(--info);border-color:var(--info)} .step.now i{background:var(--info);color:#fff;border-color:var(--info)}
+.sol-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding-top:12px;border-top:1px dashed var(--line)}
+.file-btn{position:relative;overflow:hidden}
+.file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.evid{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--ok-soft);font-size:13px}
+.evid .ico{color:var(--ok)}
+.mail-card{border-color:var(--info);display:grid;gap:12px}
+.mail-meta{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:13px}
+.mail-meta em{font-style:normal;color:var(--muted);font-weight:600}
+.mail-body{font-family:var(--mono);font-size:12px;min-height:220px;background:var(--sunk)}
+.sol.anulada{opacity:.6}
+.vale-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px;padding:8px 10px;border-radius:10px;background:var(--accent-soft)}
+.dr-nums{align-items:flex-end}
+.dr-acts{display:flex;flex-wrap:wrap;gap:6px;padding-top:8px;border-top:1px dashed var(--line)}
+.step-btn.now{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.step-btn.done{background:var(--ok-soft);border-color:transparent;color:var(--ok);opacity:1;filter:none}
+.step-btn.reint{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+.win-h{font-size:10.5px;font-weight:700;background:rgba(255,255,255,.22);border-radius:5px;padding:0 5px;margin-left:2px}
+.step-btn.reint.off{background:transparent;border-color:var(--line);color:var(--faint)}
+.step-btn.reint.done{background:var(--info-soft);border-color:var(--info);color:var(--info)}
+.step-btn.off{background:transparent;border-color:var(--line);color:var(--faint)}
+.modal-back{position:fixed;inset:0;z-index:40;background:rgba(8,20,17,.55);display:grid;place-items:center;padding:16px}
+.modal{background:var(--surface);color:var(--ink);border-radius:16px;max-width:560px;width:100%;max-height:calc(100vh - 32px);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35);border-top:5px solid var(--warn)}
+.modal-head{display:flex;gap:12px;align-items:flex-start;padding:20px 20px 8px}
+.modal-head .chip-ico{flex:none}
+.modal-body{padding:4px 20px 12px;display:grid;gap:10px;overflow:auto;min-height:0;flex:1}
+.modal-big{font-family:var(--display);font-stretch:85%;font-size:34px;font-weight:760;line-height:1;color:var(--warn)}
+.pend-days{display:grid;gap:6px}
+.pend-day{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.pend-day .up-date{width:46px}
+.pend-day small{display:block;color:var(--muted);font-size:12px}
+.modal-foot{padding:12px 20px 18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--line)}
+.dr-name small.g-ok{color:var(--ok);font-weight:600}
+.sector-view{min-height:40px;border:1px dashed var(--line-strong);border-radius:8px;padding:9px 11px;background:var(--sunk);font-weight:600;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sector-view.empty{color:var(--muted);font-weight:500;font-style:italic}
+.lbl-row{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.link-btn{background:none;border:0;padding:0;color:var(--accent);font-weight:600;font-size:11.5px;cursor:pointer;text-decoration:underline}
+.overview{grid-template-columns:minmax(0,1fr) minmax(0,2.4fr)!important}
+@media (max-width:1100px){.overview{grid-template-columns:minmax(0,1fr)!important}}
+.pe-card{display:grid;gap:10px}
+.pe-head{display:flex;flex-wrap:wrap;gap:8px 28px;align-items:flex-end;justify-content:space-between}
+.pe-nums{display:flex;flex-wrap:wrap;gap:6px 28px}
+.pe-nums span{display:grid;gap:2px}
+.pe-nums b{font-family:var(--mono);font-size:22px;font-weight:600;line-height:1.1}
+.pe-chart svg{width:100%;height:auto;min-width:560px}
+.pe-chart text{font-family:var(--mono);font-size:10px;fill:var(--muted)}
+.pe-chart .grid{stroke:var(--line);stroke-width:1}
+.pe-chart .b-ri{fill:var(--warn)} .pe-chart .b-ej{fill:var(--ok)} .pe-chart .b-pe{fill:var(--info)} .pe-chart .b-ne{fill:var(--crit)}
+.pe-chart .ln{fill:none;stroke:var(--ink);stroke-width:1.6;stroke-linejoin:round;opacity:.75}
+.pe-chart .dot{fill:var(--ink);stroke:var(--surface);stroke-width:2}
+.c-ej{color:var(--ok)} .c-pe{color:var(--info)} .c-ne{color:var(--crit)}
+.pe-nums b{font-size:19px!important}
+.pe-chart .hit{fill:transparent} .pe-chart .hit:hover{fill:var(--accent-soft);fill-opacity:.5}
+.lbl{font-size:12px;font-weight:600;color:var(--muted)}
+.seg-toggle{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg-toggle label{position:relative;cursor:pointer}
+.seg-toggle input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.seg-toggle span{display:flex;align-items:center;justify-content:center;gap:8px;min-height:42px;border:1px solid var(--line-strong);border-radius:8px;font-weight:600;background:var(--surface);color:var(--muted)}
+.seg-toggle input:disabled + span{cursor:default}
+.seg-toggle input:disabled:not(:checked) + span{opacity:.45}
+.tipo-pill{font-size:11px}
+.seg-toggle input:checked + span{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.seg-toggle input:focus-visible + span{outline:2px solid var(--accent);outline-offset:2px}
+.mano-state{display:flex;gap:8px;align-items:center;font-size:12.5px;padding:8px 10px;border-radius:8px;background:var(--warn-soft)}
+.mano-state.ok{background:var(--ok-soft);color:var(--ok);font-weight:600}
+input:disabled,select:disabled{background:var(--sunk);color:var(--faint);cursor:not-allowed}
+.ev-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--sunk)}
+.ev-grid span{display:grid;gap:1px;min-width:0}
+.ev-grid em{font-style:normal;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.ev-grid b{font-size:13px;overflow-wrap:anywhere}
+.ev-photo{border:1.5px dashed var(--line-strong);border-radius:12px;padding:14px;display:grid;gap:8px;justify-items:center;text-align:center;background:var(--surface);cursor:pointer}
+.ev-photo img{max-height:220px;border-radius:8px;object-fit:contain}
+.mes-acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.btn.danger-ghost{color:var(--crit)} .btn.danger-ghost:hover{border-color:var(--crit)}
+.btn.danger-solid{background:var(--crit);border-color:var(--crit);color:#fff}
+tr.del-row td,tr.del-row:hover td{background:var(--crit-soft);padding:14px}
+.del-box{display:grid;gap:10px}
+.del-head{display:flex;gap:10px;align-items:flex-start;color:var(--crit)}
+.del-head b{display:block;color:var(--ink)} .del-head small{color:var(--muted);font-size:12.5px}
+.del-list{margin:0;padding-left:18px;display:grid;gap:3px;font-size:13px}
+.ind svg{width:100%;height:auto;min-width:600px}
+.ind text{font-family:var(--mono);font-size:10px;fill:var(--muted)}
+.ind .grid{stroke:var(--line);stroke-width:1}
+.ind .bb{fill:var(--track)} .ind .bb.cur{fill:var(--line-strong)}
+.ind .ln{fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linejoin:round}
+.ind .dot{fill:var(--accent);stroke:var(--surface);stroke-width:2}
+.ind .dot.over{fill:var(--crit)}
+.ind .vlab{font-size:9.5px;fill:var(--ink);font-weight:600}
+.ind .dbar{fill:var(--accent)} .ind .dbar.warn{fill:var(--warn)}
+.ind .dln{fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round}
+.ind .ddot{fill:var(--surface);stroke:var(--ink);stroke-width:2}
+.ind .nlab{font-size:10.5px;fill:var(--ink);font-weight:700;paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
+.ind .hit{fill:transparent} .ind .hit:hover{fill:var(--accent-soft);fill-opacity:.45}
+.bar-row .reg.ruta{top:0;bottom:0;border-radius:4px;box-shadow:none}
+.inner > section,.inner > *{min-width:0}
+.card{min-width:0}
+section[data-panel="pagos"] .card-head .toolbar{flex:1;justify-content:flex-end}
+body[data-tab="pagos"] #kpis, body[data-tab="diario"] #kpis, body[data-tab="pilotos"] #kpis, body[data-tab="presupuesto"] #kpis{display:none}
+/* ---------- énfasis de botones y marcas ---------- */
+.btn{border-width:1.5px;font-weight:650;box-shadow:0 1px 0 rgba(0,33,92,.06)}
+.btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:0 2px 6px rgba(0,33,92,.25)}
+.btn.primary:hover:not(:disabled){background:var(--accent);color:var(--accent-ink);filter:brightness(1.15)}
+.btn.ghost{box-shadow:none}
+.btn:disabled{opacity:.5;box-shadow:none}
+.tab{position:relative;font-weight:600}
+.tab[aria-selected="true"]{background:var(--side-active);color:#fff;box-shadow:inset 3px 0 0 var(--accent-2)}
+.tab[aria-selected="true"] .ico{color:var(--accent-2)}
+.brand-mark{background:linear-gradient(145deg,#2F7BFF,#00215C)!important;box-shadow:0 0 0 1px rgba(255,255,255,.15)}
+.side .btn.primary{background:#2F7BFF;border-color:#2F7BFF;color:#fff}
+.side .btn{border-color:var(--side-line);color:var(--side-ink)}
+.side .btn:hover:not(:disabled){background:var(--side-hover);color:#fff;border-color:var(--side-muted)}
+.card{border-color:var(--line)}
+.card-head h2,.card > h2{color:var(--ink)}
+th{color:var(--ink);background:var(--sunk);border-bottom:1.5px solid var(--line-strong)}
+.pill{font-weight:700;border:1px solid transparent}
+.pill.ok{border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
+.pill.warn{border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+.pill.crit{border-color:color-mix(in srgb,var(--crit) 35%,transparent)}
+.pill.info{border-color:color-mix(in srgb,var(--info) 35%,transparent)}
+.corr-badge{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.step-btn.now{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:0 2px 6px rgba(0,33,92,.25)}
+.step-btn.done{background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
+.day.sel{outline:2.5px solid var(--accent-2)}
+.day.today .n::after{color:var(--accent-2)}
+.seg-toggle input:checked + span{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+input:focus,select:focus,textarea:focus{border-color:var(--accent-2);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent-2) 25%,transparent)}
+:focus-visible{outline:2px solid var(--accent-2)}
+.theme-sw{display:inline-grid;grid-template-columns:repeat(2,40px);justify-self:start;align-self:start;gap:4px;background:var(--side-hover);border:1px solid var(--side-line);border-radius:10px;padding:3px}
+.theme-sw button{background:none;border:0;color:var(--side-muted);font:inherit;font-size:12px;font-weight:600;padding:6px 4px;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
+.theme-sw button .ico{width:17px;height:17px}
+.theme-sw button[aria-pressed="true"]{background:#fff;color:#00215C}
+.theme-sw button:hover:not([aria-pressed="true"]){color:#fff}
+body[data-tab="autorizaciones"] #kpis, body[data-tab="sector"] #kpis{display:none}
+.gm-list{display:grid;gap:10px}
+.gm-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr) minmax(0,1fr);gap:10px;align-items:end;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--sunk)}
+.gm-com{grid-column:1/-1;display:grid;gap:6px}
+.seg-toggle.sm{grid-template-columns:repeat(2,90px)}
+.seg-toggle.sm span{min-height:32px;font-size:13px}
+.gm-com textarea{min-height:70px}
+.gm-name{font-weight:600;font-size:13px;align-self:center}
+.gm-name small{display:block;color:var(--muted);font-weight:400;font-size:12px;margin-top:2px}
+@media (max-width:560px){.gm-row{grid-template-columns:1fr}}
+.re-big{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:12px 14px;border-radius:10px;background:var(--info-soft);border:1px solid var(--info)}
+.re-chk{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid var(--line-strong);border-radius:10px;cursor:pointer;font-size:13px;background:var(--surface)}
+.re-chk input{width:18px;height:18px;margin-top:1px;accent-color:var(--accent);flex:none}
+.re-chk:has(input:checked){border-color:var(--warn);background:var(--warn-soft)}
+.re-big b{font-family:var(--mono);font-size:22px;color:var(--info)}
+.lock-tag{font-size:10.5px;font-weight:600;color:var(--muted);background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:0 6px;margin-left:auto}
+select:disabled#fPiloto{background:var(--sunk);color:var(--ink);opacity:1;font-weight:600}
+input[readonly]#fRuta{border-style:dashed}
+.paste-zone{outline:none}
+.paste-zone:focus{border-color:var(--accent-2);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent-2) 25%,transparent)}
+.paste-hint{display:inline-flex;gap:6px;align-items:center;font-size:12px;font-weight:600;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:3px 8px}
+.mes-field{min-width:220px;margin-left:auto}
+.mes-field select{font-weight:600;border-color:var(--accent);border-width:1.5px}
+.me-badge{display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--side-line);border-radius:10px;margin-top:auto;color:var(--side-ink)}
+.me-badge b{display:block;font-size:13px} .me-badge small{color:var(--side-muted);font-size:11.5px}
+.me-av{width:32px;height:32px;border-radius:50%;background:#2F7BFF;color:#fff;display:grid;place-items:center;font-weight:700;flex:none}
+.side-actions{margin-top:10px}
+body.no-carga [data-panel="pilotos"] .card:first-child::after,body.no-carga [data-panel="presupuesto"] .grid-2 > .card:first-child::after{content:"Su usuario no tiene permiso de carga de datos.";color:var(--muted);font-size:12.5px}
+.usr-res{display:grid;gap:6px}
+.usr-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}@media(max-width:820px){.usr-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.usr-stat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
+.usr-stat em{display:block;font-style:normal;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.usr-stat b{display:block;font-family:var(--display);font-size:26px;margin-top:4px;color:var(--ink)}
+.usr-stat small{color:var(--muted);font-size:12px}
+.usr-stat.warn b{color:var(--warn)} .usr-stat.ok b{color:var(--ok)}
+.adm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px}
+.adm-card{border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px;background:var(--sunk)}
+.adm-card.me{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.adm-top{display:flex;gap:10px;align-items:center}
+.av{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--accent);color:#fff;flex:none}
+.av.u{background:var(--accent-soft);color:var(--accent)}
+.adm-top b{display:block;font-size:14px}.adm-top small{color:var(--muted);font-size:12px}
+.adm-row{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:12.5px;flex-wrap:wrap}
+.adm-row em{font-style:normal;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.acc-chips{display:flex;gap:6px;flex-wrap:wrap}
+.acc{border:1px solid var(--line-strong);background:var(--surface);color:var(--muted);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;gap:5px;align-items:center;font-family:var(--body)}
+.acc.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.acc:disabled{cursor:default;opacity:.85}
+.acc i{font-style:normal;font-size:11px}
+.pw-st{display:inline-flex;gap:4px 6px;align-items:center;flex-wrap:wrap;max-width:230px}
+.pw-dots{font-family:var(--mono);letter-spacing:.15em;color:var(--ink)}
+.pw-wrap{display:flex;gap:6px;align-items:center}.pw-wrap input{flex:1}
+.usr-add{border:1px dashed var(--line-strong);border-radius:12px;padding:12px;display:grid;gap:10px;background:var(--sunk)}
+#tblUsr td{vertical-align:middle}
+.rolseg{display:inline-flex;width:max-content;border:1px solid var(--line-strong);border-radius:12px;padding:3px;gap:3px;background:var(--sunk)}
+.rolseg-b{border:0;background:transparent;color:var(--muted);font:700 13px var(--body);padding:8px 16px;border-radius:9px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.rolseg-b.on{background:var(--accent);color:#fff}
+.ua-sug{position:absolute;left:0;right:0;top:100%;z-index:5;background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;box-shadow:var(--shadow);margin-top:4px;max-height:200px;overflow:auto}
+.ua-sug button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 12px;font:13px var(--body);color:var(--ink);cursor:pointer}
+.ua-sug button:hover,.ua-sug button:focus{background:var(--accent-soft)}
+.ua-sug small{display:block;color:var(--muted);font-size:11.5px}
+.link-st{font-size:11.5px}
+.ag-sel{min-width:150px;padding:6px 9px}
+.usr-row{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--line);border-radius:10px}
+.usr-row small{display:block;color:var(--muted);font-size:12px}
+.usr-layout{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:18px;align-items:start}@media(max-width:980px){.usr-layout{grid-template-columns:1fr}}
+#tblUsr td,#tblUsr th{font-size:12.5px;padding:8px}#tblUsr th{letter-spacing:.02em;white-space:nowrap}#tblUsr td:first-child{min-width:150px}
+#tblUsr input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent)}
+body.no-admin #kpis{display:none!important}
+body.no-carga .carga-only{display:none!important}
+body[data-tab="usuarios"] #kpis,body[data-tab="pilotos"] #kpis,body[data-tab="presupuesto"] #kpis,body[data-tab="autorizaciones"] #kpis,
+body[data-tab="historial"] #kpis,body[data-tab="historial"] #mesField,body[data-tab="usuarios"] #mesField,body[data-tab="pilotos"] #mesField,body[data-tab="presupuesto"] #mesField,body[data-tab="autorizaciones"] #mesField{display:none!important}
+body.no-admin .admin-only{display:none!important}
+body.no-carga .carga-pil,body.no-carga .carga-pres,body.lock-pil .carga-pil,body.lock-pres .carga-pres{display:none!important}
+.dec-box{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn.ok-solid{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.no-solid{background:var(--crit);border-color:var(--crit);color:#fff}
+.sol.rechazada{opacity:.85}
+.pw-in{letter-spacing:.08em}
+#tblUsr input[type=text]{min-width:110px!important;width:130px;padding:7px 9px}
+.usr-layout{grid-template-columns:minmax(260px,320px) 1fr!important}
+.btn.icon-only{padding:6px 8px}
+.hist-list{display:grid;gap:0;max-height:620px;overflow:auto;border:1px solid var(--line);border-radius:12px}
+.hist-row{display:grid;grid-template-columns:130px 130px minmax(0,1fr) 170px;gap:12px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);font-size:13px}
+.hist-row:last-child{border-bottom:0}
+.hist-row .when{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.hist-row .who{color:var(--muted);font-size:12px;text-align:right}
+@media(max-width:820px){.hist-row{grid-template-columns:1fr 1fr}.hist-row .det{grid-column:1/-1}.hist-row .who{text-align:left}}
+#tblHist tr.sel td{background:var(--accent-soft)}
+.multi-box{margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--sunk);display:grid;gap:8px}
+.mb-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.mb-head b{font-size:13px}.mb-head .btn{margin-left:auto}
+.mb-list{display:grid;gap:6px}
+.mb-row{display:grid;grid-template-columns:26px minmax(0,1fr) minmax(0,1.3fr) 28px;gap:4px 8px;align-items:center;font-size:13px;padding-bottom:6px;border-bottom:1px dashed var(--line)}
+.mb-row:last-child{border-bottom:0;padding-bottom:0}
+.mb-row > .mb-amt,.mb-row > input[type=number]{grid-column:2/4;justify-self:start}
+.mb-row > input[type=number]{width:160px}
+.mb-row.rb > input,.mb-row.rb > select{grid-column:auto}
+.mb-row.rb{grid-template-columns:26px minmax(0,1fr) minmax(0,1.3fr) 28px}
+.mb-row.rb > input[data-rbb]{grid-column:2/3}.mb-row.rb > select[data-rbk]{grid-column:3/5}
+.mb-row input,.mb-row select{padding:7px 9px!important;font-size:13px!important;min-width:0}
+.mb-n{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);font-weight:800;font-size:12px}
+.mb-amt{font-family:var(--mono);font-weight:700;white-space:nowrap;text-align:right}
+.mb-lock{color:var(--muted);font-size:12px}
+.step-btn.warnb{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+.chk-row{display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px;font-weight:600;cursor:pointer}
+.chk-row input{width:17px;height:17px;accent-color:var(--accent)}
+.gm-rutas{grid-column:1/-1;display:grid;gap:6px}
+.gm-x{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1fr) auto 30px;gap:8px;align-items:center}
+.gm-x input,.gm-x select{padding:7px 9px!important;font-size:13px!important}
+.gm-split{font-size:12px;color:var(--muted)}
+
+.ind-filter{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;padding:14px 18px}
+.ns-prev{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--sunk);font-size:13px;display:grid;gap:4px}
+.ns-prev b{font-family:var(--mono)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-height:32px;align-items:center}
+.chip{display:inline-flex;gap:6px;align-items:center;background:var(--accent-soft);color:var(--ink);border-radius:999px;padding:4px 6px 4px 11px;font-size:12.5px;font-weight:600}
+.chip button{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
+.ant-item{border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px;background:var(--surface)}
+.ant-item.pend{border-color:var(--warn);box-shadow:0 0 0 1px color-mix(in srgb,var(--warn) 30%,transparent) inset}
+.ant-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px 14px;font-size:13px}
+.ant-grid em{display:block;font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ant-list{display:grid;gap:12px}
+.info-ico{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--warn-soft);color:var(--warn);margin:0 auto}
+/* ---------- misc ---------- */
+.upcoming{display:grid;gap:8px}
+.up-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:12px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px}
+.up-date{border-radius:8px;background:var(--accent-soft);color:var(--accent);text-align:center;padding:4px 0;line-height:1.05}
+.up-date b{display:block;font-family:var(--display);font-stretch:85%;font-size:19px;font-weight:760}
+.up-date span{font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.up-row .nm{font-weight:600;font-size:13px}
+.up-row .nm small{display:block;color:var(--muted);font-weight:400;font-size:12px}
+.empty-state{padding:26px;text-align:center;color:var(--muted)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--ground);padding:11px 18px;border-radius:10px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:30;max-width:calc(100% - 32px);display:flex;gap:8px;align-items:center}
+.toast::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent-2)}
+.drop{border:1.5px dashed var(--line-strong);border-radius:12px;padding:22px;display:grid;gap:8px;background:var(--sunk);cursor:pointer;justify-items:center;text-align:center}
+.drop .ico{width:30px;height:30px;color:var(--accent)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+@media (prefers-reduced-motion:no-preference){.tab,.btn,.day,.bar-track .reg{transition:background .15s,border-color .15s,color .15s,width .4s}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-bars" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></symbol>
+  <symbol id="i-sheet" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h13v4"/><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M16 13.5h2"/></symbol>
+  <symbol id="i-cash" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24"><path d="M12 3v18M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0zM8 21h8"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></symbol>
+</svg>
+
+<div class="app">
+  <aside class="side">
+    <div class="side-top">
+      <div class="brand">
+        <div class="brand-mark"><svg class="ico"><use href="#i-shield"/></svg></div>
+        <div><b id="brandName">ZR Atanasio</b><small>Control de pagos · zonas rojas</small></div>
+      </div>
+      <div class="theme-sw" role="group" aria-label="Apariencia">
+        <button type="button" data-theme-set="light" aria-pressed="false" title="Modo claro" aria-label="Modo claro"><svg class="ico"><use href="#i-sun"/></svg></button>
+        <button type="button" data-theme-set="dark" aria-pressed="false" title="Modo oscuro" aria-label="Modo oscuro"><svg class="ico"><use href="#i-moon"/></svg></button>
+      </div>
+    </div>
+    <nav class="nav" role="tablist" aria-label="Secciones">
+      <div class="nav-label" data-grp-lbl="op">Operación</div>
+      <button class="tab" role="tab" data-grp="op" data-tab="registro" aria-selected="true" id="tab-registro"><svg class="ico"><use href="#i-plus"/></svg>Registrar pago</button>
+      <button class="tab" role="tab" data-grp="op" data-tab="pagos" aria-selected="false" id="tab-pagos"><svg class="ico"><use href="#i-list"/></svg>Pagos registrados<span class="count" id="cntPagos">0</span></button>
+      <button class="tab" role="tab" data-grp="op" data-tab="autorizaciones" aria-selected="false" id="tab-autorizaciones"><svg class="ico"><use href="#i-shield"/></svg>Autorizaciones<span class="count" id="cntAut">0</span></button>
+      <div class="nav-label" data-grp-lbl="an" style="margin-top:12px">Análisis</div>
+      <button class="tab" role="tab" data-grp="an" data-tab="sector" aria-selected="false" id="tab-sector"><svg class="ico"><use href="#i-bars"/></svg>Comparación por sector</button>
+      <button class="tab" role="tab" data-grp="an" data-tab="diario" aria-selected="false" id="tab-diario"><svg class="ico"><use href="#i-bars"/></svg>Indicadores ZR</button>
+      <button class="tab" role="tab" data-grp="an" data-tab="historial" aria-selected="false" id="tab-historial"><svg class="ico"><use href="#i-list"/></svg>Historial<span class="count" id="cntHist">0</span></button>
+      <div class="nav-label" data-grp-lbl="cfg" style="margin-top:12px">Configuración</div>
+      <button class="tab" role="tab" data-grp="cfg" data-tab="pilotos" aria-selected="false" id="tab-pilotos"><svg class="ico"><use href="#i-list"/></svg>Pilotos<span class="count" id="cntPil">0</span></button>
+      <button class="tab" role="tab" data-grp="cfg" data-tab="presupuesto" aria-selected="false" id="tab-presupuesto"><svg class="ico"><use href="#i-sheet"/></svg>Presupuestos mensuales<span class="count" id="cntMeses">0</span></button>
+      <button class="tab" role="tab" data-grp="admin" data-tab="usuarios" aria-selected="false" id="tab-usuarios"><svg class="ico"><use href="#i-shield"/></svg>Usuarios<span class="count" id="cntUsr">0</span></button>
+    </nav>
+    <div class="me-badge" id="meBadge" hidden><span class="me-av" id="meAv"></span><div><b id="meName"></b><small id="meRole"></small></div></div>
+    <div class="side-actions">
+      <button class="btn primary" id="btnGoImp" type="button" hidden><svg class="ico"><use href="#i-upload"/></svg>Cargar presupuesto</button>
+      <button class="btn" id="btnGoPil" type="button" hidden><svg class="ico"><use href="#i-upload"/></svg>Cargar pilotos</button>
+      <button class="btn" id="btnExport" type="button"><svg class="ico"><use href="#i-download"/></svg>Exportar a Excel</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="inner">
+      <header class="topbar">
+        <div class="title-block">
+          <span class="eyebrow" id="subtitle">Presupuesto vs. retiros registrados</span>
+          <h1 id="pageTitle">Registrar pago</h1>
+        </div>
+        <div class="field mes-field" id="mesField">
+          <label for="mesSel">Mes del presupuesto</label>
+          <select id="mesSel"></select>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn small" id="btnGoImp2" type="button" hidden><svg class="ico"><use href="#i-upload"/></svg>Cargar presupuesto</button>
+          <button class="btn small" id="btnExport2" type="button"><svg class="ico"><use href="#i-download"/></svg>Exportar</button>
+        </div>
+      </header>
+
+      <div id="banner" class="banner" hidden></div>
+
+      <section class="overview" id="kpis" aria-label="Resumen del mes"></section>
+
+      <!-- REGISTRO -->
+      <section data-panel="registro">
+        <div class="grid-2">
+          <form class="card form-card" id="frm" novalidate>
+            <div class="fc-head">
+              <div class="chip-ico"><svg class="ico"><use href="#i-cash"/></svg></div>
+              <div><h2 id="frmTitle">Nuevo registro ZR</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px">Elija “Registrar ZR” en un pago programado para cargar el sector.</p></div>
+            </div>
+            <div class="fc-body">
+              <fieldset class="fs">
+                <legend class="fs-title">Retiro</legend>
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="fRetiro">Fecha de retiro</label>
+                    <input type="date" id="fRetiro" required readonly>
+                  </div>
+                  <div class="field">
+                    <label for="fRegistro">Fecha de registro</label>
+                    <input type="date" id="fRegistro" required readonly title="Siempre la fecha de hoy">
+                  </div>
+                  <div class="field full">
+                    <label for="fSectorView">Sector</label>
+                    <div id="fSectorView" class="sector-view empty" aria-live="polite">Se asigna al seleccionar “Registrar ZR”</div>
+                    <select id="fSector" hidden aria-hidden="true" tabindex="-1"></select>
+                  </div>
+                  <div class="field full">
+                    <label for="fCorr">Correlativo (se asigna por sector)</label>
+                    <input type="text" id="fCorr" autocomplete="off" placeholder="Elija fecha y sector" readonly>
+                  </div>
+                  <div class="field full amount">
+                    <label for="fMonto">Monto a pagar (Q)</label>
+                    <input type="number" id="fMonto" min="0" step="0.01" inputmode="decimal" placeholder="0.00" required>
+                  </div>
+                  <div class="field full">
+                    <span class="lbl lbl-row" id="tipoLbl">Tipo de pago <span class="muted" id="tipoSrc" style="font-weight:500;font-size:11.5px">Se asigna según el sector</span></span>
+                    <div class="seg-toggle" role="radiogroup" aria-labelledby="tipoLbl">
+                      <label><input type="radio" name="tipoPago" id="tpDep" value="deposito" disabled><span><svg class="ico"><use href="#i-wallet"/></svg>Depósito</span></label>
+                      <label><input type="radio" name="tipoPago" id="tpMano" value="mano" disabled><span><svg class="ico"><use href="#i-cash"/></svg>Mano a mano</span></label>
+                    </div>
+                    <div id="manoState" class="mano-state" hidden></div>
+                  </div>
+                </div>
+                <div id="hint" class="hint" hidden></div>
+              </fieldset>
+              <fieldset class="fs">
+                <legend class="fs-title">Comprobante bancario</legend>
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="fRuta" class="lbl-row">No. de ruta <span class="lock-tag" title="Viene de la solicitud de gasto">🔒 de la solicitud</span></label>
+                    <input type="text" id="fRuta" autocomplete="off" placeholder="Se asigna desde la solicitud" required readonly>
+                  </div>
+                  <div class="field">
+                    <label for="fPiloto" class="lbl-row">Piloto <span class="lock-tag" title="Viene de la solicitud de gasto">🔒 de la solicitud</span><button type="button" class="link-btn" id="btnGoPilotos" hidden>Cargar pilotos</button></label>
+                    <select id="fPiloto" required disabled></select>
+                  </div>
+                  <div class="field" id="fBoletaF">
+                    <label for="fBoleta">No. de boleta</label>
+                    <input type="text" id="fBoleta" autocomplete="off" inputmode="numeric" placeholder="Ej. 4587123" required>
+                  </div>
+                  <div class="field" id="fBancoF">
+                    <label for="fBanco">Banco</label>
+                    <select id="fBanco" required data-bancos><option value="">Seleccione un banco…</option><option value="BAC Credomatic">BAC Credomatic</option><option value="BAM">BAM</option><option value="Banco Azteca">Banco Azteca</option><option value="Banco Banrural">Banco Banrural</option><option value="Banco de Antigua">Banco de Antigua</option><option value="Banco Ficohsa">Banco Ficohsa</option><option value="Banco G&amp;T Continental">Banco G&amp;T Continental</option><option value="Banco Industrial">Banco Industrial</option><option value="Banco Internacional">Banco Internacional</option><option value="Banco Promerica">Banco Promerica</option><option value="Bantrab">Bantrab</option><option value="CHN">CHN</option><option value="Citibank">Citibank</option><option value="Smart Cash - Forza">Smart Cash - Forza</option></select>
+                  </div>
+                </div>
+                              <div class="multi-box" id="rutasBox" hidden>
+                  <div class="mb-head"><b>Rutas del retiro</b><span class="muted" id="rutasSplit"></span><button type="button" class="btn small" id="btnTogRutas" aria-expanded="true">Ocultar rutas</button></div>
+                  <div id="rutasList" class="mb-list"></div>
+                </div>
+                <label class="chk-row" id="multiDepLbl" hidden><input type="checkbox" id="fMultiDep"><span>Agregar más depósitos (más de una boleta)</span></label>
+                <div class="multi-box" id="depsBox" hidden>
+                  <div class="mb-head"><b>Depósitos</b><span class="muted" id="depsSum"></span><button type="button" class="btn small" id="btnAddDep"><svg class="ico"><use href="#i-plus"/></svg>Agregar depósito</button></div>
+                  <div id="depsList" class="mb-list"></div>
+                </div>
+              </fieldset>
+            </div>
+            <div class="fc-foot">
+              <div id="frmErr" class="err" hidden></div>
+              <div class="form-actions">
+                <button class="btn primary" type="submit" id="btnSave" disabled><svg class="ico"><use href="#i-check"/></svg>Guardar pago</button>
+                <button class="btn auth" type="button" id="btnAuth" hidden><svg class="ico"><use href="#i-shield"/></svg>Solicitar autorización</button>
+                <button class="btn ghost" type="button" id="btnCancelEdit" hidden>Cancelar edición</button>
+              </div>
+              <div id="saveNote" class="save-note" hidden></div>
+              <div id="authBox" class="auth-box" hidden>
+                <div class="auth-box-head"><svg class="ico"><use href="#i-shield"/></svg><div><b>Solicitud de autorización</b><small>Pago parcial: la solicitud queda pendiente hasta que un administrador la autorice o rechace.</small></div></div>
+                <div class="form-grid">
+                  <div class="field full"><label for="aMotivo">Motivo del pago parcial</label><textarea id="aMotivo" rows="2" placeholder="Explique por qué se paga un monto menor al presupuesto"></textarea></div>
+                </div>
+                <div id="authErr" class="err" hidden></div>
+                <div class="form-actions"><button class="btn primary" type="button" id="btnAuthSend">Generar solicitud</button><button class="btn ghost" type="button" id="btnAuthCancel">Cancelar</button></div>
+              </div>
+            </div>
+          </form>
+
+          <div class="stack">
+            <div class="card">
+              <div class="card-head"><div><h2 id="calTitle">Calendario</h2><p>Toque un día para ver sus pagos programados</p></div></div>
+              <div class="cal" id="cal"></div>
+              <div class="legend" style="margin-top:12px">
+                <span><i style="background:var(--ok)"></i>Registrado = presupuesto</span>
+                <span><i style="background:var(--warn)"></i>Registrado menor</span>
+                <span><i style="background:var(--crit)"></i>Vencido, excede o sin presupuesto</span>
+                <span><i style="background:var(--line-strong)"></i>Pendiente</span>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-head" style="margin-bottom:12px">
+                <div><h2 id="dayTitle">Detalle del día</h2><p>Solicitud de gasto, registro ZR y vale de liquidación por sector</p></div>
+                <span class="muted" id="dayTotals"></span>
+              </div>
+              <div id="dayList"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTOR -->
+      <section data-panel="sector" hidden>
+        <div class="stack" style="gap:20px">
+          <div class="card">
+            <div class="card-head">
+              <div><h2>Ejecución por sector</h2><p>Barra gris: presupuesto del mes · barra de color: registrado</p></div>
+              <div class="legend"><span><i style="background:var(--track)"></i>Presupuesto</span><span><i style="background:var(--accent)"></i>Registrado</span><span><i style="background:var(--crit)"></i>Excede</span></div>
+            </div>
+            <div class="bars" id="chartSector"></div>
+          </div>
+          <div id="alerts" class="card alerts" hidden></div>
+          <div class="card">
+            <div class="card-head"><div><h2>Detalle por sector</h2><p>Toque una fila para ver cada fecha programada.</p></div></div>
+            <div class="tbl-wrap"><table id="tblSector"></table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- DIARIO -->
+      <section data-panel="diario" hidden>
+        <div class="stack" style="gap:20px">
+          <div class="card ind-filter">
+            <div class="field" style="min-width:220px"><label for="indDia">Filtro por día</label><select id="indDia"></select></div>
+            <p class="muted" id="indDiaTxt" style="margin:0;font-size:13px;flex:1;min-width:220px">Mostrando todo el mes. Elija un día para ver sectores, rutas y reintegros de ese día.</p>
+            <button class="btn primary" type="button" id="btnPptx"><svg class="ico"><use href="#i-download"/></svg>Presentación del mes (PPTX)</button>
+          </div>
+          <div class="card ind">
+            <div class="card-head">
+              <div><h2>Presupuesto vs. total gastado por mes</h2><p>Todos los meses cargados</p></div>
+              <div class="legend"><span><i style="background:var(--track)"></i>Presupuesto</span><span><i style="background:var(--accent);height:3px;border-radius:2px"></i>Total gastado</span></div>
+            </div>
+            <div class="chart-scroll" id="chartMes"></div>
+          </div>
+          <div class="card daily">
+            <div class="card-head">
+              <div><h2>Presupuesto vs. registrado por día</h2><p>Toque un día para abrir sus pagos en Registrar pago</p></div>
+              <div class="legend"><span><i style="background:var(--track)"></i>Presupuesto</span><span><i style="background:var(--accent)"></i>Registrado</span></div>
+            </div>
+            <div class="chart-scroll" id="chartDaily"></div>
+          </div>
+          <div class="card ind">
+            <div class="card-head">
+              <div><h2 id="secChartTitle">Presupuesto vs. total gastado por sector</h2><p id="secChartSub">Mes seleccionado · pase el cursor para ver el detalle</p></div>
+              <div class="legend"><span><i style="background:var(--track)"></i>Presupuesto</span><span><i style="background:var(--accent);height:3px;border-radius:2px"></i>Total gastado</span></div>
+            </div>
+            <div class="chart-scroll" id="chartSec"></div>
+          </div>
+          <div class="card ind">
+            <div class="card-head">
+              <div><h2>Rutas impactadas</h2><p>Monto total registrado (barras) y número de registros (línea) por ruta</p></div>
+              <div class="toolbar"><div class="field" style="min-width:190px"><label for="rutaAlc">Período</label><select id="rutaAlc"><option value="mes">Mes seleccionado</option><option value="todo">Todos los meses</option></select></div></div>
+            </div>
+            <div id="rutaSum" class="pe-nums" style="margin-bottom:14px"></div>
+            <div class="legend" style="margin-bottom:6px"><span><i style="background:var(--accent)"></i>Monto registrado</span><span><i style="background:var(--ink);height:3px;border-radius:2px"></i>No. de registros</span></div>
+            <div class="chart-scroll" id="chartRutas"></div>
+          </div>
+          <div class="card ind">
+            <div class="card-head">
+              <div><h2>Reintegros de ZR por sector</h2><p>Monto reintegrado (barras) y número de reintegros (línea) por sector</p></div>
+              <div class="toolbar"><div class="field" style="min-width:190px"><label for="reintAlc">Período</label><select id="reintAlc"><option value="mes">Mes seleccionado</option><option value="todo">Todos los meses</option></select></div></div>
+            </div>
+            <div class="pe-nums" id="reintSum" style="margin-bottom:14px"></div>
+            <div class="legend" style="margin-bottom:6px"><span><i style="background:var(--warn)"></i>Monto reintegrado</span><span><i style="background:var(--ink);height:3px;border-radius:2px"></i>No. de reintegros</span></div>
+            <div class="chart-scroll" id="chartReint"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- HISTORIAL -->
+      <section data-panel="historial" hidden>
+        <div class="stack" style="gap:20px">
+          <div class="card">
+            <div class="card-head"><div><h2>Historial por mes</h2><p>Cada mes guarda su bitácora de movimientos. Si un mes se elimina, queda un respaldo con sus registros. Solo un administrador puede borrar el historial.</p></div></div>
+            <div class="tbl-wrap"><table id="tblHist"></table></div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <div><h2 id="histTitle">Bitácora</h2><p id="histSub">Movimientos registrados en el mes</p></div>
+              <div class="toolbar" style="gap:8px;align-items:flex-end">
+                <div class="field" style="min-width:170px"><label for="histTipo">Tipo</label><select id="histTipo"><option value="">Todos</option><option value="pago">Pagos</option><option value="solicitud">Solicitudes de gasto</option><option value="autorizacion">Autorizaciones</option><option value="vale">Vales</option><option value="reintegro">Reintegros</option><option value="config">Configuración</option><option value="eliminacion">Eliminaciones</option></select></div>
+                <div class="field" style="min-width:200px"><label for="histQ">Buscar</label><input type="text" id="histQ" autocomplete="off" placeholder="Sector, correlativo, usuario…"></div>
+              </div>
+            </div>
+            <div id="histList" class="hist-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAGOS -->
+      <section data-panel="pagos" hidden>
+        <div class="card">
+          <div class="card-head">
+            <div><h2>Retiros del mes</h2><p>Registros guardados (solo consulta) · el presupuesto del día se suma una vez por sector y fecha</p></div>
+            <div class="toolbar">
+              <button class="btn" type="button" id="btnDataMes"><svg class="ico"><use href="#i-download"/></svg>Descargar data del mes</button>
+              <div class="field" style="min-width:240px"><label for="filtroSector">Filtrar por sector</label>
+                <select id="filtroSector"></select></div>
+            </div>
+          </div>
+          <div class="tbl-wrap"><table id="tblPagos"></table></div>
+        </div>
+        <div class="card" id="reintCard" style="margin-top:20px">
+          <div class="card-head"><div><h2>Reintegros de ZR</h2><p>Diferencias no gastadas devueltas por depósito · el total de retiros ya las descuenta</p></div></div>
+          <div class="tbl-wrap"><table id="tblReint"></table></div>
+        </div>
+      </section>
+
+      <!-- AUTORIZACIONES -->
+      <section data-panel="autorizaciones" hidden>
+        <div class="stack" style="gap:20px">
+          <div class="card mail-card" id="mailBox" hidden></div>
+          <div class="card" id="antCard"></div>
+          <div class="card" id="extCard"></div>
+          <div class="card">
+            <div class="card-head">
+              <div><h2>Solicitudes</h2><p>1. Se genera la solicitud desde Registrar pago · 2. Un administrador la autoriza o rechaza · 3. Se ingresa el monto y se guarda el registro</p></div>
+              <div class="toolbar"><div class="field" style="min-width:200px"><label for="autFiltro">Mostrar</label><select id="autFiltro"><option value="activas">Pendientes y autorizadas</option><option value="todas">Todas (incluye rechazadas)</option></select></div></div>
+            </div>
+            <div id="autList" class="aut-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PILOTOS -->
+      <section data-panel="pilotos" hidden>
+        <div class="grid-2 halves">
+          <div class="card stack">
+            <div><h2>Cargar datos de pilotos</h2><p class="muted" style="margin:4px 0 0;font-size:13px">Excel o CSV con una columna <em>Piloto</em> o <em>Nombre</em>. Opcional: <em>Código</em>, <em>Licencia</em>, <em>Teléfono</em>.</p></div>
+            <div class="hint" id="pilLock" hidden></div>
+            <label class="drop carga-pil" id="pilDrop" for="pilFile">
+              <svg class="ico"><use href="#i-upload"/></svg>
+              <span style="font-weight:700">Arrastre aquí el archivo o toque para elegirlo</span>
+              <span class="muted" id="pilFileName" style="font-size:12.5px">Archivo .xlsx o .csv</span>
+              <input type="file" id="pilFile" accept=".xlsx,.xls,.csv" style="max-width:100%">
+            </label>
+            <div id="pilErr" class="err" hidden></div>
+            <div id="pilPreview" class="hint ok" hidden></div>
+            <div class="form-actions" id="pilImpActs" hidden>
+              <button class="btn primary" type="button" id="btnPilAdd">Agregar a la lista</button>
+              <button class="btn" type="button" id="btnPilReplace">Reemplazar la lista</button>
+              <button class="btn ghost" type="button" id="btnPilCancel">Descartar</button>
+            </div>
+            <div class="fs-title admin-only" style="margin-top:6px">Agregar un piloto <span class="pill info" style="margin-left:6px">Administrador</span></div>
+            <div class="form-grid admin-only">
+              <div class="field full"><label for="pNom">Nombre del piloto</label><input type="text" id="pNom" autocomplete="off"></div>
+              <div class="field"><label for="pCod">Código / licencia</label><input type="text" id="pCod" autocomplete="off"></div>
+              <div class="field"><label for="pTel">Teléfono</label><input type="text" id="pTel" autocomplete="off" inputmode="tel"></div>
+            </div>
+            <div class="form-actions admin-only"><button class="btn" type="button" id="btnPilOne"><svg class="ico"><use href="#i-plus"/></svg>Agregar piloto</button></div>
+          </div>
+          <div class="card stack">
+            <div class="card-head" style="margin:0"><div><h2>Lista de pilotos</h2><p>Aparecen en el campo Piloto del registro ZR</p></div></div>
+            <div class="tbl-wrap"><table id="tblPil"></table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- USUARIOS -->
+      <section data-panel="usuarios" hidden>
+        <div class="stack" style="gap:20px">
+          <div class="usr-stats" id="usrStats"></div>
+
+          <div class="card stack">
+            <div class="card-head" style="margin:0"><div><h2>Administradores</h2><p>Acceso total. Cada administrador usa su contraseña de DISCARGA CONTROLER para eliminar registros y para autorizar o rechazar solicitudes.</p></div></div>
+            <div class="adm-grid" id="admGrid"></div>
+          </div>
+
+          <div class="card stack">
+            <div class="card-head" style="margin:0">
+              <div><h2>Usuarios y accesos</h2><p>Active o desactive cada acceso con un clic. Los cambios se guardan al momento.</p></div>
+              <div class="toolbar" style="gap:8px;align-items:flex-end">
+                <div class="field" style="min-width:200px"><label for="usrFiltro">Buscar en la lista</label><input type="text" id="usrFiltro" autocomplete="off" placeholder="Nombre o agencia"></div>
+                <button class="btn primary" type="button" id="btnUsrAdd"><svg class="ico"><use href="#i-plus"/></svg>Agregar usuario</button>
+              </div>
+            </div>
+            <div class="tbl-wrap"><table id="tblUsr"></table></div>
+            <div class="err" id="usrErr" hidden></div>
+            <div class="hint" style="font-size:12.5px"><span><b style="font-family:var(--body)">Cómo funciona:</b> el propietario de la página siempre es administrador. Mientras no haya usuarios en la lista, todos ven todo menos esta sección. Al agregar el primero, quien no esté en la lista solo ve <b style="font-family:var(--body)">Operación</b>. La agencia cambia el nombre que ve el usuario (por ejemplo “ZR Mixco”).</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PRESUPUESTO -->
+      <section data-panel="presupuesto" hidden>
+        <div class="stack" style="gap:20px">
+          <div class="grid-2 halves">
+            <div class="card stack">
+              <div>
+                <h2>Cargar presupuesto del mes</h2>
+                <p class="muted" style="margin:4px 0 0;font-size:13px">Mismo formato del archivo de ZR: columna <em>Territorio</em>, columna <em>D</em> con el tipo de pago (1 = Mano a mano, 2 = Depósito, o el texto), días 1–31 en la fila de arriba y el monto de cada sector bajo el día en que se paga.</p>
+              </div>
+              <div class="hint" id="presLock" hidden></div>
+              <label class="drop carga-pres" id="dropZone" for="impFile">
+                <svg class="ico"><use href="#i-upload"/></svg>
+                <span style="font-weight:700">Arrastre aquí el archivo o toque para elegirlo</span>
+                <span class="muted" id="impFileName" style="font-size:12.5px">Archivo .xlsx</span>
+                <input type="file" id="impFile" accept=".xlsx,.xls" style="max-width:100%">
+              </label>
+              <div class="field carga-pres"><label for="impMes">Mes al que corresponde</label><input type="month" id="impMes"></div>
+              <div id="impErr" class="err" hidden></div>
+              <div id="impPreview" class="stack" hidden></div>
+              <div class="form-actions">
+                <button class="btn primary carga-pres" id="btnImp" type="button" disabled>Guardar presupuesto</button>
+                <button class="btn ghost" id="btnImpCancel" type="button" hidden>Descartar</button>
+              </div>
+            </div>
+            <div class="card stack">
+              <h2>Meses cargados</h2>
+              <div class="tbl-wrap"><table id="tblMeses"></table></div>
+            </div>
+          </div>
+          <div class="card stack">
+            <div class="card-head" style="margin:0"><div><h2 id="budTitle">Presupuesto cargado</h2><p>Aquí se configura el correlativo y el tipo de pago (depósito o mano a mano) de cada sector.</p></div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end"><span class="muted" id="budSrc"></span><button class="btn primary admin-only" type="button" id="btnNewSec"><svg class="ico"><use href="#i-plus"/></svg>Registrar sector nuevo</button></div></div>
+            <div class="tbl-wrap"><table id="tblBud"></table></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast" hidden></div>
+<div class="tip" id="tip" hidden></div>
+<div class="modal-back" id="manoBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="manoTitle" style="border-top-color:var(--accent)">
+    <div class="modal-head"><div class="chip-ico"><svg class="ico"><use href="#i-cash"/></svg></div><div><h2 id="manoTitle">Comprobante del pago</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px" id="manoSub">Verifique los datos y agregue la imagen del pago realizado.</p></div></div>
+    <div class="modal-body">
+      <div class="ev-grid" id="manoData"></div>
+      <label class="ev-photo paste-zone" for="manoFile" id="manoDrop" tabindex="0">
+        <img id="manoPrev" alt="Vista previa de la evidencia" hidden>
+        <svg class="ico" id="manoIco" style="width:28px;height:28px;color:var(--accent)"><use href="#i-upload"/></svg>
+        <span style="font-weight:700" id="manoFileLbl">Pegue la imagen (Ctrl+V), arrástrela aquí o elija un archivo</span>
+        <span class="paste-hint">Copie la imagen desde WhatsApp, correo, navegador o captura de pantalla y presione Ctrl+V</span>
+        <span class="muted" style="font-size:12px">JPG, PNG o WEBP · hasta 20 MB</span>
+        <input type="file" id="manoFile" accept="image/*" style="max-width:100%">
+      </label>
+      <div class="err" id="manoErr" hidden></div>
+    </div>
+    <div class="modal-foot"><button class="btn" type="button" id="manoCancel">Cancelar</button><button class="btn primary" type="button" id="manoOk" disabled><svg class="ico"><use href="#i-check"/></svg>Confirmar y guardar pago</button></div>
+  </div>
+</div>
+<div class="modal-back" id="pwBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pwTitle" style="border-top-color:var(--crit);max-width:440px">
+    <div class="modal-head"><div class="chip-ico"><svg class="ico"><use href="#i-shield"/></svg></div><div><h2 id="pwTitle">Confirmar eliminación</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px" id="pwSub"></p></div></div>
+    <div class="modal-body"><div class="field"><label for="pwAsk">Contraseña de administrador</label><input type="password" class="pw-in" id="pwAsk" autocomplete="current-password"></div><div class="err" id="pwAskErr" hidden></div></div>
+    <div class="modal-foot"><button class="btn" type="button" id="pwAskNo">Cancelar</button><button class="btn danger-solid" type="button" id="pwAskOk"><svg class="ico"><use href="#i-trash"/></svg><span id="pwAskOkT">Eliminar</span></button></div>
+  </div>
+</div>
+<div class="modal-back" id="exBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="exTitle" style="border-top-color:var(--warn);max-width:500px">
+    <div class="modal-head"><div class="chip-ico"><svg class="ico"><use href="#i-alert"/></svg></div><div><h2 id="exTitle">Solicitar habilitación de registro</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px">El plazo de 48 h venció. Un administrador debe autorizar para volver a habilitar “Registrar ZR”.</p></div></div>
+    <div class="modal-body stack" style="gap:12px">
+      <div class="ant-grid" id="exData"></div>
+      <div class="field"><label for="exMot">Motivo del registro fuera de plazo</label><textarea id="exMot" rows="3" placeholder="Explique por qué no se registró dentro de las 48 h"></textarea></div>
+      <div class="err" id="exErr" hidden></div>
+    </div>
+    <div class="modal-foot"><button class="btn" type="button" id="exNo">Cancelar</button><button class="btn primary" type="button" id="exOk"><svg class="ico"><use href="#i-shield"/></svg>Enviar solicitud</button></div>
+  </div>
+</div>
+<div class="modal-back" id="nsBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="nsTitle" style="border-top-color:var(--accent);max-width:560px">
+    <div class="modal-head"><div class="chip-ico"><svg class="ico"><use href="#i-plus"/></svg></div><div><h2 id="nsTitle">Registrar sector nuevo</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px">Sector que no viene en el archivo del mes. Se agrega al presupuesto y al calendario.</p></div></div>
+    <div class="modal-body stack" style="gap:12px">
+      <div class="form-grid">
+        <div class="field"><label for="nsRet">Fecha de retiro de efectivo</label><input type="date" id="nsRet"></div>
+        <div class="field"><label for="nsPago">Fecha de pago</label><input type="date" id="nsPago"></div>
+        <div class="field full"><label for="nsNom">Nombre del sector</label><input type="text" id="nsNom" autocomplete="off" placeholder="Ej. Colonia El Mezquital, zona 12"></div>
+        <div class="field"><label for="nsMonto">Monto a pagar (Q)</label><input type="number" id="nsMonto" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+        <div class="field"><label for="nsFrec">Frecuencia de pago</label><select id="nsFrec"><option value="">Seleccione el día…</option><option value="1">Lunes</option><option value="2">Martes</option><option value="3">Miércoles</option><option value="4">Jueves</option><option value="5">Viernes</option><option value="6">Sábado</option><option value="0">Domingo</option><option value="u">Una sola vez (solo la fecha de pago)</option></select></div>
+        <div class="field"><label for="nsTipo">Tipo de pago</label><select id="nsTipo"><option value="deposito">Depósito</option><option value="mano">Mano a mano</option></select></div>
+        <div class="field"><label>Correlativo asignado</label><input type="text" id="nsCorr" readonly></div>
+      </div>
+      <div class="ns-prev" id="nsPrev"></div>
+      <div class="err" id="nsErr" hidden></div>
+    </div>
+    <div class="modal-foot"><button class="btn" type="button" id="nsNo">Cancelar</button><button class="btn primary" type="button" id="nsOk"><svg class="ico"><use href="#i-check"/></svg>Registrar sector</button></div>
+  </div>
+</div>
+<div class="modal-back" id="nmBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="nmTitle" style="border-top-color:var(--ok);max-width:600px">
+    <div class="modal-head"><div class="chip-ico"><svg class="ico"><use href="#i-upload"/></svg></div><div><h2 id="nmTitle">Enviar notificación por correo</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px" id="nmSub">El sector quedó registrado. Avise por correo con los datos.</p></div></div>
+    <div class="modal-body stack" style="gap:12px">
+      <div class="field"><label for="nmTo">Destinatarios</label>
+        <div class="chips" id="nmChips"></div>
+        <div class="pw-wrap"><input type="text" id="nmTo" inputmode="email" autocomplete="off" placeholder="correo@empresa.com"><button class="btn small" type="button" id="nmAdd"><svg class="ico"><use href="#i-plus"/></svg>Agregar</button></div>
+        <small class="muted" style="font-size:12px">Presione Enter o “Agregar” por cada correo. Los destinatarios se recuerdan para la próxima vez.</small></div>
+      <div class="field"><label for="nmSubj">Asunto</label><input type="text" id="nmSubj"></div>
+      <div class="field"><label for="nmBody">Mensaje</label><textarea id="nmBody" rows="11" style="font-family:var(--mono);font-size:12.5px"></textarea></div>
+      <div class="err" id="nmErr" hidden></div>
+    </div>
+    <div class="modal-foot"><button class="btn" type="button" id="nmNo">Cerrar</button><button class="btn" type="button" id="nmCopy">Copiar correo</button><a class="btn primary" id="nmOpen" href="#"><svg class="ico"><use href="#i-upload"/></svg>Abrir en mi correo</a></div>
+  </div>
+</div>
+<div class="modal-back" id="amBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="amTitle" style="border-top-color:var(--warn);max-width:480px">
+    <div class="modal-body stack" style="gap:12px;text-align:center;padding-top:22px">
+      <div class="info-ico"><svg class="ico" style="width:26px;height:26px"><use href="#i-alert"/></svg></div>
+      <h2 id="amTitle" style="margin:0">Solicitud de anticipo ZR</h2>
+      <p style="margin:0;font-size:15px;line-height:1.5">Solicitud de anticipo ZR ha sido generada, por favor solicite a su Jefe Inmediato la autorización para continuar con el registro.</p>
+      <div class="ns-prev" id="amList" style="text-align:left"></div>
+    </div>
+    <div class="modal-foot" style="justify-content:center"><button class="btn primary" type="button" id="amOk">Entendido</button></div>
+  </div>
+</div>
+<div class="modal-back" id="avBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="avTitle" style="border-top-color:var(--ok);max-width:560px">
+    <div class="modal-head"><div class="chip-ico"><svg class="ico"><use href="#i-shield"/></svg></div><div><h2 id="avTitle">Autorizar solicitud de anticipo</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px">Adjunte la evidencia del correo autorizado por CBC.</p></div></div>
+    <div class="modal-body stack" style="gap:12px">
+      <div class="ant-grid" id="avData"></div>
+      <label class="ev-photo paste-zone" for="avFile" id="avDrop" tabindex="0">
+        <img id="avPrev" alt="Vista previa de la evidencia" hidden>
+        <svg class="ico" id="avIco" style="width:28px;height:28px;color:var(--accent)"><use href="#i-upload"/></svg>
+        <span style="font-weight:700" id="avLbl">Pegue la captura del correo (Ctrl+V), arrástrela aquí o elija el archivo</span>
+        <span class="muted" style="font-size:12px">Imagen (JPG, PNG) o PDF del correo · hasta 20 MB</span>
+        <input type="file" id="avFile" accept="image/*,application/pdf,.pdf" style="max-width:100%">
+      </label>
+      <div class="err" id="avErr" hidden></div>
+    </div>
+    <div class="modal-foot"><button class="btn" type="button" id="avNo">Cancelar</button><button class="btn ok-solid" type="button" id="avOk" disabled><svg class="ico"><use href="#i-check"/></svg>Autorizar anticipo</button></div>
+  </div>
+</div>
+<div class="modal-back" id="uaBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="uaTitle" style="border-top-color:var(--accent);max-width:560px">
+    <div class="modal-head"><div class="chip-ico"><svg class="ico"><use href="#i-plus"/></svg></div><div><h2 id="uaTitle">Agregar usuario</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px">Elija a la persona de DISCARGA CONTROLER y los accesos que tendrá en ZR.</p></div></div>
+    <div class="modal-body stack" style="gap:12px">
+      <div class="field"><label>Tipo de acceso</label>
+        <div class="rolseg" role="radiogroup" aria-label="Tipo de acceso">
+          <button type="button" class="rolseg-b on" data-uarol="user" role="radio" aria-checked="true"><svg class="ico"><use href="#i-list"/></svg>Usuario</button>
+          <button type="button" class="rolseg-b" data-uarol="admin" role="radio" aria-checked="false"><svg class="ico"><use href="#i-shield"/></svg>Administrador</button>
+        </div></div>
+      <div class="field"><label for="uaAg">Agencia</label><select id="uaAg"></select></div>
+      <div class="field" style="position:relative"><label for="uaNom">Nombre o correo del usuario</label><input type="text" id="uaNom" autocomplete="off" placeholder="Ej. Ana Pérez o ana.perez@empresa.com">
+        <div class="ua-sug" id="uaSug" hidden></div>
+        <small class="muted" id="uaLink" style="font-size:12px;margin-top:4px;display:block">Este nombre o correo será su usuario para iniciar sesión.</small></div>
+      <div class="field" id="uaAccF"><label>Accesos</label><div class="acc-chips" id="uaAcc"></div></div>
+      <div class="form-grid">
+        <div class="field"><label for="uaPw">Contraseña</label><div class="pw-wrap"><input type="password" class="pw-in" id="uaPw" autocomplete="new-password" placeholder="Mínimo 6 caracteres"><button class="btn small ghost" type="button" id="uaEye">Mostrar</button></div></div>
+        <div class="field"><label for="uaPw2">Confirmar contraseña</label><input type="password" class="pw-in" id="uaPw2" autocomplete="new-password"></div>
+      </div>
+      <div><button class="btn small" type="button" id="uaGen">Generar contraseña segura</button></div>
+      <div class="hint" style="font-size:12px"><span>La persona entra con su usuario y contraseña de DISCARGA CONTROLER. Debe tener activado el permiso <b>ZR</b> en Usuarios de DISCARGA CONTROLER.</span></div>
+      <div class="err" id="uaErr" hidden></div>
+    </div>
+    <div class="modal-foot"><button class="btn" type="button" id="uaNo">Cancelar</button><button class="btn primary" type="button" id="uaOk"><svg class="ico"><use href="#i-check"/></svg>Guardar usuario</button></div>
+  </div>
+</div>
+<div class="modal-back" id="psBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="psTitle" style="border-top-color:var(--accent);max-width:460px">
+    <div class="modal-head"><div class="chip-ico"><svg class="ico"><use href="#i-shield"/></svg></div><div><h2 id="psTitle">Contraseña</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px" id="psSub"></p></div></div>
+    <div class="modal-body stack" style="gap:12px">
+      <div class="field" id="psCurF" hidden><label for="psCur">Contraseña actual</label><input type="password" class="pw-in" id="psCur" autocomplete="current-password"></div>
+      <div class="field"><label for="psNew">Nueva contraseña</label><div class="pw-wrap"><input type="password" class="pw-in" id="psNew" autocomplete="new-password" placeholder="Mínimo 6 caracteres"><button class="btn small ghost" type="button" id="psEye" aria-label="Mostrar contraseña">Mostrar</button></div></div>
+      <div class="field"><label for="psNew2">Confirmar contraseña</label><input type="password" class="pw-in" id="psNew2" autocomplete="new-password"></div>
+      <div><button class="btn small" type="button" id="psGen">Generar contraseña segura</button></div>
+      <div class="hint" style="font-size:12px"><span>La contraseña se guarda cifrada: después de guardarla <b style="font-family:var(--body)">no se puede volver a ver</b>. Anótela o entréguela a la persona antes de cerrar.</span></div>
+      <div class="err" id="psErr" hidden></div>
+    </div>
+    <div class="modal-foot"><button class="btn" type="button" id="psNo">Cancelar</button><button class="btn primary" type="button" id="psOk"><svg class="ico"><use href="#i-check"/></svg>Guardar contraseña</button></div>
+  </div>
+</div>
+<div class="modal-back" id="gmBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="gmTitle" style="border-top-color:var(--accent)">
+    <div class="modal-head"><div class="chip-ico"><svg class="ico"><use href="#i-doc"/></svg></div><div><h2 id="gmTitle">Datos de la solicitud de gasto</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px" id="gmSub"></p></div></div>
+    <div class="modal-body"><p class="muted" style="margin:0;font-size:12.5px">La ruta y el piloto se guardan con la solicitud y se colocan solos al registrar la ZR.</p><div id="gmBody" class="gm-list"></div><div class="err" id="gmErr" hidden></div></div>
+    <div class="modal-foot"><button class="btn" type="button" id="gmCancel">Cancelar</button><button class="btn primary" type="button" id="gmOk"><svg class="ico"><use href="#i-doc"/></svg>Generar solicitud PDF</button></div>
+  </div>
+</div>
+<div class="modal-back" id="reBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="reTitle" style="border-top-color:var(--info);max-width:640px">
+    <div class="modal-head"><div class="chip-ico info"><svg class="ico"><use href="#i-wallet"/></svg></div><div><h2 id="reTitle">Reintegro de ZR</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px" id="reSub"></p></div></div>
+    <div class="modal-body">
+      <div class="ev-grid" id="reData"></div>
+      <div class="re-big"><div style="display:grid;gap:2px"><span class="eyebrow">Monto a reintegrar</span><small class="muted" id="reBigLbl">Diferencia del sector en el día</small></div><b id="reBig"></b></div>
+      <label class="re-chk"><input type="checkbox" id="reTotal"><span>Reintegrar el monto total indicado para el día (<b id="reTotalAmt"></b>)</span></label>
+      <div class="form-grid">
+        <div class="field"><label for="reRecibo">No. de recibo</label><input type="text" id="reRecibo" autocomplete="off" inputmode="numeric"></div>
+        <div class="field"><label for="reBanco">Banco</label><select id="reBanco"></select></div>
+        <div class="field full"><label for="reObs">Observaciones (opcional)</label><textarea id="reObs" rows="2"></textarea></div>
+      </div>
+      <label class="ev-photo" for="reFile">
+        <img id="rePrev" alt="Vista previa de la boleta de depósito" hidden>
+        <svg class="ico" id="reIco" style="width:28px;height:28px;color:var(--accent)"><use href="#i-upload"/></svg>
+        <span style="font-weight:700" id="reFileLbl">Cargar imagen de la boleta de depósito</span>
+        <span class="muted" style="font-size:12px">JPG o PNG · hasta 20 MB</span>
+        <input type="file" id="reFile" accept="image/*" style="max-width:100%">
+      </label>
+      <div class="err" id="reErr" hidden></div>
+    </div>
+    <div class="modal-foot"><button class="btn" type="button" id="reCancel">Cancelar</button><button class="btn primary" type="button" id="reOk"><svg class="ico"><use href="#i-check"/></svg>Registrar reintegro</button></div>
+  </div>
+</div>
+<div class="modal-back" id="remBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="remTitle">
+    <div class="modal-head"><div class="chip-ico warn"><svg class="ico"><use href="#i-alert"/></svg></div><div><h2 id="remTitle">Recordatorio de pagos pendientes</h2><p class="muted" style="margin:2px 0 0;font-size:12.5px" id="remSub"></p></div></div>
+    <div class="modal-body" id="remBody"></div>
+    <div class="modal-foot"><button class="btn" type="button" id="remClose">Cerrar</button><button class="btn primary" type="button" id="remGo">Ir al primer día pendiente</button></div>
+  </div>
+</div>
+
+<script src="/zr/zr-app.js"></script>
+</body></html>
