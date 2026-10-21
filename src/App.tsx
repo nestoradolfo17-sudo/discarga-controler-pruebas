@@ -4831,7 +4831,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'zr' && currentUser && canViewZr && <ZRView usuario={currentUser} agenciaSugerida={selectedAgency} />}
+        {activeTab === 'zr' && currentUser && canViewZr && <ZRView usuario={currentUser} agenciaSugerida={selectedAgency} staff={staffLive} />}
 
         {activeTab === 'prestamos' && currentUser && (
           <PrestamosView
