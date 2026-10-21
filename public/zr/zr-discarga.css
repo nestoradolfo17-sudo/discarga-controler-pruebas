@@ -1,0 +1,6 @@
+/* Control ZR dentro de DISCARGA CONTROLER: las contraseñas son las de
+   DISCARGA CONTROLER, así que se ocultan los campos para asignarlas aquí. */
+#uaBack .field:has(#uaPw),
+#uaBack .field:has(#uaPw2),
+#uaGen,
+#usrStats .usr-stat:nth-child(4) { display: none !important; }
