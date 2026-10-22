@@ -1549,7 +1549,7 @@ async function rejectAnt(id,motivo){
 /* ---------- presentación de resultados (PPTX) ---------- */
 function loadPptxLib(){
   if(window.PptxGenJS) return Promise.resolve();
-  const urls=["/zr/vendor/pptxgen.bundle.js"];
+  const urls=[location.origin+"/zr/vendor/pptxgen.bundle.js"];
   return urls.reduce((pr,u)=>pr.catch(()=>new Promise((ok,ko)=>{ const sc=document.createElement("script"); sc.src=u; sc.onload=()=>window.PptxGenJS?ok():ko(); sc.onerror=ko; document.head.appendChild(sc); })), Promise.reject());
 }
 function mesResumen(){
