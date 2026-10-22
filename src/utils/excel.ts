@@ -1474,17 +1474,40 @@ export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Tru
     const t = trucks.find((x) => x.id === id);
     return t?.idCamion ? String(t.idCamion) : '';
   };
-  const header = ['No. Ruta', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Segmento', 'Horario de Carga', 'No. de Prioridad de Carga'];
-  const rows = routes.map((r) => [
-    String(r.id ?? ''),
-    idCamionDe(r),
-    r.asignacion?.camionPlaca || '',
-    r.asignacion?.conductor || '',
-    r.segmento || '',
-    '',
-    '',
-  ]);
-  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  // Ruta a Piso: queda en bodega para mañana; se marca para que se vea en el reporte.
+  const esPiso = (r: Route) => !!(r.aPiso || r.tipoAsignacion === 'Ruta a Piso' || r.asignacion?.tipoAsignacion === 'Ruta a Piso');
+  // Tipo de viaje: RECARGA (2° viaje), REVISITA o PRIMER VIAJE.
+  const tipoViaje = (r: Route) => {
+    const t = r.asignacion?.tipoAsignacion || r.tipoAsignacion;
+    if (r.esRecarga || t === 'Recarga') return 'RECARGA';
+    if (t === 'Revisita') return 'REVISITA';
+    return 'PRIMER VIAJE';
+  };
+  // Distancia: la de la ruta cargada (columna "Distancia" del Excel de rutas).
+  const distanciaDe = (r: Route) => {
+    const d = toNum(r.distancia);
+    return d > 0 ? Math.round(d * 100) / 100 : '';
+  };
+  const header = ['No. Ruta', 'Tipo de Viaje', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Segmento', 'Distancia (km)', 'Ruta a Piso', 'Horario de Carga', 'No. de Prioridad de Carga'];
+  const rows: (string | number)[][] = routes.map((r) => {
+    const piso = esPiso(r);
+    return [
+      String(r.id ?? ''),
+      tipoViaje(r),
+      idCamionDe(r),
+      r.asignacion?.camionPlaca || (piso ? 'RUTA A PISO' : ''),
+      r.asignacion?.conductor || (piso ? 'RUTA A PISO' : ''),
+      r.segmento || '',
+      distanciaDe(r),
+      piso ? 'RUTA A PISO' : '',
+      '',
+      '',
+    ];
+  });
+  const totalDist = Math.round(rows.reduce((a, x) => a + (typeof x[6] === 'number' ? x[6] : 0), 0) * 100) / 100;
+  const recargas = rows.filter((x) => x[1] === 'RECARGA').length;
+  const pie: (string | number)[] = [`TOTAL: ${rows.length} rutas`, `${rows.length - recargas} primer viaje / ${recargas} recarga`, '', '', '', '', totalDist, '', '', ''];
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows, pie]);
   ws['!cols'] = header.map((h, i) => {
     let maxLen = h.length;
     rows.forEach((row) => {
