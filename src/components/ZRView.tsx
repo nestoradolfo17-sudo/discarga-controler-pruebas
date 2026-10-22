@@ -53,6 +53,35 @@ export const ZRView: React.FC<{ usuario: AppUser; agenciaSugerida?: string; staf
     return agencias.includes('Atanasio') ? 'Atanasio' : agencias[0] || '';
   });
   const [listo, setListo] = useState('');
+  // La página de ZR se descarga y se muestra desde una copia local (blob). Así
+  // funciona también en la versión DEMO de Netlify, que está protegida con
+  // inicio de sesión de Netlify y no deja abrir sus páginas dentro de otra.
+  const [paginaZr, setPaginaZr] = useState('');
+  const [errorZr, setErrorZr] = useState('');
+  useEffect(() => {
+    if (!listo) return;
+    let url = '';
+    let vivo = true;
+    setPaginaZr('');
+    setErrorZr('');
+    (async () => {
+      try {
+        const r = await fetch('/zr/index.html', { cache: 'no-cache', credentials: 'same-origin' });
+        const html = await r.text();
+        if (!r.ok || !html.includes('zr-bridge.js')) throw new Error(`No se pudo cargar ZR (${r.status}).`);
+        const o = window.location.origin;
+        const final = html.replace(/(src|href)="\/zr\//g, `$1="${o}/zr/`);
+        url = URL.createObjectURL(new Blob([final], { type: 'text/html' }));
+        if (vivo) setPaginaZr(url);
+      } catch (e) {
+        if (vivo) setErrorZr((e as Error)?.message || 'No se pudo cargar ZR.');
+      }
+    })();
+    return () => {
+      vivo = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [listo]);
   const [completa, setCompleta] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
 
@@ -196,11 +225,12 @@ export const ZRView: React.FC<{ usuario: AppUser; agenciaSugerida?: string; staf
         >
           {completa ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
         </button>
-        {listo && (
+        {errorZr && <div className="p-6 text-sm text-rose-700">{errorZr} Recargue la página; si sigue, avise al administrador.</div>}
+        {listo && paginaZr && (
           <iframe
-            key={listo}
+            key={paginaZr}
             title={`Control ZR · ${listo}`}
-            src="/zr/index.html"
+            src={paginaZr}
             className="w-full block border-0"
             style={{ height: completa ? '100vh' : 'max(640px, calc(100vh - 200px))' }}
           />
