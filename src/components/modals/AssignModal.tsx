@@ -117,6 +117,8 @@ export const AssignModal: React.FC<AssignModalProps> = ({
 }) => {
   const [notaSelfService, setNotaSelfService] = useState('');
   const [assignmentType, setAssignmentType] = useState<AssignmentType>('Primer Viaje');
+  // Texto del buscador de rutas en tránsito (carga compartida).
+  const [buscaCrew, setBuscaCrew] = useState('');
   const [truckId, setTruckId] = useState('');
   const [driverName, setDriverName] = useState('');
   const [helper1, setHelper1] = useState('');
@@ -192,6 +194,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
 
       setAssignmentType(defaultType);
       setSelectedActiveCrewRouteId('');
+      setBuscaCrew('');
       setMotivoPiso('Capacidad de flota / Reprogramación a piso para mañana');
       setMotivoBolson('');
 
@@ -342,6 +345,23 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     (r) => r.estado === 'En Tránsito' && getRouteKey(r) !== getRouteKey(route) && r.asignacion && mismaJornada(r, route)
   );
 
+  // Buscador por número de ruta (o placa / piloto) para la lista de carga compartida.
+  const normCrew = (v: unknown) => String(v ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const crewFiltradas = (() => {
+    const q = normCrew(buscaCrew);
+    if (!q) return activeRoutesWithCrew;
+    const lista = activeRoutesWithCrew.filter((r) =>
+      [r.id, r.asignacion?.camionPlaca, r.asignacion?.conductor].some((v) => normCrew(v).includes(q))
+    );
+    // Primero las que empiezan con el número buscado.
+    return lista.sort((a, b) => Number(!normCrew(a.id).startsWith(q)) - Number(!normCrew(b.id).startsWith(q)));
+  })();
+  // La ruta ya elegida siempre queda en la lista (para que el valor se vea).
+  const crewOpciones = (() => {
+    const sel = activeRoutesWithCrew.find((r) => getRouteKey(r) === selectedActiveCrewRouteId);
+    return sel && !crewFiltradas.includes(sel) ? [sel, ...crewFiltradas] : crewFiltradas;
+  })();
+
   const handleActiveCrewSelect = (routeId: string) => {
     setSelectedActiveCrewRouteId(routeId);
     // routeId aquí es la clave completa de la ruta (id + fecha + agencia).
@@ -366,7 +386,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       }
 
       onShowToast(
-        `Cargada tripulación de ruta ${routeId}: Camión ${asig.camionPlaca} y piloto ${asig.conductor}`,
+        `Cargada tripulación de ruta ${targetRoute.id}: Camión ${asig.camionPlaca} y piloto ${asig.conductor}`,
         'info'
       );
     }
@@ -979,19 +999,49 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   <Sparkles className="w-3 h-3 mr-1 text-sky-600" />
                   Cargar mismo camión y tripulación de ruta en tránsito:
                 </label>
+                {/* Buscar por número de ruta (también placa o piloto) */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="search"
+                    value={buscaCrew}
+                    onChange={(e) => setBuscaCrew(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault();
+                      const exacta = crewFiltradas.find((r) => String(r.id).trim().toLowerCase() === buscaCrew.trim().toLowerCase());
+                      const elegida = exacta || (crewFiltradas.length === 1 ? crewFiltradas[0] : null);
+                      if (elegida) handleActiveCrewSelect(getRouteKey(elegida));
+                    }}
+                    placeholder="Buscar No. de ruta, placa o piloto…"
+                    aria-label="Buscar ruta en tránsito por número de ruta, placa o piloto"
+                    className="sm:w-64 min-h-[44px] px-3 border border-sky-300 rounded-lg text-xs font-semibold bg-white text-sky-950 outline-none focus:ring-2 focus:ring-sky-400"
+                  />
                 <select
                   id="quickSharedCrewSelect"
                   value={selectedActiveCrewRouteId}
                   onChange={(e) => handleActiveCrewSelect(e.target.value)}
-                  className="w-full min-h-[44px] p-2 border border-sky-300 rounded-lg text-xs font-semibold bg-white text-sky-950 outline-none cursor-pointer"
+                  className="flex-1 min-w-0 min-h-[44px] p-2 border border-sky-300 rounded-lg text-xs font-semibold bg-white text-sky-950 outline-none cursor-pointer"
                 >
-                  <option value="">-- Seleccionar ruta activa para combinar carga --</option>
-                  {activeRoutesWithCrew.map((ar) => (
+                  <option value="">
+                    {buscaCrew.trim()
+                      ? `-- ${crewFiltradas.length} ruta(s) coinciden con "${buscaCrew.trim()}" --`
+                      : '-- Seleccionar ruta activa para combinar carga --'}
+                  </option>
+                  {crewOpciones.map((ar) => (
                     <option key={getRouteKey(ar)} value={getRouteKey(ar)}>
                       Ruta {ar.id} ({fmtNum(ar.cajasFisicas)} cajas) → Unidad {ar.asignacion?.camionPlaca} | Piloto: {ar.asignacion?.conductor}
                     </option>
                   ))}
                 </select>
+                </div>
+                {buscaCrew.trim() && crewFiltradas.length === 0 && (
+                  <p className="text-[11px] font-semibold text-amber-700 mt-1">Ninguna ruta en tránsito coincide con "{buscaCrew.trim()}".</p>
+                )}
+                {buscaCrew.trim() && crewFiltradas.length > 0 && (
+                  <p className="text-[11px] text-sky-800 mt-1">
+                    {crewFiltradas.length === 1 ? 'Presione Enter para elegirla, o selecciónela en la lista.' : 'Elija la ruta en la lista (Enter elige la que tenga ese número exacto).'}
+                  </p>
+                )}
               </div>
             </div>
           )}
