@@ -17,7 +17,7 @@
       else if (++n > 100) {
         clearInterval(t);
         document.documentElement.innerHTML =
-          '<body style="font-family:system-ui,sans-serif;padding:40px;color:#0f172a"><h2>Control ZR</h2><p>Abra ZR desde el menú de <b>DISCARGA CONTROLER</b>.</p><p><a href="/">Ir a DISCARGA CONTROLER</a></p></body>';
+          '<body style="font-family:system-ui,sans-serif;padding:40px;color:#0f172a"><h2>Control ZR</h2><p>Abra ZR desde el menú de <b>DISCARGA CONTROLER</b>.</p><p><a href="' + location.origin + '/">Ir a DISCARGA CONTROLER</a></p></body>';
       }
     }, 50);
   });
