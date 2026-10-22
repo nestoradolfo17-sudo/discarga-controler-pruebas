@@ -1488,7 +1488,12 @@ export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Tru
     const d = toNum(r.distancia);
     return d > 0 ? Math.round(d * 100) / 100 : '';
   };
-  const header = ['No. Ruta', 'Tipo de Viaje', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Segmento', 'Distancia (km)', 'Ruta a Piso', 'Horario de Carga', 'No. de Prioridad de Carga'];
+  // Cajas de la ruta (las mismas "Cajas Físicas" del tablero).
+  const cajasDe = (r: Route) => {
+    const c = toNum(r.cajasFisicas);
+    return c > 0 ? Math.round(c * 1000) / 1000 : 0;
+  };
+  const header = ['No. Ruta', 'Tipo de Viaje', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Segmento', 'Cajas', 'Distancia (km)', 'Ruta a Piso', 'Horario de Carga', 'No. de Prioridad de Carga'];
   const rows: (string | number)[][] = routes.map((r) => {
     const piso = esPiso(r);
     return [
@@ -1498,15 +1503,17 @@ export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Tru
       r.asignacion?.camionPlaca || (piso ? 'RUTA A PISO' : ''),
       r.asignacion?.conductor || (piso ? 'RUTA A PISO' : ''),
       r.segmento || '',
+      cajasDe(r),
       distanciaDe(r),
       piso ? 'RUTA A PISO' : '',
       '',
       '',
     ];
   });
-  const totalDist = Math.round(rows.reduce((a, x) => a + (typeof x[6] === 'number' ? x[6] : 0), 0) * 100) / 100;
+  const totalCajas = Math.round(rows.reduce((a, x) => a + (typeof x[6] === 'number' ? x[6] : 0), 0) * 1000) / 1000;
+  const totalDist = Math.round(rows.reduce((a, x) => a + (typeof x[7] === 'number' ? x[7] : 0), 0) * 100) / 100;
   const recargas = rows.filter((x) => x[1] === 'RECARGA').length;
-  const pie: (string | number)[] = [`TOTAL: ${rows.length} rutas`, `${rows.length - recargas} primer viaje / ${recargas} recarga`, '', '', '', '', totalDist, '', '', ''];
+  const pie: (string | number)[] = [`TOTAL: ${rows.length} rutas`, `${rows.length - recargas} primer viaje / ${recargas} recarga`, '', '', '', '', totalCajas, totalDist, '', '', ''];
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows, pie]);
   ws['!cols'] = header.map((h, i) => {
     let maxLen = h.length;
