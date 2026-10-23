@@ -69,6 +69,12 @@ export function asignadosEnFecha(rutas: Route[], fecha: string): AsignadosDelDia
         agregar(d.camionId, d.camionPlaca, [d.conductor, ...(d.auxiliares || [])]);
       }
     });
+    // Camiones de apoyo: cuentan como asignados el día que salieron.
+    (r.apoyos || []).forEach((ap) => {
+      if ((!ap.cerradoEn && r.estado === 'En Tránsito') || diaDe(ap.registradoEn) === dia || diaDe(ap.cerradoEn) === dia) {
+        agregar(ap.camionId, ap.camionPlaca, [ap.conductor, ...(ap.auxiliares || [])], [ap.conductorId, ...(ap.auxiliarIds || [])]);
+      }
+    });
   });
   return res;
 }
