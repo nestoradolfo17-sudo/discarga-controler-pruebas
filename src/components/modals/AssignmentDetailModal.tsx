@@ -1,6 +1,7 @@
 import { getRouteKey } from '../../utils/routeKey';
 import React from 'react';
 import { Route, Truck, Staff } from '../../types';
+import { apoyosDelViaje } from '../../utils/apoyos';
 import {
   X,
   Truck as TruckIcon,
@@ -267,6 +268,36 @@ export const AssignmentDetailModal: React.FC<AssignmentDetailModalProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* Camiones de apoyo (caminos angostos) */}
+              {apoyosDelViaje(route).length > 0 && (
+                <div className="bg-sky-50 border border-sky-200 rounded-xl p-3.5 space-y-2">
+                  <span className="text-[10px] text-sky-800 font-bold uppercase tracking-wider block">
+                    Camión de apoyo ({apoyosDelViaje(route).length})
+                  </span>
+                  {apoyosDelViaje(route).map((ap) => {
+                    const tk = trucks.find((t) => t.id === ap.camionId);
+                    return (
+                      <div key={ap.id} className="bg-white p-2.5 rounded-lg border border-sky-200/80 text-xs space-y-0.5">
+                        <div className="font-bold text-slate-900">
+                          {tk?.idCamion ? `ID ${tk.idCamion} · ${ap.camionPlaca}` : ap.camionPlaca} · {ap.conductor}
+                        </div>
+                        <div className="text-[11px] text-slate-600">
+                          {ap.motivo}
+                          {ap.detalle ? ` (${ap.detalle})` : ''}
+                          {ap.cajas !== undefined ? ` · ${ap.cajas.toLocaleString('en-US')} cj` : ''}
+                          {ap.horaSalida ? ` · salió ${ap.horaSalida}` : ''}
+                        </div>
+                        {ap.auxiliares.length > 0 && <div className="text-[11px] text-slate-500">Auxiliares: {ap.auxiliares.join(', ')}</div>}
+                        <div className="text-[10px] text-slate-400">
+                          Registró {ap.registradoPor} · {ap.registradoEn}
+                          {ap.cerradoEn ? ` · cerrado ${ap.cerradoEn}` : ' · en ruta'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </>
           ) : route.estado === 'Abierta' ? (
             /* Caso Ruta Abierta con retorno pendiente de reasignación */
