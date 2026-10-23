@@ -3,7 +3,7 @@ import { Repeat, Plus, Download, Search, Pencil, Trash2, AlertTriangle, RefreshC
 import { EstadoRecarga, Prestamo, Recarga, Route, Staff, TipoRecarga } from '../types';
 import { cubreFecha, prestamoCerrado, formatoCorrelativoPrestamo, estadoPrestamo } from '../utils/prestamos';
 import { RecargaModal, TIPOS_RECARGA } from './modals/RecargaModal';
-import { leerRecargas, guardarRecarga, guardarRecargas, eliminarRecarga, suscribirRecargas, nuevoIdRecarga, formatoCorrelativo } from '../services/recargas';
+import { leerRecargas, guardarRecarga, guardarRecargas, eliminarRecarga, suscribirRecargas, nuevoIdRecarga, formatoCorrelativo, crearSituacionRecargas, estadoRecarga } from '../services/recargas';
 import { imprimirBoletaRecarga } from '../utils/boletaRecarga';
 import { getGuatemalaDateForInput } from '../utils/date';
 import { loadXLSX, formatoMiles } from '../utils/excel';
@@ -15,7 +15,11 @@ import { fmtNum } from '../utils/number';
 // asignar una ruta como "Recarga"), con filtros por rango de fechas, agencia,
 // tipo y estado, y un reporte en Excel de lo que se ve.
 //
-// Autorización: toda recarga nace "Pendiente". Solo un administrador la pasa a
+// Viajes de Recarga del Tablero: se registran al asignar, pero quedan "En ruta"
+// y NO se pueden autorizar hasta que el viaje se LIQUIDA (entonces pasan a
+// "Pendiente" = Por autorizar).
+//
+// Autorización: toda recarga manual nace "Pendiente". Solo un administrador la pasa a
 // "Autorizada" (cuenta para pago) o "Rechazada" (con motivo). Si alguien que
 // no es administrador cambia una recarga ya revisada, vuelve a "Pendiente".
 // La base de datos aplica la misma regla (ver supabase/fase8_recargas.sql).
@@ -58,7 +62,6 @@ const norm = (s: unknown) =>
 
 const primeroDeMes = () => getGuatemalaDateForInput().slice(0, 8) + '01';
 
-export const estadoDe = (r: Recarga): EstadoRecarga => r.estado || 'Pendiente';
 // Cómo se nombra una recarga en botones y avisos.
 const etq = (r: Recarga) => (r.sinRuta || !r.rutaId ? formatoCorrelativo(r.correlativo) || 'sin ruta' : `ruta ${r.rutaId}`);
 
@@ -70,6 +73,7 @@ const badgeTipo = (t: TipoRecarga) =>
     : 'bg-sky-100 text-sky-800 border-sky-300';
 
 const ESTADO_STYLE: Record<EstadoRecarga, string> = {
+  'En ruta': 'bg-sky-50 text-sky-800 border-sky-300',
   Pendiente: 'bg-amber-50 text-amber-800 border-amber-300',
   Autorizada: 'bg-emerald-50 text-emerald-800 border-emerald-300',
   Rechazada: 'bg-rose-50 text-rose-700 border-rose-300',
@@ -83,6 +87,10 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
   // ¿Puede autorizar / modificar las recargas de esta agencia?
   const adminDe = (ag?: string) => isAdmin || (!!ag && adminAgencias.includes(ag));
   const aprobador = isAdmin || adminAgencias.length > 0;
+  // Estado en pantalla: un viaje de Recarga que aún no se liquida queda
+  // "En ruta" y no se puede autorizar (ver services/recargas.ts).
+  const situacion = useMemo(() => crearSituacionRecargas(rutas), [rutas]);
+  const estadoDe = useCallback((r: Recarga): EstadoRecarga => estadoRecarga(r, situacion), [situacion]);
   const [recargas, setRecargas] = useState<Recarga[]>([]);
   const [cargando, setCargando] = useState(true);
   const [tablaFalta, setTablaFalta] = useState(false);
@@ -133,14 +141,14 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
   const pendientesTotales = useMemo(
     () => delUsuario.filter((r) => estadoDe(r) === 'Pendiente' && adminDe(r.agencia)).length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [delUsuario, isAdmin, adminAgencias]
+    [delUsuario, isAdmin, adminAgencias, estadoDe]
   );
 
   const filtradas = useMemo(() => {
     const q = norm(busca.trim());
     return delUsuario
       .filter((r) => !agencia || r.agencia === agencia)
-      .filter((r) => estado === 'Pendiente' || ((!desde || r.fecha >= desde) && (!hasta || r.fecha <= hasta)))
+      .filter((r) => estado === 'Pendiente' || estado === 'En ruta' || ((!desde || r.fecha >= desde) && (!hasta || r.fecha <= hasta)))
       .filter((r) => !tipo || r.tipo === tipo)
       .filter((r) => !estado || estadoDe(r) === estado)
       .filter(
@@ -149,7 +157,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
           norm([formatoCorrelativo(r.correlativo), r.sinRuta ? 'sin ruta' : '', r.rutaId, r.conductor, ...(r.auxiliares || []), r.camionPlaca, r.comentario, r.segmento, r.agencia].join(' ')).includes(q)
       )
       .sort((a, b) => (b.fecha + b.creadoEn).localeCompare(a.fecha + a.creadoEn));
-  }, [delUsuario, agencia, desde, hasta, tipo, estado, busca]);
+  }, [delUsuario, agencia, desde, hasta, tipo, estado, busca, estadoDe]);
 
   // Indicadores: todo lo del rango y filtros (sin importar la pestaña elegida);
   // las pendientes se cuentan siempre completas.
@@ -158,13 +166,13 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
     return delUsuario
       .filter((r) => !agencia || r.agencia === agencia)
       .filter((r) => !tipo || r.tipo === tipo)
-      .filter((r) => estadoDe(r) === 'Pendiente' || ((!desde || r.fecha >= desde) && (!hasta || r.fecha <= hasta)))
+      .filter((r) => estadoDe(r) === 'Pendiente' || estadoDe(r) === 'En ruta' || ((!desde || r.fecha >= desde) && (!hasta || r.fecha <= hasta)))
       .filter(
         (r) =>
           !q ||
           norm([formatoCorrelativo(r.correlativo), r.sinRuta ? 'sin ruta' : '', r.rutaId, r.conductor, ...(r.auxiliares || []), r.camionPlaca, r.comentario, r.segmento, r.agencia].join(' ')).includes(q)
       );
-  }, [delUsuario, agencia, tipo, desde, hasta, busca]);
+  }, [delUsuario, agencia, tipo, desde, hasta, busca, estadoDe]);
 
   const kpi = useMemo(() => {
     const filtradas = baseKpi;
@@ -176,19 +184,20 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       doble: filtradas.filter((r) => r.tipo === 'Doble').length,
       triple: filtradas.filter((r) => r.tipo === 'Triple').length,
       pendientes: por('Pendiente').length,
+      enRuta: por('En ruta').length,
       autorizadas: aut.length,
       rechazadas: por('Rechazada').length,
       viajesPago: aut.reduce((a, r) => a + (VIAJES[r.tipo] || 1), 0),
       viajesPend: por('Pendiente').reduce((a, r) => a + (VIAJES[r.tipo] || 1), 0),
       auto: filtradas.filter((r) => r.origen === 'asignacion').length,
     };
-  }, [baseKpi]);
+  }, [baseKpi, estadoDe]);
 
   // Pendientes que el usuario en sesión puede autorizar (selección masiva).
   const pendientesVisibles = useMemo(
     () => filtradas.filter((r) => estadoDe(r) === 'Pendiente' && adminDe(r.agencia)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filtradas, isAdmin, adminAgencias]
+    [filtradas, isAdmin, adminAgencias, estadoDe]
   );
   // La selección solo guarda pendientes que siguen visibles.
   const seleccionadas = useMemo(() => pendientesVisibles.filter((r) => seleccion.has(r.id)), [pendientesVisibles, seleccion]);
@@ -220,7 +229,8 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
       r = { ...previa, ...datos, solicitadoPor: previa.solicitadoPor || previa.creadoPor, editadoPor: usuario, editadoEn: ahora };
       // Un cambio real hecho por alguien que no es administrador vuelve a Pendiente.
       if (!(adminDe(previa.agencia) && adminDe(r.agencia)) && contenido(previa) !== contenido(r)) {
-        r = { ...r, estado: 'Pendiente', autorizadoPor: undefined, autorizadoEn: undefined, motivoRechazo: undefined };
+        // Si el viaje aún no se liquida, sigue "En ruta".
+        r = { ...r, estado: estadoDe(previa) === 'En ruta' ? 'En ruta' : 'Pendiente', autorizadoPor: undefined, autorizadoEn: undefined, motivoRechazo: undefined };
       }
     }
     setGuardando(true);
@@ -249,7 +259,8 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
 
   const cambiarEstado = async (list: Recarga[], nuevo: EstadoRecarga, motivo?: string) => {
     // Las autorizadas ya no cambian de estado (solo se pueden eliminar).
-    list = list.filter((r) => adminDe(r.agencia) && estadoDe(r) !== 'Autorizada');
+    // Las de viajes aún sin liquidar ("En ruta") todavía no se autorizan.
+    list = list.filter((r) => adminDe(r.agencia) && estadoDe(r) !== 'Autorizada' && estadoDe(r) !== 'En ruta');
     if (!aprobador || list.length === 0) return;
     const ahora = new Date().toISOString();
     const cambios = list.map<Recarga>((r) => ({
@@ -452,21 +463,22 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
     wsD['!cols'] = [12, 10, 9, 16, 16, 8, 10, 11, 10, 14, 26, 22, 22, 22, 22, 10, 40, 22, 17, 30, 18, 16, 17, 16, 17].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, wsD, 'Recargas');
 
-    const porAg = new Map<string, { p: number; a: number; r: number; v: number }>();
+    const porAg = new Map<string, { p: number; a: number; r: number; v: number; e: number }>();
     filtradas.forEach((r) => {
-      const x = porAg.get(r.agencia) || { p: 0, a: 0, r: 0, v: 0 };
+      const x = porAg.get(r.agencia) || { p: 0, a: 0, r: 0, v: 0, e: 0 };
       const e = estadoDe(r);
       if (e === 'Autorizada') {
         x.a++;
         x.v += VIAJES[r.tipo] || 1;
       } else if (e === 'Rechazada') x.r++;
+      else if (e === 'En ruta') x.e++;
       else x.p++;
       porAg.set(r.agencia, x);
     });
     const resumen = Array.from(porAg.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([ag, x]) => ({ Agencia: ag, Pendientes: x.p, Autorizadas: x.a, Rechazadas: x.r, 'Total registros': x.p + x.a + x.r, 'Viajes para pago (autorizadas)': x.v }));
-    resumen.push({ Agencia: 'TOTAL', Pendientes: kpi.pendientes, Autorizadas: kpi.autorizadas, Rechazadas: kpi.rechazadas, 'Total registros': kpi.total, 'Viajes para pago (autorizadas)': kpi.viajesPago });
+      .map(([ag, x]) => ({ Agencia: ag, 'En ruta (sin liquidar)': x.e, Pendientes: x.p, Autorizadas: x.a, Rechazadas: x.r, 'Total registros': x.e + x.p + x.a + x.r, 'Viajes para pago (autorizadas)': x.v }));
+    resumen.push({ Agencia: 'TOTAL', 'En ruta (sin liquidar)': kpi.enRuta, Pendientes: kpi.pendientes, Autorizadas: kpi.autorizadas, Rechazadas: kpi.rechazadas, 'Total registros': kpi.total, 'Viajes para pago (autorizadas)': kpi.viajesPago });
     const wsR = XLSX.utils.json_to_sheet(resumen);
     wsR['!cols'] = [20, 11, 12, 11, 15, 28].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, wsR, 'Resumen por agencia');
@@ -648,6 +660,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
             {(
               [
                 { k: 'Pendiente', l: 'Por autorizar', n: kpi.pendientes, on: 'bg-amber-500 text-white border-amber-500' },
+                { k: 'En ruta', l: 'En ruta (sin liquidar)', n: kpi.enRuta, on: 'bg-sky-600 text-white border-sky-600' },
                 { k: 'Autorizada', l: 'Autorizadas', n: kpi.autorizadas, on: 'bg-emerald-600 text-white border-emerald-600' },
                 { k: 'Rechazada', l: 'Rechazadas', n: kpi.rechazadas, on: 'bg-rose-600 text-white border-rose-600' },
                 { k: '', l: 'Todas', n: kpi.total, on: 'bg-slate-800 text-white border-slate-800' },
@@ -672,7 +685,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
             ))}
           </div>
           <span className="text-[11px] text-slate-400">
-            {estado === 'Pendiente' ? 'Todas las pendientes, sin importar la fecha' : `${desde ? fmt(desde) : 'Desde el inicio'} a ${fmt(hasta)}`}
+            {estado === 'Pendiente' ? 'Todas las pendientes, sin importar la fecha' : estado === 'En ruta' ? 'Viajes de Recarga aún sin liquidar: se autorizan después de liquidar' : `${desde ? fmt(desde) : 'Desde el inicio'} a ${fmt(hasta)}`}
             {kpi.auto > 0 ? ` · ${kpi.auto} automática(s) por liquidación` : ''}
           </span>
           {aprobador && seleccionadas.length > 0 && (
@@ -786,6 +799,9 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                               {r.autorizadoPor} · {fmtHora(r.autorizadoEn)}
                             </span>
                           )}
+                          {e === 'En ruta' && (
+                            <span className="block text-[10px] text-sky-700 max-w-[180px] whitespace-normal">Se autoriza al liquidar el viaje</span>
+                          )}
                           {e === 'Rechazada' && r.motivoRechazo && (
                             <span className="block text-[10px] text-rose-600 max-w-[180px] whitespace-normal">Motivo: {r.motivoRechazo}</span>
                           )}
@@ -811,7 +827,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex justify-end items-center gap-1.5 flex-wrap">
-                            {esAdminAqui && e !== 'Autorizada' && (
+                            {esAdminAqui && e !== 'Autorizada' && e !== 'En ruta' && (
                               <button
                                 type="button"
                                 disabled={procesando}
@@ -822,7 +838,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
                                 <Check className="w-3.5 h-3.5" /> Autorizar
                               </button>
                             )}
-                            {esAdminAqui && e !== 'Rechazada' && e !== 'Autorizada' && (
+                            {esAdminAqui && e !== 'Rechazada' && e !== 'Autorizada' && e !== 'En ruta' && (
                               <button
                                 type="button"
                                 disabled={procesando}
@@ -947,7 +963,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
         solicitantePorDefecto={usuario}
         existentes={recargas}
         guardando={guardando}
-        avisoReautorizar={!!modal.recarga && !adminDe(modal.recarga.agencia) && estadoDe(modal.recarga) !== 'Pendiente'}
+        avisoReautorizar={!!modal.recarga && !adminDe(modal.recarga.agencia) && estadoDe(modal.recarga) !== 'Pendiente' && estadoDe(modal.recarga) !== 'En ruta'}
         onGuardar={(d) => void handleGuardar(d)}
       />
     </div>
