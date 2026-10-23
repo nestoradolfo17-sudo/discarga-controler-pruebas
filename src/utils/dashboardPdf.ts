@@ -35,11 +35,19 @@ export interface TablaPdf {
   vacio?: string; // texto si no hay filas (si no se da, la tabla se omite)
 }
 
+export interface BarraPdf {
+  titulo: string;
+  sub?: string;
+  segmentos: { label: string; valor: number; color: [number, number, number] }[];
+}
+
 export interface ReportePdf {
   titulo: string; // "Dashboard de Despacho"
   periodo: string;
   agencia: string;
   kpis: KpiPdf[];
+  // Barra apilada (por ejemplo "Balance del día"), debajo de los indicadores.
+  barra?: BarraPdf;
   tablas: TablaPdf[];
   notas?: string[];
 }
@@ -122,7 +130,7 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
     const porFila = Math.min(rep.kpis.length, rep.kpis.length > 6 ? 4 : rep.kpis.length);
     const gap = 10;
     const ancho = (W - 2 * M - gap * (porFila - 1)) / porFila;
-    const alto = 62;
+    const alto = 72;
     rep.kpis.forEach((k, i) => {
       const col = i % porFila;
       const fila = Math.floor(i / porFila);
@@ -144,8 +152,11 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.5);
         doc.setTextColor(...RGB.gris);
+        // Hasta 2 líneas; si no cabe, la segunda termina en "…".
         const s = doc.splitTextToSize(limpio(k.sub), ancho - 18) as string[];
-        doc.text(s[0] + (s.length > 1 ? '…' : ''), x + 12, yy + 53);
+        const l2 = s.length > 2 ? doc.splitTextToSize(s.slice(1).join(' '), ancho - 24)[0] + '…' : s[1];
+        doc.text(s[0], x + 12, yy + 53);
+        if (l2) doc.text(l2, x + 12, yy + 63);
       }
     });
     y += Math.ceil(rep.kpis.length / porFila) * (alto + gap) + 6;
@@ -172,6 +183,47 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
     }
     y += 8;
   };
+
+  // ---------- Barra apilada ----------
+  if (rep.barra && rep.barra.segmentos.some((s) => s.valor > 0)) {
+    const b = rep.barra;
+    const total = b.segmentos.reduce((a, s) => a + s.valor, 0);
+    tituloSeccion(b.titulo, b.sub);
+    const ancho = W - 2 * M;
+    let x = M;
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(M, y, ancho, 14, 7, 7, 'F');
+    b.segmentos.forEach((s) => {
+      if (s.valor <= 0) return;
+      const w = (s.valor / total) * ancho;
+      doc.setFillColor(...s.color);
+      doc.rect(x, y, w, 14, 'F');
+      if (w > 22) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(String(s.valor), x + w / 2, y + 9.8, { align: 'center' });
+      }
+      x += w;
+    });
+    y += 26;
+    // Leyenda en una fila pareja
+    const cols = b.segmentos.length;
+    const cw = ancho / cols;
+    b.segmentos.forEach((s, i) => {
+      const lx = M + i * cw;
+      doc.setFillColor(...s.color);
+      doc.circle(lx + 4, y - 2.5, 3.2, 'F');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...RGB.gris);
+      doc.text(limpio(s.label), lx + 11, y);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...RGB.marino);
+      doc.text(`${s.valor}  (${total > 0 ? ((s.valor / total) * 100).toFixed(1) : '0.0'}%)`, lx + 11, y + 11);
+    });
+    y += 34;
+  }
 
   rep.tablas.forEach((t) => {
     if (!t.filas.length && !t.vacio) return;
