@@ -2058,17 +2058,18 @@ const ALLP={op:true,an:true,cfg:true,carga:true,admin:true};
 function perms(){
   if(!S.userReady) return S.noUserCap? ALLP : {op:true,an:false,cfg:false,carga:false,admin:false};
   if(S.me?.owner) return ALLP;
-  const list=S.usuarios||[];
-  if(!list.length) return {op:true,an:true,cfg:true,carga:true,admin:false};
-  const u=findMe(list);
-  if(!u) return {op:true,an:false,cfg:false,carga:false,admin:false};
-  /* DISCARGA: el administrador de ZR es el general o el de la agencia (S.me.owner) */
-  return {op:!!u.op,an:!!u.an,cfg:!!u.cfg,carga:!!u.carga,admin:false};
+  /* DISCARGA: quién entra a ZR y qué agencias ve se maneja en Usuarios de
+     DISCARGA CONTROLER (permiso ZR y agencias). Dentro de ZR ya no hay lista
+     de usuarios: quien entra ve todo menos las funciones de administrador
+     (autorizar, eliminar), que son del administrador general o de la agencia. */
+  return {op:true,an:true,cfg:true,carga:true,admin:false};
 }
 function applyPerms(){
   const P=perms(); S.P=P;
   document.querySelectorAll(".tab[data-grp]").forEach(b=>{ b.hidden=!P[b.dataset.grp]; });
   document.querySelectorAll("[data-grp-lbl]").forEach(l=>{ l.hidden=!P[l.dataset.grpLbl]; });
+  /* DISCARGA: sin sección "Usuarios" (se usa Usuarios y permisos de DISCARGA CONTROLER). */
+  const tUsr=$("#tab-usuarios"); if(tUsr) tUsr.hidden=true;
   document.body.classList.toggle("no-admin",!P.admin);
   document.body.classList.toggle("no-carga",!P.carga);
   const lp=cargaLock("pilotos"), lpr=cargaLock("presupuesto");
