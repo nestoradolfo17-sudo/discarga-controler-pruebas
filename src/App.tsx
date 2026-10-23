@@ -106,7 +106,7 @@ import { RecargasView } from './components/RecargasView';
 import { PrestamosView } from './components/PrestamosView';
 import { leerPrestamos, suscribirPrestamos } from './services/prestamos';
 import { prestamosVigentes, infoDePrestamo } from './utils/prestamos';
-import { registrarRecargaAuto, idRecargaAuto } from './services/recargas';
+import { registrarRecargaAuto, idRecargaAuto, crearSituacionRecargas } from './services/recargas';
 import { toNum, fmtNum } from './utils/number';
 import { viajesQueRecibenCajas, resumenGrupo, repartirParejo } from './utils/splitGroup';
 
@@ -1848,6 +1848,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [routes, historicalRoutes, currentUser]
   );
+  // ¿El viaje de cada recarga automática ya se liquidó? (solo lectura)
+  const situacionRecargas = useMemo(() => crearSituacionRecargas(rutasParaRecargas), [rutasParaRecargas]);
   const staffParaRecargas = useMemo(
     () =>
       staffLive.filter(
@@ -2596,8 +2598,8 @@ export default function App() {
       })
     );
 
-    // Recarga: queda de una vez en Recargas → Por autorizar (al liquidar se
-    // actualiza la misma, sin duplicar).
+    // Recarga: queda en Recargas como "En ruta" (aún no se autoriza); al
+    // liquidar se actualiza la misma, sin duplicar, y pasa a Por autorizar.
     if (isRecarga && targetRoute && (assignment.driverName || assignment.helper1 || assignment.helper2 || assignment.helper3 || assignment.helper4)) {
       registrarRecargaDelViaje({
         ...targetRoute,
@@ -2618,7 +2620,7 @@ export default function App() {
           fechaAsignacion: fechaHoraAsignacion,
           tipoAsignacion: effectiveTipo,
         },
-      });
+      }, false);
     }
 
     // Update Truck status - Si el camión ya está cargado con otra ruta activa, conservar todas las rutas asignadas
@@ -3168,15 +3170,16 @@ export default function App() {
   // mismo ID de ruta puede repetirse en fechas distintas, así que se identifica la
   // fila exacta con ID + Fecha (ver src/utils/routeKey.ts) para no liquidar también
   // otra fila con el mismo ID pero de otra fecha.
-  // Módulo de Recargas: un viaje "Recarga" se registra en Recargas → Por
-  // autorizar desde que se ASIGNA en el Tablero, y al LIQUIDARLO (cualquier
-  // modalidad de cierre, también por Contingencia) se actualiza la misma
-  // recarga con la tripulación final (tipo Simple, editable). La
+  // Módulo de Recargas: un viaje "Recarga" se registra en Recargas desde que
+  // se ASIGNA en el Tablero, pero queda "En ruta" (no se puede autorizar). Al
+  // LIQUIDARLO (cualquier modalidad de cierre, también por Contingencia) se
+  // actualiza la misma recarga con la tripulación final y pasa a Por
+  // autorizar (tipo Simple, editable). La
   // tripulación es la que llevaba el viaje. Una clave por ruta, fecha y número
   // de despacho evita duplicarlo si se vuelve a guardar.
   const esViajeRecarga = (r: Route) =>
     (r.asignacion?.tipoAsignacion || r.tipoAsignacion || (r.esRecarga ? 'Recarga' : '')) === 'Recarga';
-  const registrarRecargaDelViaje = (r: Route) => {
+  const registrarRecargaDelViaje = (r: Route, liquidada: boolean) => {
     const a = r.asignacion;
     if (!a || !esViajeRecarga(r)) return;
     const d = parseFlexibleDate(a.fechaDespacho || a.fechaAsignacion || r.fechaAsignacion);
@@ -3197,7 +3200,7 @@ export default function App() {
       camionPlaca: a.camionPlaca,
       solicitadoPor: currentUser?.nombre || currentUser?.username || 'Liquidación',
       creadoPor: currentUser?.nombre || currentUser?.username || 'Liquidación',
-    });
+    }, liquidada);
   };
 
   const handleConfirmLiquidation = (
@@ -3229,7 +3232,7 @@ export default function App() {
   ) => {
     const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
     if (!targetRoute) return;
-    registrarRecargaDelViaje(targetRoute);
+    registrarRecargaDelViaje(targetRoute, true);
 
     // Ruta partida (Cierre Definitivo): las cajas devueltas de este viaje pasan
     // a los viajes pendientes del grupo, repartidas parejo. Este viaje queda con
@@ -3663,15 +3666,16 @@ export default function App() {
     routes.forEach((antes) => {
       const despues = byBefore.get(getRouteKey(antes));
       if (despues && despues.estado === 'En Tránsito' && antes.estado !== 'En Tránsito') {
-        registrarRecargaDelViaje(despues);
+        registrarRecargaDelViaje(despues, false);
         return;
       }
       if (!despues || despues.estado === 'En Tránsito' || despues.estado === antes.estado) return;
-      if (antes.estado === 'En Tránsito') registrarRecargaDelViaje(antes);
-      else if (despues.estado === 'Liquidada' || despues.estado === 'Abierta')
-        registrarRecargaDelViaje({ ...despues, asignacion: despues.asignacion || despues.ultimoDespacho || null });
+      const seLiquido = despues.estado === 'Liquidada' || despues.estado === 'Abierta';
+      if (antes.estado === 'En Tránsito') registrarRecargaDelViaje(antes, seLiquido);
+      else if (seLiquido)
+        registrarRecargaDelViaje({ ...despues, asignacion: despues.asignacion || despues.ultimoDespacho || null }, true);
     });
-    nuevas.filter((r) => r.estado === 'En Tránsito').forEach((r) => registrarRecargaDelViaje(r));
+    nuevas.filter((r) => r.estado === 'En Tránsito').forEach((r) => registrarRecargaDelViaje(r, false));
     setRoutes((prev) => {
       const next = prev.map((r) => byBefore.get(getRouteKey(r)) || r);
       const keys = new Set(next.map(getRouteKey));
@@ -4466,6 +4470,7 @@ export default function App() {
               isAdmin={!!currentUser.isAdmin}
               adminAgencias={adminAgenciasSesion}
               prestamos={prestamos}
+              situacionRecargas={situacionRecargas}
               puedeVer={{ recargas: true, prestamos: true, zr: canViewZr }}
               onIr={irANotificacion}
             />
@@ -4624,6 +4629,7 @@ export default function App() {
             onLoadFullHistory={loadFullHistory}
             isLoadingFullHistory={isLoadingFullHistory}
             puedeVerAgencia={canViewAgency}
+            situacionRecargas={situacionRecargas}
             usuario={currentUser.nombre || currentUser.username}
           />
         )}
