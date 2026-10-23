@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { Recarga, Staff, TipoRecarga } from '../types';
 import { leerRecargas, suscribirRecargas, formatoCorrelativo, estadoRecarga, type SituacionViaje } from '../services/recargas';
 import { Card, Kpi, HBar, C_GOOD, C_INFO, C_WARN, C_CRIT, C_TRACK } from './DashboardExecutive';
+import type { ReportePdf } from '../utils/dashboardPdf';
 import { Repeat, Clock, CheckCircle2, XCircle, Wallet, Building2, Users, Layers, AlertTriangle, BarChart3 } from 'lucide-react';
 
 // --- Dashboard de Recargas ---
@@ -33,6 +34,8 @@ interface Props {
   puedeVerAgencia?: (agencia: string) => boolean;
   // ¿El viaje de cada recarga automática ya se liquidó? (las "En ruta" aún no se autorizan)
   situacionRecargas?: (id: string) => SituacionViaje;
+  // PDF del dashboard: entrega cómo armar el reporte con los datos que se ven.
+  registrarReporte?: (armar: () => ReportePdf) => void;
 }
 
 // Columnas apiladas por día (estados de la recarga), con leyenda y tooltip.
@@ -104,7 +107,7 @@ const ColumnasEstado: React.FC<{ data: { key: string; label: string; aut: number
   );
 };
 
-export const DashboardRecargas: React.FC<Props> = ({ staff, selectedAgency, puedeVerAgencia, situacionRecargas }) => {
+export const DashboardRecargas: React.FC<Props> = ({ staff, selectedAgency, puedeVerAgencia, situacionRecargas, registrarReporte }) => {
   const [recargasLeidas, setRecargas] = useState<Recarga[]>([]);
   // Las de viajes aún sin liquidar se ven "En ruta" (no cuentan como por autorizar).
   const recargas = useMemo(
@@ -270,6 +273,64 @@ export const DashboardRecargas: React.FC<Props> = ({ staff, selectedAgency, pued
   const tipoTotal = porTipo.Simple + porTipo.Doble + porTipo.Triple;
   const maxAg = Math.max(1, ...porAgencia.map(([, v]) => v.viajes));
   const periodoLabel = d0 === d1 ? `Día ${fmt(d0)}` : `Del ${fmt(d0)} al ${fmt(d1)}`;
+
+  // ---------- Reporte PDF (los mismos datos de la pantalla, con formato) ----------
+  const armarReporte = (): ReportePdf => {
+    const pct = (v: number, t: number) => (t > 0 ? `${((v / t) * 100).toFixed(1)}%` : '—');
+    const enRuta = enPeriodo.filter((r) => estadoDe(r) === 'En ruta').length;
+    return {
+      titulo: 'Dashboard de Recargas',
+      periodo: periodoLabel,
+      agencia: selectedAgency === 'TODAS' ? 'Todas' : selectedAgency,
+      kpis: [
+        { label: 'Recargas registradas', valor: n0(k.total), sub: `${n0(k.viajes)} viajes · ${n0(k.auto)} automáticas`, tono: 'info' },
+        { label: 'Autorizadas', valor: n0(k.aut), sub: `${n0(k.viajesAut)} viajes para pago`, tono: 'ok' },
+        { label: 'Por autorizar', valor: n0(k.pend), sub: `${n0(k.viajesPend)} viajes${enRuta ? ` · ${n0(enRuta)} en ruta sin liquidar` : ''}`, tono: 'warn' },
+        { label: 'Rechazadas', valor: n0(k.rech), sub: 'no se pagan', tono: 'crit' },
+        { label: 'Monto autorizado (estimado)', valor: q0(k.montoAut), sub: 'Tarifa por puesto · S1 · D2 · T3', tono: 'ok' },
+        { label: 'Monto por autorizar (estimado)', valor: q0(k.montoPend), sub: k.pendTodas.length ? `${n0(k.pendTodas.length)} pendientes en total · la más antigua de ${n0(k.masAntigua)} día(s)` : 'Sin pendientes', tono: 'warn' },
+      ],
+      tablas: [
+        {
+          titulo: 'Recargas por agencia',
+          sub: `${periodoLabel} · sin rechazadas`,
+          columnas: [{ t: 'Agencia' }, { t: 'Viajes', num: true }, { t: '% viajes', num: true }, { t: 'Monto autorizado (Q)', num: true }, { t: 'Por autorizar', num: true }],
+          filas: porAgencia.map(([ag, v]) => [ag, n0(v.viajes), pct(v.viajes, porAgencia.reduce((s, [, x]) => s + x.viajes, 0)), q0(v.monto), n0(v.pend)]),
+          total: porAgencia.length > 1 ? ['Total', n0(porAgencia.reduce((s, [, x]) => s + x.viajes, 0)), '100%', q0(porAgencia.reduce((s, [, x]) => s + x.monto, 0)), n0(porAgencia.reduce((s, [, x]) => s + x.pend, 0))] : undefined,
+          vacio: 'Sin recargas en el periodo.',
+        },
+        {
+          titulo: 'Por tipo de recarga',
+          sub: `${periodoLabel} · sin rechazadas`,
+          columnas: [{ t: 'Tipo' }, { t: 'Recargas', num: true }, { t: '%', num: true }],
+          filas: tipoTotal ? (['Simple', 'Doble', 'Triple'] as TipoRecarga[]).map((t) => [t, n0(porTipo[t]), pct(porTipo[t], tipoTotal)]) : [],
+          total: tipoTotal ? ['Total', n0(tipoTotal), '100%'] : undefined,
+        },
+        {
+          titulo: 'Viajes por día',
+          sub: `${periodoLabel} · viajes de recarga (Simple 1 · Doble 2 · Triple 3)`,
+          columnas: [{ t: 'Día' }, { t: 'Autorizados', num: true }, { t: 'Sin autorizar', num: true }, { t: 'Rechazados', num: true }, { t: 'Total', num: true }],
+          filas: tendencia.filter((d) => d.aut + d.pend + d.rech > 0).map((d) => [d.label, n0(d.aut), n0(d.pend), n0(d.rech), n0(d.aut + d.pend + d.rech)]),
+        },
+        {
+          titulo: 'Colaboradores con más recargas autorizadas',
+          sub: `${periodoLabel} · top 10`,
+          columnas: [{ t: '#', num: true, ancho: 28 }, { t: 'Colaborador' }, { t: 'Puesto' }, { t: 'Agencia' }, { t: 'Viajes', num: true }, { t: 'Monto (Q)', num: true }],
+          filas: ranking.map((x, i) => [i + 1, x.nombre, x.puesto, x.agencia, n0(x.viajes), q0(x.monto)]),
+        },
+        {
+          titulo: 'Pendientes de autorizar más antiguas',
+          sub: 'Todas las fechas',
+          columnas: [{ t: 'Recarga' }, { t: 'Fecha' }, { t: 'Ruta' }, { t: 'Agencia' }, { t: 'Tipo' }, { t: 'Piloto' }, { t: 'Días', num: true }],
+          filas: pendientesViejas.map((r) => [formatoCorrelativo(r.correlativo) || '-', fmt(r.fecha), r.sinRuta || !r.rutaId ? 'Sin ruta' : String(r.rutaId), r.agencia, r.tipo, r.conductor || '-', n0(k.dias(r.fecha))]),
+        },
+      ],
+      notas: ['Los montos son estimados con la tarifa por puesto (VPP Q125 · APP Q75 por viaje; Doble x2, Triple x3). El cálculo oficial de pago es el Excel de Recargas.'],
+    };
+  };
+  useEffect(() => {
+    registrarReporte?.(armarReporte);
+  });
 
   return (
     <div className="space-y-4">
