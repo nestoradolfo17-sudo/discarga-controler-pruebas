@@ -163,6 +163,31 @@ export interface Staff {
   prestamoInfo?: PrestamoInfo;
 }
 
+// --- Camión de apoyo de una ruta ---
+export type MotivoApoyo = 'Camino angosto' | 'Acceso restringido' | 'Peso / capacidad' | 'Otro';
+
+export interface ApoyoRuta {
+  id: string;
+  // Viaje (despacho) de la ruta al que apoyó: 1 = primer despacho.
+  intento: number;
+  camionId: string;
+  camionPlaca: string;
+  conductor: string;
+  conductorId?: string;
+  auxiliares: string[];
+  auxiliarIds?: (string | null)[];
+  motivo: MotivoApoyo;
+  detalle?: string;
+  // Cajas que se pasaron al camión de apoyo (opcional).
+  cajas?: number;
+  horaSalida?: string;
+  registradoPor: string;
+  registradoEn: string;
+  // Se llena solo al liquidar la ruta (o al despacharla de nuevo): el camión
+  // y la tripulación de apoyo quedan libres.
+  cerradoEn?: string;
+}
+
 export interface RouteAssignment {
   camionId: string;
   camionPlaca: string;
@@ -327,6 +352,10 @@ export interface Route {
   originalRouteData?: Route;
   cajasDevueltasAcumuladas?: number;
   asignacion: RouteAssignment | null;
+  // Camiones de apoyo: salen junto con el camión principal de la ruta para
+  // llevar la carga por caminos angostos o de acceso difícil. La ruta sigue
+  // siendo UNA sola (sus cajas y su liquidación no se duplican).
+  apoyos?: ApoyoRuta[];
   ultimoDespacho?: RouteAssignment | null;
   historialDespachos?: RouteDispatchRecord[];
   retornosCount?: number;
