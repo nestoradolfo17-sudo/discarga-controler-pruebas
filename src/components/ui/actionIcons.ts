@@ -18,6 +18,7 @@ import {
   Plus,
   Tag,
   ListOrdered,
+  Truck,
 } from 'lucide-react';
 import React from 'react';
 
@@ -57,6 +58,7 @@ export const ACTION_ICONS = {
   mas: MoreDots,
   segmento: Tag,
   prioridades: ListOrdered,
+  apoyo: Truck,
 } as const;
 
 export type ActionIconKey = keyof typeof ACTION_ICONS;
