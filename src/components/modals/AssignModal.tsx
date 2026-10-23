@@ -65,6 +65,9 @@ interface AssignModalProps {
   // aparece para asignar y lo prestado POR esta agencia a otra no aparece.
   prestamos?: Prestamo[];
   activeRoutes?: Route[];
+  // Agencias que el usuario en sesión puede ver: "Optimización de Carga" solo
+  // ofrece rutas en tránsito de esas agencias.
+  puedeVerAgencia?: (agencia: string) => boolean;
   // Histórico de rutas liquidadas: junto con activeRoutes se usa para sugerir
   // la tripulación más frecuente de esta misma ruta (ver utils/crewSuggestion).
   historyRoutes?: Route[];
@@ -108,6 +111,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   staff,
   prestamos = [] as Prestamo[],
   activeRoutes = [],
+  puedeVerAgencia,
   historyRoutes = [],
   onConfirmAssignment,
   onMoveToFloor,
@@ -342,8 +346,19 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   };
 
   const activeRoutesWithCrew = activeRoutes.filter(
-    (r) => r.estado === 'En Tránsito' && getRouteKey(r) !== getRouteKey(route) && r.asignacion && mismaJornada(r, route)
+    (r) =>
+      r.estado === 'En Tránsito' &&
+      getRouteKey(r) !== getRouteKey(route) &&
+      r.asignacion &&
+      mismaJornada(r, route) &&
+      (!puedeVerAgencia || !r.agencia || puedeVerAgencia(r.agencia))
   );
+  // ID del camión (catálogo de Camiones) para buscar y mostrar.
+  const idCamionDe = (r: Route) => {
+    const id = r.asignacion?.camionId;
+    const t = id ? trucks.find((x) => x.id === id) : undefined;
+    return t?.idCamion ? String(t.idCamion) : '';
+  };
 
   // Buscador por número de ruta (o placa / piloto) para la lista de carga compartida.
   const normCrew = (v: unknown) => String(v ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
@@ -351,7 +366,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
     const q = normCrew(buscaCrew);
     if (!q) return activeRoutesWithCrew;
     const lista = activeRoutesWithCrew.filter((r) =>
-      [r.id, r.asignacion?.camionPlaca, r.asignacion?.conductor].some((v) => normCrew(v).includes(q))
+      [r.id, r.asignacion?.camionPlaca, r.asignacion?.conductor, idCamionDe(r)].some((v) => normCrew(v).includes(q))
     );
     // Primero las que empiezan con el número buscado.
     return lista.sort((a, b) => Number(!normCrew(a.id).startsWith(q)) - Number(!normCrew(b.id).startsWith(q)));
@@ -1012,8 +1027,8 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                       const elegida = exacta || (crewFiltradas.length === 1 ? crewFiltradas[0] : null);
                       if (elegida) handleActiveCrewSelect(getRouteKey(elegida));
                     }}
-                    placeholder="Buscar No. de ruta, placa o piloto…"
-                    aria-label="Buscar ruta en tránsito por número de ruta, placa o piloto"
+                    placeholder="Buscar No. de ruta, piloto o ID camión…"
+                    aria-label="Buscar ruta en tránsito por número de ruta, piloto, ID de camión o placa"
                     className="sm:w-64 min-h-[44px] px-3 border border-sky-300 rounded-lg text-xs font-semibold bg-white text-sky-950 outline-none focus:ring-2 focus:ring-sky-400"
                   />
                 <select
@@ -1029,7 +1044,8 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                   </option>
                   {crewOpciones.map((ar) => (
                     <option key={getRouteKey(ar)} value={getRouteKey(ar)}>
-                      Ruta {ar.id} ({fmtNum(ar.cajasFisicas)} cajas) → Unidad {ar.asignacion?.camionPlaca} | Piloto: {ar.asignacion?.conductor}
+                      Ruta {ar.id} ({fmtNum(ar.cajasFisicas)} cajas) → {idCamionDe(ar) ? `ID ${idCamionDe(ar)} · ` : ''}Unidad {ar.asignacion?.camionPlaca} | Piloto: {ar.asignacion?.conductor}
+                      {ar.agencia && ar.agencia !== route.agencia ? ` | ${ar.agencia}` : ''}
                     </option>
                   ))}
                 </select>
