@@ -82,7 +82,7 @@ Reglas (iguales a Recargas y Préstamos):
 - Cada agencia tiene sus propios datos de ZR; arriba del módulo se elige la agencia.
 - **Autoriza, rechaza y elimina** el administrador general o el **administrador de esa agencia** (se asigna en Usuarios de DISCARGA). La base de datos lo hace cumplir.
 - El administrador de agencia entra a ZR de sus agencias aunque no tenga el permiso ZR marcado.
-- Dentro de ZR → Usuarios solo se asignan los accesos de ZR (Operación, Análisis, Configuración, Carga).
+- ZR ya no tiene sección de Usuarios: quién entra y a qué agencias se da solo en **Usuarios y permisos** de DISCARGA CONTROLER (permiso ZR + agencias). Quien entra ve todo ZR; autorizar y eliminar es del administrador general o de la agencia.
 - ZR entra con el **mismo usuario y contraseña** de DISCARGA CONTROLER; para eliminar o autorizar se confirma con esa contraseña.
 - Fotos y PDF: almacenamiento privado `zr`, una carpeta por agencia (máx. 20 MB, solo imágenes y PDF).
 - Los datos de ZR no entran en el respaldo diario automático de la Fase 3: descarga un respaldo desde Supabase (Table Editor → app_zr → Export).
