@@ -17,6 +17,7 @@ import {
   ClientePendiente,
   RouteClientEntry,
   Prestamo,
+  ApoyoRuta,
 } from './types';
 import { INITIAL_ROUTES, INITIAL_TRUCKS, INITIAL_STAFF, INITIAL_USERS } from './data/initialData';
 import {
@@ -107,6 +108,8 @@ import { PrestamosView } from './components/PrestamosView';
 import { leerPrestamos, suscribirPrestamos } from './services/prestamos';
 import { prestamosVigentes, infoDePrestamo } from './utils/prestamos';
 import { registrarRecargaAuto, idRecargaAuto, crearSituacionRecargas } from './services/recargas';
+import { apoyosActivos, cerrarApoyos } from './utils/apoyos';
+import { ApoyoModal } from './components/modals/ApoyoModal';
 import { toNum, fmtNum } from './utils/number';
 import { viajesQueRecibenCajas, resumenGrupo, repartirParejo } from './utils/splitGroup';
 
@@ -1228,6 +1231,8 @@ export default function App() {
   const [boardSegmento, setBoardSegmento] = useState<string>('');
   // Cambio de segmento (con autorización de administrador).
   const [segmentTarget, setSegmentTarget] = useState<Route | null>(null);
+  // Camión de apoyo: ruta en tránsito a la que se le agregan camiones de apoyo.
+  const [apoyoTarget, setApoyoTarget] = useState<Route | null>(null);
   const [revertSplitTarget, setRevertSplitTarget] = useState<Route | null>(null);
   // Repartir cajas entre los viajes de una ruta partida (un solo cliente).
   const [repartirCajasTarget, setRepartirCajasTarget] = useState<Route | null>(null);
@@ -1751,6 +1756,14 @@ export default function App() {
         if (n) people.add(`${r.agencia || ''}|${n.trim().toLowerCase()}`);
       });
       [a.conductorId, ...(a.auxiliarIds || [])].forEach((id) => id && personIds.add(id));
+      // Camiones de apoyo de la ruta: también quedan "En Ruta".
+      apoyosActivos(r).forEach((ap) => {
+        if (ap.camionId) truckIds.add(ap.camionId);
+        [ap.conductor, ...(ap.auxiliares || [])].forEach((n) => {
+          if (n) people.add(`${r.agencia || ''}|${n.trim().toLowerCase()}`);
+        });
+        [ap.conductorId, ...(ap.auxiliarIds || [])].forEach((id) => id && personIds.add(id));
+      });
     });
     return { truckIds, people, personIds };
   }, [routes]);
@@ -2562,6 +2575,9 @@ export default function App() {
           const originalDate = r.fechaOriginalRuta || r.fecha;
           return {
             ...r,
+            // Despacho nuevo: los apoyos que hubieran quedado abiertos se cierran
+            // (al Modificar / Reasignar una ruta en tránsito se conservan).
+            apoyos: r.estado === 'En Tránsito' ? r.apoyos : cerrarApoyos(r, fechaHoraAsignacion).apoyos,
             fechaOriginalRuta: originalDate,
             fecha: originalDate,
             estado: 'En Tránsito',
@@ -3203,6 +3219,13 @@ export default function App() {
     }, liquidada);
   };
 
+  // Camiones de apoyo de una ruta en tránsito (agregar / quitar).
+  const handleGuardarApoyos = (ruta: Route, apoyos: ApoyoRuta[]) => {
+    const key = getRouteKey(ruta);
+    setRoutes((prev) => prev.map((r) => (getRouteKey(r) === key ? { ...r, apoyos } : r)));
+    setApoyoTarget((prev) => (prev && getRouteKey(prev) === key ? { ...prev, apoyos } : prev));
+  };
+
   const handleConfirmLiquidation = (
     routeId: string,
     fecha: string,
@@ -3375,6 +3398,8 @@ export default function App() {
       const updatedRoute: Route = {
         ...targetRoute,
         estado: 'Abierta',
+        // Camiones de apoyo de este viaje: quedan libres (se conservan en el historial).
+        apoyos: cerrarApoyos(targetRoute, formatDateTimeToGuatemala(new Date())).apoyos,
         asignacion: null, // Released so it can be reassigned to a new crew
         ultimoDespacho: targetRoute.asignacion || targetRoute.ultimoDespacho,
         historialDespachos: [...prevDispatches, dispatchRecord],
@@ -3414,6 +3439,8 @@ export default function App() {
     const updatedRoute: Route = {
       ...targetRoute,
       estado: 'Liquidada',
+      // Camiones de apoyo: se cierran y quedan libres.
+      apoyos: cerrarApoyos(targetRoute, fechaHoraLiquidacion).apoyos,
       fechaLiquidacion: fechaHoraLiquidacion,
       motivoDevolucion: cleanMotivo,
       // Si sus cajas devueltas pasaron a otros viajes, este viaje queda con lo
@@ -4735,6 +4762,10 @@ export default function App() {
             onRemoveBolson={handleRemoveBolson}
             onRemoveSelfService={handleRemoveSelfService}
             onVisibleRoutesChange={handleBoardVisibleRoutes}
+            onOpenApoyo={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
+              if (r) setApoyoTarget(r);
+            }}
             onChangeSegment={(id, fecha) => {
               const r = routes.find((item) => routeMatchesKey(item, id, fecha));
               if (r) setSegmentTarget(r);
@@ -4849,6 +4880,7 @@ export default function App() {
           <RecargasView
             rutas={rutasParaRecargas}
             staff={staffParaRecargas}
+            trucks={trucksLive}
             agencias={importAgencyOptions}
             agenciaGeneral={selectedAgency}
             usuario={currentUser.nombre || currentUser.username}
@@ -4995,6 +5027,17 @@ export default function App() {
         onConfirmRevert={handleConfirmRevert}
       />
 
+      <ApoyoModal
+        route={apoyoTarget ? routes.find((r) => getRouteKey(r) === getRouteKey(apoyoTarget)) || apoyoTarget : null}
+        trucks={trucksLive}
+        staff={staffLive}
+        prestamos={prestamos}
+        usuario={currentUser?.nombre || currentUser?.username || ''}
+        onGuardar={handleGuardarApoyos}
+        onClose={() => setApoyoTarget(null)}
+        onShowToast={showToast}
+      />
+
       <AssignModal
         isOpen={!!assignTarget}
         onClose={() => setAssignTarget(null)}
@@ -5003,6 +5046,7 @@ export default function App() {
         staff={staffLive}
         prestamos={prestamos}
         activeRoutes={routes}
+        puedeVerAgencia={canViewAgency}
         historyRoutes={historicalRoutes}
         onConfirmAssignment={handleConfirmAssignment}
         onMoveToFloor={handleMoveToFloor}
