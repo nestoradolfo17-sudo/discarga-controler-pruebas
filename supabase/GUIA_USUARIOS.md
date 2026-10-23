@@ -87,6 +87,15 @@ Reglas (iguales a Recargas y Préstamos):
 - Fotos y PDF: almacenamiento privado `zr`, una carpeta por agencia (máx. 20 MB, solo imágenes y PDF).
 - Los datos de ZR no entran en el respaldo diario automático de la Fase 3: descarga un respaldo desde Supabase (Table Editor → app_zr → Export).
 
+## Recargas: se autorizan hasta liquidar (Fase 12)
+
+1. Supabase → **SQL Editor → New query** → pega TODO el contenido de `supabase/fase12_recargas_en_ruta.sql` → **Run**. Al final debe salir **true**. No cambia ninguna recarga guardada.
+
+Reglas:
+- Un viaje de Recarga del Tablero se registra al **asignarlo**, pero queda **En ruta (sin liquidar)**: se ve en Recargas, no se puede autorizar y no aparece en la campana.
+- Al **liquidar** el viaje (cualquier cierre, también Contingencia) pasa a **Por autorizar**.
+- Las recargas manuales (botón "Nueva recarga") siguen igual: quedan por autorizar de una vez.
+
 ## ¿Qué fases tiene aplicada mi base?
 Supabase → SQL Editor → pega `supabase/diagnostico_fases.sql` → Run. Solo lee: muestra cada fase con SÍ/NO, las tablas sin seguridad por filas (debe salir vacío) y los administradores activos.
 
