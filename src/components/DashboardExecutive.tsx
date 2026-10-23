@@ -670,8 +670,11 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
         )}
       </div>
 
-      {/* 1. KPIs principales */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      {/* 1. KPIs principales. Con UN solo día, Cumplimiento y Efectividad no se
+          muestran (el avance del día ya está en "Avance del día" más abajo). */}
+      <div className={`grid grid-cols-2 md:grid-cols-3 gap-3 ${unDia ? 'xl:grid-cols-4' : 'xl:grid-cols-6'}`}>
+        {!unDia && (
+        <>
         <Kpi
           label={isHoy ? 'Cumplimiento del día' : 'Cumplimiento del periodo'}
           value={`${Math.round(cumplimiento * 100)}%`}
@@ -690,6 +693,8 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           sub={`${n1(cjEnt)} CJ entregadas · ${n1(cjDev)} devueltas`}
           icon={<PackageCheck className="w-4 h-4" />}
         />
+        </>
+        )}
         <Kpi
           label={isHoy ? 'Cajas del día (CJ)' : 'Cajas del periodo (CJ)'}
           value={n0(stats.cajasFisicasHoy)}
@@ -913,7 +918,10 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
         </Card>
       </div>
 
-      {/* 5. Motivos de devolución */}
+      {/* 5. Motivos de devolución y 6. Rutas con mayor devolución: solo cuando
+          se filtra MÁS de un día (con un solo día quedan en blanco y ocupan espacio). */}
+      {!unDia && (
+      <>
       <Card title="Principales motivos de devolución" sub={`Cajas devueltas · ${periodLabel} · % sobre el total del filtro`} icon={<PackageX className="w-4 h-4 text-slate-500" />}>
         <div className="overflow-x-auto -mx-1">
           <table className="w-full text-xs">
@@ -969,6 +977,8 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
       </Card>
       {/* 6. Rutas con mayor devolución (doble clic = detalle, descarga a Excel) */}
       <DashboardDevoluciones liquidadas={liqPeriodo} periodLabel={periodLabel} />
+      </>
+      )}
 
       {/* 7. Camiones de apoyo (caminos angostos) */}
       {apoyosPeriodo.total > 0 && (
