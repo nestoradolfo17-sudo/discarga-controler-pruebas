@@ -535,6 +535,32 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
     return Array.from(m.entries()).map(([motivo, v]) => ({ motivo, ...v })).sort((a, b) => b.cajas - a.cajas);
   }, [liqPeriodo]);
   const motTotCj = motivos.reduce((a, m) => a + m.cajas, 0);
+  // Camiones de apoyo del periodo (por agencia y por motivo). Cada apoyo se
+  // cuenta una vez aunque la ruta aparezca en varios viajes.
+  const apoyosPeriodo = useMemo(() => {
+    const vistos = new Set<string>();
+    const porAg = new Map<string, { rutas: Set<string>; apoyos: number; cajas: number }>();
+    const porMotivo = new Map<string, number>();
+    dayRoutes.forEach((r) => {
+      (r.apoyos || []).forEach((a) => {
+        if (vistos.has(a.id)) return;
+        vistos.add(a.id);
+        const ag = r.agencia || 'Sin agencia';
+        const x = porAg.get(ag) || { rutas: new Set<string>(), apoyos: 0, cajas: 0 };
+        x.rutas.add(getRouteKey(r));
+        x.apoyos += 1;
+        x.cajas += Number(a.cajas || 0);
+        porAg.set(ag, x);
+        porMotivo.set(a.motivo, (porMotivo.get(a.motivo) || 0) + 1);
+      });
+    });
+    const rutasDe = (ag: string) => new Set(dayRoutes.filter((r) => (r.agencia || 'Sin agencia') === ag && (r.asignacion || r.liquidacion)).map(getRouteKey)).size;
+    return {
+      total: vistos.size,
+      filas: [...porAg.entries()].map(([ag, x]) => ({ ag, rutas: x.rutas.size, apoyos: x.apoyos, cajas: x.cajas, despachadas: rutasDe(ag) })).sort((a, b) => b.apoyos - a.apoyos),
+      motivos: [...porMotivo.entries()].sort((a, b) => b[1] - a[1]),
+    };
+  }, [dayRoutes]);
   const motTotRutas = liqPeriodo.filter((r) => Number(r.liquidacion?.cajasDevueltas || 0) > 0).length;
 
   // ---------- Recursos ----------
@@ -943,6 +969,39 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
       </Card>
       {/* 6. Rutas con mayor devolución (doble clic = detalle, descarga a Excel) */}
       <DashboardDevoluciones liquidadas={liqPeriodo} periodLabel={periodLabel} />
+
+      {/* 7. Camiones de apoyo (caminos angostos) */}
+      {apoyosPeriodo.total > 0 && (
+        <Card title="Camiones de apoyo" sub={`${periodLabel} · rutas que necesitaron un segundo camión`} icon={<TruckIcon className="w-4 h-4 text-slate-500" />}>
+          <div className="overflow-x-auto -mx-1">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                  <th className="text-left py-2 px-1">Agencia</th>
+                  <th className="text-right py-2 px-1">Rutas con apoyo</th>
+                  <th className="text-right py-2 px-1">Camiones de apoyo</th>
+                  <th className="text-right py-2 px-1">CJ al apoyo</th>
+                  <th className="text-right py-2 px-1">% de rutas despachadas</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {apoyosPeriodo.filas.map((f) => (
+                  <tr key={f.ag}>
+                    <td className="py-2 px-1 font-semibold text-slate-800">{f.ag}</td>
+                    <td className="py-2 px-1 text-right tabular-nums">{n0(f.rutas)}</td>
+                    <td className="py-2 px-1 text-right tabular-nums font-semibold">{n0(f.apoyos)}</td>
+                    <td className="py-2 px-1 text-right tabular-nums">{f.cajas ? n1(f.cajas) : '—'}</td>
+                    <td className="py-2 px-1 text-right tabular-nums font-bold">{pctTxt(f.rutas, f.despachadas)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            Por motivo: {apoyosPeriodo.motivos.map(([m, n]) => `${m} ${n0(n)}`).join(' · ')}
+          </p>
+        </Card>
+      )}
 
       {motivoAbierto && motivoSel && (
         <div
