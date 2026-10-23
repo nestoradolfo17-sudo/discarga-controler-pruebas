@@ -75,6 +75,7 @@ import { Route, Staff, StaffPuesto, ResourceStatus, StaffEstatus, Truck, RouteCl
 import { formatDateToSpanish, formatDateToGuatemala, formatDateTimeToGuatemala, getGuatemalaDateForInput, parseFlexibleDate } from './date';
 import { AGENCIA_LOCATION_OPTIONS } from '../data/agencies';
 import { toNum, limpiarNumeroTexto } from './number';
+import { apoyosActivos, apoyosDelViaje, textoApoyos } from './apoyos';
 
 // Corrección: las cargas masivas de Excel (Personal, Camiones, Rutas) descartaban
 // filas silenciosamente cuando les faltaba un dato clave (nombre, placa, ID de
@@ -793,7 +794,8 @@ export async function exportRoutesToExcel(routes: Route[], staffList: Staff[], f
     "Cajas 12 Oz",
     "Peso (Kg)",
     "Equipo Frío",
-    "Auditor Liquidación"
+    "Auditor Liquidación",
+    "Camión de Apoyo"
   ];
 
   const rows = routes.map(r => {
@@ -867,7 +869,8 @@ export async function exportRoutesToExcel(routes: Route[], staffList: Staff[], f
       toNum(r.cajas12Oz) || 0,
       toNum(r.pesoKg) || 0,
       parseInt(String(r.equipoFrio)) || 0,
-      liq?.auditor || "-"
+      liq?.auditor || "-",
+      textoApoyos(apoyosDelViaje(r)) || "-"
     ];
   });
 
@@ -927,7 +930,8 @@ export async function exportHistoricalToExcel(historicalRoutes: Route[], staffLi
     "Cajas Devueltas",
     "Motivo Devolución",
     "Cajas 12 Oz",
-    "Auditor Liquidación"
+    "Auditor Liquidación",
+    "Camión de Apoyo"
   ];
 
   const rows = historicalRoutes.map(r => {
@@ -972,7 +976,8 @@ export async function exportHistoricalToExcel(historicalRoutes: Route[], staffLi
         ? "-"
         : (liq?.motivoDevolucion || r.motivoDevolucion || "-"),
       toNum(r.cajas12Oz) || 0,
-      liq?.auditor || "-"
+      liq?.auditor || "-",
+      textoApoyos(apoyosDelViaje(r)) || "-"
     ];
   });
 
@@ -1493,7 +1498,15 @@ export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Tru
     const c = toNum(r.cajasFisicas);
     return c > 0 ? Math.round(c * 1000) / 1000 : 0;
   };
-  const header = ['No. Ruta', 'Tipo de Viaje', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Segmento', 'Cajas', 'Distancia (km)', 'Ruta a Piso', 'Horario de Carga', 'No. de Prioridad de Carga'];
+  // Camión de apoyo (caminos angostos): ID o placa y piloto de cada apoyo.
+  const apoyoDe = (r: Route) =>
+    (r.estado === 'Liquidada' || r.estado === 'Abierta' ? apoyosDelViaje(r) : apoyosActivos(r))
+      .map((a) => {
+        const t = trucks.find((x) => x.id === a.camionId);
+        return `${t?.idCamion ? `ID ${t.idCamion}` : a.camionPlaca}${a.conductor ? ` (${a.conductor})` : ''}`;
+      })
+      .join(' | ');
+  const header = ['No. Ruta', 'Tipo de Viaje', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Camión de Apoyo', 'Segmento', 'Cajas', 'Distancia (km)', 'Ruta a Piso', 'Horario de Carga', 'No. de Prioridad de Carga'];
   const rows: (string | number)[][] = routes.map((r) => {
     const piso = esPiso(r);
     return [
@@ -1502,6 +1515,7 @@ export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Tru
       idCamionDe(r),
       r.asignacion?.camionPlaca || (piso ? 'RUTA A PISO' : ''),
       r.asignacion?.conductor || (piso ? 'RUTA A PISO' : ''),
+      apoyoDe(r),
       r.segmento || '',
       cajasDe(r),
       distanciaDe(r),
@@ -1510,10 +1524,11 @@ export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Tru
       '',
     ];
   });
-  const totalCajas = Math.round(rows.reduce((a, x) => a + (typeof x[6] === 'number' ? x[6] : 0), 0) * 1000) / 1000;
-  const totalDist = Math.round(rows.reduce((a, x) => a + (typeof x[7] === 'number' ? x[7] : 0), 0) * 100) / 100;
+  const totalCajas = Math.round(rows.reduce((a, x) => a + (typeof x[7] === 'number' ? x[7] : 0), 0) * 1000) / 1000;
+  const totalDist = Math.round(rows.reduce((a, x) => a + (typeof x[8] === 'number' ? x[8] : 0), 0) * 100) / 100;
+  const conApoyo = rows.filter((x) => x[5]).length;
   const recargas = rows.filter((x) => x[1] === 'RECARGA').length;
-  const pie: (string | number)[] = [`TOTAL: ${rows.length} rutas`, `${rows.length - recargas} primer viaje / ${recargas} recarga`, '', '', '', '', totalCajas, totalDist, '', '', ''];
+  const pie: (string | number)[] = [`TOTAL: ${rows.length} rutas`, `${rows.length - recargas} primer viaje / ${recargas} recarga`, '', '', '', conApoyo ? `${conApoyo} ruta(s) con apoyo` : '', '', totalCajas, totalDist, '', '', ''];
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows, pie]);
   ws['!cols'] = header.map((h, i) => {
     let maxLen = h.length;
