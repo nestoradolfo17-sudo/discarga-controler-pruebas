@@ -3,6 +3,7 @@ import { Route, Truck, Staff } from '../types';
 import { DashboardExecutive } from './DashboardExecutive';
 import { DashboardSeguimiento } from './DashboardSeguimiento';
 import { DashboardRecargas } from './DashboardRecargas';
+import type { SituacionViaje } from '../services/recargas';
 import { FileDown } from 'lucide-react';
 import { Button } from './ui/Button';
 
@@ -36,6 +37,8 @@ interface DashboardViewProps {
   isLoadingFullHistory?: boolean;
   // Agencias que el usuario puede ver (Dashboard de Recargas).
   puedeVerAgencia?: (agencia: string) => boolean;
+  // ¿El viaje de cada recarga automática ya se liquidó? (Dashboard de Recargas)
+  situacionRecargas?: (id: string) => SituacionViaje;
   // Quién descarga el PDF (va en el encabezado).
   usuario?: string;
 }
@@ -199,7 +202,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
             isLoadingFullHistory={props.isLoadingFullHistory}
           />
         ) : view === 'recargas' ? (
-          <DashboardRecargas staff={props.staff} selectedAgency={props.selectedAgency} puedeVerAgencia={props.puedeVerAgencia} />
+          <DashboardRecargas staff={props.staff} selectedAgency={props.selectedAgency} puedeVerAgencia={props.puedeVerAgencia} situacionRecargas={props.situacionRecargas} />
         ) : (
           <DashboardExecutive
             routes={props.routes}
