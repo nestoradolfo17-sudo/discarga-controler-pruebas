@@ -20,6 +20,7 @@ import {
   ArrowUp,
   ArrowDown,
   Users,
+  Truck as TruckIcon,
 } from 'lucide-react';
 import { AssignmentDetailModal } from './modals/AssignmentDetailModal';
 import { ClientesRutaList } from './ClientesRutaList';
@@ -29,6 +30,7 @@ import { Button } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 import { getRouteKey, isSameSplitGroup } from '../utils/routeKey';
 import { toNum, fmtNum } from '../utils/number';
+import { apoyosActivos, textoApoyos } from '../utils/apoyos';
 import type { ResumenGrupo } from '../utils/splitGroup';
 
 interface RoutesTableProps {
@@ -57,6 +59,8 @@ interface RoutesTableProps {
   onRemoveBolson?: (routeId: string, fecha: string) => void;
   onRemoveSelfService?: (routeId: string, fecha: string) => void;
   onChangeSegment?: (routeId: string, fecha: string) => void;
+  // Camión de apoyo de una ruta en tránsito.
+  onOpenApoyo?: (routeId: string, fecha: string) => void;
   // Informa la lista EXACTA que se ve en la tabla (con el orden elegido), para
   // que el Excel de "Rutas Prioridades" salga igual al Tablero.
   onVisibleRoutesChange?: (routes: Route[]) => void;
@@ -106,6 +110,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   onRemoveBolson,
   onRemoveSelfService,
   onChangeSegment,
+  onOpenApoyo,
   onVisibleRoutesChange,
   onBulkMoveToFloor,
   onOpenDeleteModal,
@@ -687,6 +692,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                         onRemoveBolson: onRemoveBolson ? () => onRemoveBolson(route.id, routeKey) : undefined,
                         onRemoveSelfService: onRemoveSelfService ? () => onRemoveSelfService(route.id, routeKey) : undefined,
                         onChangeSegment: onChangeSegment ? () => onChangeSegment(route.id, routeKey) : undefined,
+                        onApoyo: onOpenApoyo ? () => onOpenApoyo(route.id, routeKey) : undefined,
                         onViewReceipt: () => onViewSettlementReceipt(route.id, routeKey),
                         onViewConsolidated:
                           allSettled && route.parentRouteId
@@ -724,6 +730,16 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                           );
                         })()}
                         <div className="text-[10px] text-slate-500 max-w-[150px] truncate" style={{ fontSize: 10 }} title={route.asignacion.conductor || undefined}>{route.asignacion.conductor || <span className="italic text-amber-600">Sin piloto (solo camión)</span>}</div>
+                        {apoyosActivos(route).length > 0 && (
+                          <button
+                            type="button"
+                            onClick={onOpenApoyo ? () => onOpenApoyo(route.id, routeKey) : undefined}
+                            title={`Camión de apoyo: ${textoApoyos(apoyosActivos(route))}`}
+                            className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-sky-50 border border-sky-300 text-sky-800 text-[10px] font-bold cursor-pointer hover:bg-sky-100"
+                          >
+                            <TruckIcon className="w-3 h-3" />+{apoyosActivos(route).length} apoyo · {apoyosActivos(route).map((a) => trucks.find((t) => t.id === a.camionId)?.idCamion || a.camionPlaca).join(', ')}
+                          </button>
+                        )}
                       </div>
                     ) : isAbierta ? (
                       <span className="text-[11px] font-semibold text-emerald-700">Liberada</span>
