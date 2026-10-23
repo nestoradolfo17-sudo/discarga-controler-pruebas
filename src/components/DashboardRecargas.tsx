@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Recarga, Staff, TipoRecarga } from '../types';
-import { leerRecargas, suscribirRecargas, formatoCorrelativo } from '../services/recargas';
+import { leerRecargas, suscribirRecargas, formatoCorrelativo, estadoRecarga, type SituacionViaje } from '../services/recargas';
 import { Card, Kpi, HBar, C_GOOD, C_INFO, C_WARN, C_CRIT, C_TRACK } from './DashboardExecutive';
 import { Repeat, Clock, CheckCircle2, XCircle, Wallet, Building2, Users, Layers, AlertTriangle, BarChart3 } from 'lucide-react';
 
@@ -31,6 +31,8 @@ interface Props {
   staff: Staff[];
   selectedAgency: string;
   puedeVerAgencia?: (agencia: string) => boolean;
+  // ¿El viaje de cada recarga automática ya se liquidó? (las "En ruta" aún no se autorizan)
+  situacionRecargas?: (id: string) => SituacionViaje;
 }
 
 // Columnas apiladas por día (estados de la recarga), con leyenda y tooltip.
@@ -102,8 +104,13 @@ const ColumnasEstado: React.FC<{ data: { key: string; label: string; aut: number
   );
 };
 
-export const DashboardRecargas: React.FC<Props> = ({ staff, selectedAgency, puedeVerAgencia }) => {
-  const [recargas, setRecargas] = useState<Recarga[]>([]);
+export const DashboardRecargas: React.FC<Props> = ({ staff, selectedAgency, puedeVerAgencia, situacionRecargas }) => {
+  const [recargasLeidas, setRecargas] = useState<Recarga[]>([]);
+  // Las de viajes aún sin liquidar se ven "En ruta" (no cuentan como por autorizar).
+  const recargas = useMemo(
+    () => recargasLeidas.map((r) => ({ ...r, estado: estadoRecarga(r, situacionRecargas) })),
+    [recargasLeidas, situacionRecargas]
+  );
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
 
@@ -220,7 +227,7 @@ export const DashboardRecargas: React.FC<Props> = ({ staff, selectedAgency, pued
         const x = m.get(r.agencia || 'Sin agencia') || { viajes: 0, monto: 0, pend: 0 };
         x.viajes += VIAJES[r.tipo] || 1;
         if (estadoDe(r) === 'Autorizada') x.monto += valorDe(r);
-        else x.pend += 1;
+        else if (estadoDe(r) === 'Pendiente') x.pend += 1;
         m.set(r.agencia || 'Sin agencia', x);
       });
     return [...m.entries()].sort((a, b) => b[1].viajes - a[1].viajes);
