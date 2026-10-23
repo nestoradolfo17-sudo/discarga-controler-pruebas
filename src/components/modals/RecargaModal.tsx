@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Repeat, Search, UserRound, Users, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { Prestamo, Recarga, Route, Staff, TipoRecarga } from '../../types';
+import { Prestamo, Recarga, Route, Staff, TipoRecarga, Truck } from '../../types';
 import { Button, IconButton } from '../ui/Button';
 import { ModalFooter } from '../ui/ModalFooter';
 import { ACTION_ICONS } from '../ui/actionIcons';
@@ -35,6 +35,8 @@ interface RecargaModalProps {
   inicial: Recarga | null; // null = nueva
   rutas: Route[]; // rutas activas + liquidadas que el usuario puede ver
   staff: Staff[];
+  // Camiones (para buscar la ruta por ID de camión).
+  trucks?: Truck[];
   prestamos?: Prestamo[];
   agencias: string[];
   agenciaPorDefecto: string;
@@ -61,6 +63,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
   inicial,
   rutas,
   staff,
+  trucks = [] as Truck[],
   prestamos = [] as Prestamo[],
   agencias,
   agenciaPorDefecto,
@@ -81,6 +84,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
   const [solicitadoPor, setSolicitadoPor] = useState('');
   const [picker, setPicker] = useState<'piloto' | 'aux' | null>(null);
   const [intentado, setIntentado] = useState(false);
+  const [busca, setBusca] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -95,8 +99,48 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
     setSolicitadoPor(inicial ? inicial.solicitadoPor || inicial.creadoPor || '' : solicitantePorDefecto);
     setPicker(null);
     setIntentado(false);
+    setBusca('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, inicial]);
+
+  // --- Buscar ruta del Tablero (igual que en Optimización de Carga) ---
+  // Solo rutas ACTIVAS del tablero de asignación (no liquidadas) y de las
+  // agencias que el usuario tiene permitidas. Se busca por número de ruta,
+  // piloto, ID de camión o placa.
+  const idCamionDe = (r: Route) => {
+    const id = (r.asignacion || r.ultimoDespacho)?.camionId;
+    const t = id ? trucks.find((x) => x.id === id) : undefined;
+    return t?.idCamion ? String(t.idCamion) : '';
+  };
+  const rutasActivas = useMemo(
+    () => rutas.filter((r) => r.estado !== 'Liquidada' && !!r.agencia && agencias.includes(r.agencia)),
+    [rutas, agencias]
+  );
+  const resultados = useMemo(() => {
+    const q = norm(busca);
+    if (!q) return [] as Route[];
+    return rutasActivas
+      .filter((r) => {
+        const a = r.asignacion || r.ultimoDespacho;
+        return [r.id, a?.conductor, a?.camionPlaca, idCamionDe(r)].some((v) => norm(String(v ?? '')).includes(q));
+      })
+      .sort((a, b) => Number(!norm(String(a.id)).startsWith(q)) - Number(!norm(String(b.id)).startsWith(q)))
+      .slice(0, 8);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busca, rutasActivas, trucks]);
+  const elegirRuta = (r: Route) => {
+    const a = r.asignacion || r.ultimoDespacho;
+    setSinRuta(false);
+    setRutaId(String(r.id));
+    const f = fechaRutaISO(r);
+    if (f) setFecha(f);
+    if (r.agencia) setAgencia(r.agencia);
+    if (a && (a.conductor || a.auxiliar1)) {
+      setConductor(a.conductor || '');
+      setAuxiliares(([a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].filter(Boolean) as string[]).slice(0, MAX_AUX));
+    }
+    setBusca('');
+  };
 
   // Rutas de la fecha elegida (para sugerir números y completar datos).
   const rutasDelDia = useMemo(() => rutas.filter((r) => fechaRutaISO(r) === fecha), [rutas, fecha]);
@@ -229,6 +273,66 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
         </div>
 
         <form id="formRecarga" onSubmit={submit} className="p-6 space-y-5 text-xs overflow-y-auto flex-1">
+          {!sinRuta && (
+            <div className="relative">
+              <label htmlFor="recBuscaRuta" className={label}>Buscar ruta activa del tablero</label>
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  id="recBuscaRuta"
+                  type="search"
+                  autoComplete="off"
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    const exacta = resultados.find((r) => norm(String(r.id)) === norm(busca));
+                    const elegida = exacta || (resultados.length === 1 ? resultados[0] : null);
+                    if (elegida) elegirRuta(elegida);
+                  }}
+                  placeholder="No. de ruta, piloto o ID camión…"
+                  aria-label="Buscar ruta activa por número de ruta, piloto, ID de camión o placa"
+                  className={`${input} pl-9`}
+                />
+              </div>
+              {busca.trim() && (
+                <div className="mt-1 border border-slate-200 rounded-xl bg-white shadow-sm divide-y divide-slate-100 max-h-64 overflow-y-auto" role="listbox" aria-label="Rutas encontradas">
+                  {resultados.length === 0 ? (
+                    <p className="px-3 py-2.5 text-[11px] text-slate-500">
+                      Ninguna ruta activa de tus agencias coincide con "{busca.trim()}".
+                    </p>
+                  ) : (
+                    resultados.map((r) => {
+                      const a = r.asignacion || r.ultimoDespacho;
+                      const idc = idCamionDe(r);
+                      return (
+                        <button
+                          key={`${r.id}|${r.fecha}|${r.agencia}`}
+                          type="button"
+                          role="option"
+                          aria-selected={false}
+                          onClick={() => elegirRuta(r)}
+                          className="w-full text-left px-3 py-2 min-h-[44px] hover:bg-violet-50 cursor-pointer flex flex-wrap items-center gap-x-2 gap-y-0.5"
+                        >
+                          <span className="font-mono font-black text-slate-900">Ruta {r.id}</span>
+                          <span className="text-[10.5px] px-1.5 rounded bg-slate-100 border border-slate-200 font-semibold text-slate-600">{r.estado}</span>
+                          <span className="text-[11px] text-blue-700 font-semibold">{r.agencia}</span>
+                          <span className="w-full text-[11px] text-slate-600">
+                            {a?.conductor || 'Sin piloto'}
+                            {idc ? ` · ID ${idc}` : ''}
+                            {a?.camionPlaca ? ` · ${a.camionPlaca}` : ''}
+                            {r.fecha ? ` · ${r.fecha}` : ''}
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+              <p className="mt-1 text-[10.5px] text-slate-400">Solo rutas activas del tablero de tus agencias. Al elegirla se llenan ruta, fecha, agencia y tripulación.</p>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label htmlFor="recFecha" className={label}>Fecha de la recarga *</label>
@@ -260,7 +364,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
                 className={`${input} font-mono font-bold disabled:bg-slate-100 disabled:text-slate-400 ${intentado && !idLimpio && !sinRuta ? 'border-rose-400' : ''}`}
               />
               <datalist id="recRutasDia">
-                {Array.from(new Set(rutasDelDia.filter((r) => !agencia || r.agencia === agencia).map((r) => String(r.id)))).map((id) => (
+                {Array.from(new Set(rutasDelDia.filter((r) => r.estado !== 'Liquidada' && !!r.agencia && agencias.includes(r.agencia) && (!agencia || r.agencia === agencia)).map((r) => String(r.id)))).map((id) => (
                   <option key={id} value={id} />
                 ))}
               </datalist>
