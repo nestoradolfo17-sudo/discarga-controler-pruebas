@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, Repeat, ArrowLeftRight, Banknote, ChevronRight } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { estadoPrestamo, formatoCorrelativoPrestamo } from '../utils/prestamos';
-import type { Prestamo } from '../types';
+import { estadoRecarga, type SituacionViaje } from '../services/recargas';
+import type { Prestamo, Recarga } from '../types';
 
 // --- Campana de pendientes por autorizar ---
 // Solo para quien autoriza: administrador general (todas las agencias) o
 // administrador de agencia (sus agencias). Muestra lo que espera su decisión:
-//   • Recargas pendientes de la agencia.
+//   • Recargas pendientes de la agencia (solo las de viajes ya liquidados).
 //   • Préstamos / traslados de personal y camiones (agencia que presta).
 //   • ZR: solicitudes de pago parcial, anticipos y habilitaciones fuera de plazo.
 // Se actualiza sola (tiempo real) y cada 2 minutos como respaldo.
@@ -21,12 +22,16 @@ interface Item {
   titulo: string;
   detalle: string;
   fecha?: string;
+  recarga?: Recarga;
 }
 
 interface Props {
   isAdmin: boolean;
   adminAgencias: string[];
   prestamos: Prestamo[];
+  // ¿El viaje de una recarga automática ya se liquidó? Las de viajes en ruta
+  // todavía no se pueden autorizar y no se cuentan aquí.
+  situacionRecargas?: (id: string) => SituacionViaje;
   puedeVer: { recargas: boolean; prestamos: boolean; zr: boolean };
   onIr: (tipo: DestinoNotificacion, agencia: string) => void;
 }
@@ -40,9 +45,9 @@ const GRUPOS: { tipo: DestinoNotificacion; titulo: string; icono: React.ElementT
   { tipo: 'zr', titulo: 'ZR por autorizar', icono: Banknote, color: 'text-rose-700 bg-rose-50' },
 ];
 
-export const NotificationBell: React.FC<Props> = ({ isAdmin, adminAgencias, prestamos, puedeVer, onIr }) => {
+export const NotificationBell: React.FC<Props> = ({ isAdmin, adminAgencias, prestamos, situacionRecargas, puedeVer, onIr }) => {
   const [abierto, setAbierto] = useState(false);
-  const [recargas, setRecargas] = useState<Item[]>([]);
+  const [recargasLeidas, setRecargas] = useState<Item[]>([]);
   const [zr, setZr] = useState<Item[]>([]);
   const caja = useRef<HTMLDivElement>(null);
   const agenciasKey = adminAgencias.join('|');
@@ -51,7 +56,7 @@ export const NotificationBell: React.FC<Props> = ({ isAdmin, adminAgencias, pres
   // --- Recargas pendientes (solo las que este usuario puede autorizar) ---
   const leerRecargas = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase || !puedeVer.recargas) return setRecargas([]);
-    let qy = supabase.from('app_recargas').select('id, data').or('data->>estado.is.null,data->>estado.eq.Pendiente').limit(1000);
+    let qy = supabase.from('app_recargas').select('id, data').or('data->>estado.is.null,data->>estado.eq.Pendiente,data->>estado.eq."En ruta"').limit(1000);
     if (!isAdmin) qy = qy.in('data->>agencia', adminAgencias);
     const { data, error } = await qy;
     if (error) return; // tabla aún no creada: sin avisos
@@ -65,6 +70,7 @@ export const NotificationBell: React.FC<Props> = ({ isAdmin, adminAgencias, pres
           titulo: `${r.data.correlativo ? `REC-${String(r.data.correlativo).padStart(6, '0')}` : 'Recarga'} · ${r.data.tipo || ''}`.trim(),
           detalle: [r.data.rutaId ? `Ruta ${r.data.rutaId}` : 'Sin ruta', r.data.conductor].filter(Boolean).join(' · '),
           fecha: r.data.fecha,
+          recarga: { ...(r.data as Recarga), id: r.id },
         }))
         .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)))
     );
@@ -147,6 +153,12 @@ export const NotificationBell: React.FC<Props> = ({ isAdmin, adminAgencias, pres
             }))
             .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))),
     [prestamos, esAdminDe, puedeVer.prestamos]
+  );
+
+  // Solo las que ya se pueden autorizar (viaje liquidado o recarga manual).
+  const recargas = useMemo(
+    () => recargasLeidas.filter((x) => !x.recarga || estadoRecarga(x.recarga, situacionRecargas) === 'Pendiente'),
+    [recargasLeidas, situacionRecargas]
   );
 
   const porTipo: Record<DestinoNotificacion, Item[]> = { recargas, prestamos: prestamosPend, zr };
