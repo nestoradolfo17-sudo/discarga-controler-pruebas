@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Route } from '../../types';
 import { getGuatemalaDateForInput, formatDateToGuatemala } from '../../utils/date';
 import { AGENCIA_LOCATION_OPTIONS } from '../../data/agencies';
 import { MOTIVOS_TRASLADO, MOTIVO_TRASLADO_OTRAS } from '../../data/motivosTraslado';
-import { Lock, ArrowLeftRight } from 'lucide-react';
+import { Lock, ArrowLeftRight, ChevronDown, Search, Check } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 
@@ -21,6 +21,110 @@ interface NewTrasladoRouteModalProps {
 // Opciones de Origen / Destino (agencias/plantas disponibles para traslado).
 // Este arreglo vive ahora en '../../data/agencies' porque también se reutiliza
 // en el apartado de Usuarios para el control de acceso por agencia.
+
+const ordenAZ = (l: string[]) => [...l].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+const normTxt = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+// Un solo botón que muestra lo elegido; al tocarlo abre la lista ordenada en
+// cuadrícula pareja (con buscador si son muchas opciones).
+const BotonLista: React.FC<{
+  id: string;
+  titulo: string;
+  placeholder: string;
+  valor: string;
+  opciones: string[];
+  onElegir: (v: string) => void;
+  tono: 'indigo' | 'teal';
+  buscador?: boolean;
+  dosColumnas?: boolean;
+}> = ({ id, titulo, placeholder, valor, opciones, onElegir, tono, buscador, dosColumnas }) => {
+  const [abierto, setAbierto] = useState(false);
+  const [q, setQ] = useState('');
+  const caja = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!abierto) return;
+    const fuera = (e: MouseEvent) => {
+      if (caja.current && !caja.current.contains(e.target as Node)) setAbierto(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setAbierto(false);
+    document.addEventListener('mousedown', fuera);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', fuera);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [abierto]);
+  const lista = q.trim() ? opciones.filter((o) => normTxt(o).includes(normTxt(q.trim()))) : opciones;
+  const sel = tono === 'teal' ? 'border-teal-500 bg-teal-50 text-teal-800' : 'border-indigo-500 bg-indigo-50 text-indigo-800';
+  return (
+    <div ref={caja} className="relative">
+      <button
+        id={id}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={abierto}
+        onClick={() => {
+          setAbierto((v) => !v);
+          setQ('');
+        }}
+        className={`w-full min-h-[44px] px-3 rounded-lg border-2 font-semibold flex items-center justify-between gap-2 cursor-pointer transition ${
+          valor ? sel : 'border-slate-300 text-slate-400 hover:border-slate-400 bg-white'
+        }`}
+      >
+        <span className="truncate">{valor || placeholder}</span>
+        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${abierto ? 'rotate-180' : ''}`} />
+      </button>
+      {abierto && (
+        <div className="absolute z-30 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl p-2 space-y-2" role="listbox" aria-label={titulo}>
+          {buscador && (
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                autoFocus
+                type="search"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (lista.length === 1) {
+                      onElegir(lista[0]);
+                      setAbierto(false);
+                    }
+                  }
+                }}
+                placeholder="Buscar…"
+                aria-label={`Buscar ${titulo.toLowerCase()}`}
+                className="w-full min-h-[38px] pl-8 pr-2 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+          )}
+          <div className={`grid grid-cols-2 ${dosColumnas ? '' : 'sm:grid-cols-3'} gap-1.5 max-h-64 overflow-y-auto`}>
+            {lista.map((o) => (
+              <button
+                key={o}
+                type="button"
+                role="option"
+                aria-selected={valor === o}
+                onClick={() => {
+                  onElegir(o);
+                  setAbierto(false);
+                }}
+                className={`min-h-[40px] px-2 rounded-lg border text-[11px] font-semibold text-left flex items-center justify-between gap-1 cursor-pointer ${
+                  valor === o ? sel : 'border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                }`}
+              >
+                <span className="truncate" title={o}>{o}</span>
+                {valor === o && <Check className="w-3.5 h-3.5 shrink-0" />}
+              </button>
+            ))}
+            {lista.length === 0 && <p className="col-span-full px-2 py-3 text-[11px] text-slate-500">Sin coincidencias.</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
   isOpen,
@@ -69,7 +173,7 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
 
   if (!isOpen) return null;
 
-  const destinos = AGENCIA_LOCATION_OPTIONS.filter((ag) => ag !== origen);
+  const destinos = ordenAZ(AGENCIA_LOCATION_OPTIONS.filter((ag) => ag !== origen));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,66 +269,48 @@ export const NewTrasladoRouteModal: React.FC<NewTrasladoRouteModalProps> = ({
                 {origen || agencia}
               </div>
             ) : (
-              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Agencia de origen">
-                {agenciasOrigen.map((ag) => (
-                  <button
-                    key={ag}
-                    type="button"
-                    role="radio"
-                    aria-checked={origen === ag}
-                    onClick={() => {
-                      setOrigen(ag);
-                      if (destino === ag) setDestino('');
-                    }}
-                    className={`min-h-[40px] px-3 rounded-lg border-2 font-semibold transition-all cursor-pointer ${
-                      origen === ag ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    {ag}
-                  </button>
-                ))}
-              </div>
+              <BotonLista
+                id="trasladoOrigen"
+                titulo="Agencia de origen"
+                placeholder="Elegir agencia de origen"
+                valor={origen}
+                opciones={ordenAZ(agenciasOrigen)}
+                tono="indigo"
+                buscador={agenciasOrigen.length > 8}
+                onElegir={(ag) => {
+                  setOrigen(ag);
+                  if (destino === ag) setDestino('');
+                }}
+              />
             )}
           </div>
 
           <div>
             <p className="font-semibold text-slate-700 mb-1.5">Destino *</p>
-            <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto" role="radiogroup" aria-label="Agencia de destino">
-              {destinos.map((ag) => (
-                <button
-                  key={ag}
-                  type="button"
-                  role="radio"
-                  aria-checked={destino === ag}
-                  onClick={() => setDestino(ag)}
-                  className={`min-h-[40px] px-3 rounded-lg border-2 font-semibold transition-all cursor-pointer ${
-                    destino === ag ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  {ag}
-                </button>
-              ))}
-            </div>
+            <BotonLista
+              id="trasladoDestino"
+              titulo="Agencia de destino"
+              placeholder="Elegir agencia de destino"
+              valor={destino}
+              opciones={destinos}
+              tono="teal"
+              buscador
+              onElegir={setDestino}
+            />
           </div>
 
           <div>
             <p className="font-semibold text-slate-700 mb-1.5">Motivo del traslado *</p>
-            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Motivo del traslado">
-              {MOTIVOS_TRASLADO.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="radio"
-                  aria-checked={razon === m}
-                  onClick={() => setRazon(m)}
-                  className={`min-h-[44px] px-2 rounded-lg border-2 font-semibold text-xs text-left transition-all cursor-pointer ${
-                    razon === m ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
+            <BotonLista
+              id="trasladoMotivo"
+              titulo="Motivo del traslado"
+              placeholder="Elegir motivo del traslado"
+              valor={razon}
+              opciones={MOTIVOS_TRASLADO}
+              tono="indigo"
+              dosColumnas
+              onElegir={setRazon}
+            />
             {razon && (
               <input
                 type="text"
