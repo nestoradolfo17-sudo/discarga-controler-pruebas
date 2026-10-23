@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { toNum } from '../utils/number';
 import { DashboardDevoluciones } from './DashboardDevoluciones';
+import type { ReportePdf } from '../utils/dashboardPdf';
 
 // --- Dashboard ejecutivo (propuesta nueva) ---
 // Solo LEE los datos que ya existen (rutas del tablero, liquidadas, camiones y
@@ -54,6 +55,8 @@ interface Props {
   historyLimitedDays?: number;
   onLoadFullHistory?: () => void;
   isLoadingFullHistory?: boolean;
+  // PDF del dashboard: entrega cómo armar el reporte con los datos que se ven.
+  registrarReporte?: (armar: () => ReportePdf) => void;
 }
 
 type PeriodKind = 'hoy' | 'ayer' | '7d' | 'rango' | 'mes';
@@ -323,7 +326,7 @@ const DetalleMotivoPanel: React.FC<{ motivo: string; cajas: number; detalle: Det
   );
 };
 
-export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, trucks, staff, stats: statsHoy, selectedAgency, historyLimitedDays, onLoadFullHistory, isLoadingFullHistory }) => {
+export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, trucks, staff, stats: statsHoy, selectedAgency, historyLimitedDays, onLoadFullHistory, isLoadingFullHistory, registrarReporte }) => {
   const now = Date.now();
 
   // ---------- Filtro de fechas: Hoy · Ayer · Últimos 7 días · Rango (varios días) · Mes ----------
@@ -594,6 +597,107 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
     return () => window.removeEventListener('scroll', cerrar, true);
   }, [motivoAbierto]);
   const motivoSel = motivoAbierto ? motivos.find((m) => m.motivo === motivoAbierto.motivo) : undefined;
+
+  // ---------- Reporte PDF (los mismos datos de la pantalla, con formato) ----------
+  const armarReporte = (): ReportePdf => {
+    const pct = (v: number, t: number) => (t > 0 ? `${((v / t) * 100).toFixed(1)}%` : '—');
+    const tono = (c: string) => (c === C_GOOD ? 'ok' : c === C_WARN ? 'warn' : c === C_INFO ? 'info' : 'crit') as 'ok' | 'warn' | 'info' | 'crit';
+    // Rutas con mayor devolución (top 15 por CJ devueltas)
+    const porRuta = new Map<string, { id: string; ag: string; seg: string; viajes: number; sal: number; dev: number; motivos: Map<string, number>; pilotos: Set<string> }>();
+    liqPeriodo.forEach((r) => {
+      const dev = Number(r.liquidacion?.cajasDevueltas || 0);
+      if (dev <= 0) return;
+      const k = `${r.id}|${r.agencia || ''}`;
+      const x = porRuta.get(k) || { id: String(r.id), ag: r.agencia || '-', seg: r.segmento || '-', viajes: 0, sal: 0, dev: 0, motivos: new Map(), pilotos: new Set<string>() };
+      x.viajes += 1;
+      x.dev += dev;
+      x.sal += dev + Number(r.liquidacion?.cajasEntregadas || 0);
+      const mo = r.liquidacion?.motivosSeleccionados?.[0] || r.liquidacion?.motivoDevolucion || r.motivoDevolucion || 'Sin motivo';
+      x.motivos.set(mo, (x.motivos.get(mo) || 0) + dev);
+      const p = (r.asignacion || r.ultimoDespacho)?.conductor;
+      if (p) x.pilotos.add(p);
+      porRuta.set(k, x);
+    });
+    const topDev = [...porRuta.values()].sort((a, b) => b.dev - a.dev).slice(0, 15);
+    const diaTxt = (h: number) => (h >= 48 ? `${Math.floor(h / 24)} d ${Math.floor(h % 24)} h` : `${Math.floor(h)} h`);
+    return {
+      titulo: 'Dashboard de Despacho',
+      periodo: periodLabel,
+      agencia: selectedAgency === 'TODAS' ? 'Todas' : selectedAgency,
+      kpis: [
+        { label: 'Rutas planificadas', valor: n0(totalPlan), sub: `${n0(despachadas)} despachadas`, tono: 'info' },
+        { label: isHoy ? 'Cumplimiento del día' : 'Cumplimiento', valor: `${Math.round(cumplimiento * 100)}%`, sub: `${n0(stats.liquidadas)} de ${n0(totalPlan)} rutas liquidadas`, tono: tono(cumplStatus.c) },
+        { label: 'Efectividad de entrega', valor: cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—', sub: `${n1(cjEnt)} CJ entregadas · ${n1(cjDev)} devueltas`, tono: cjEnt + cjDev > 0 ? tono(efStatus.c) : 'info' },
+        { label: 'Cajas (CJ)', valor: n0(stats.cajasFisicasHoy), sub: `${pctTxt(stats.cajasEntregadasHoy, stats.cajasFisicasHoy)} ya entregadas`, tono: 'info' },
+        { label: 'En operación', valor: n0(enOperacion), sub: `${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`, tono: 'info' },
+        { label: 'Por asignar', valor: n0(stats.pendientes), sub: `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, tono: 'warn' },
+        { label: 'Atrasadas +24 h', valor: n0(atrasadas.length), sub: atrasadas.length ? `${crit72} con más de 72 h (todo el tablero)` : 'Al día (todo el tablero)', tono: atrasadas.length ? 'crit' : 'ok' },
+        { label: 'Flota en ruta', valor: `${Math.round(utilFlota * 100)}%`, sub: `${n0(truckEnRuta)} de ${n0(truckActivos.length)} camiones · ${n0(staffEnRuta)} de ${n0(staffActivos.length)} personas`, tono: 'info' },
+      ],
+      tablas: [
+        {
+          titulo: 'Desempeño por agencia',
+          sub: periodLabel,
+          columnas: [{ t: 'Agencia' }, { t: 'Rutas', num: true }, { t: 'Liquidadas', num: true }, { t: 'Cumplimiento', num: true }, { t: 'CJ planificadas', num: true }, { t: 'CJ entregadas', num: true }, { t: 'Efectividad', num: true }, { t: 'Atrasadas +24 h', num: true }],
+          filas: porAgencia.map((a) => [a.ag, n0(a.rutas), n0(a.liq), `${Math.round(a.cumpl * 100)}%`, n1(a.cj), n1(a.ent), a.efect === null ? '—' : `${(a.efect * 100).toFixed(1)}%`, n0(a.atras)]),
+          total: porAgencia.length > 1
+            ? ['Total', n0(porAgencia.reduce((s, a) => s + a.rutas, 0)), n0(porAgencia.reduce((s, a) => s + a.liq, 0)), pct(porAgencia.reduce((s, a) => s + a.liq, 0), porAgencia.reduce((s, a) => s + a.rutas, 0)), n1(porAgencia.reduce((s, a) => s + a.cj, 0)), n1(porAgencia.reduce((s, a) => s + a.ent, 0)), cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—', n0(porAgencia.reduce((s, a) => s + a.atras, 0))]
+            : undefined,
+          vacio: 'Sin rutas en el periodo.',
+        },
+        {
+          titulo: 'Rutas y cajas por segmento',
+          sub: `${periodLabel} · % sobre el total del filtro`,
+          columnas: [{ t: 'Segmento' }, { t: 'Rutas', num: true }, { t: '% rutas', num: true }, { t: 'CJ', num: true }, { t: '% CJ', num: true }],
+          filas: porSegmento.map((s) => [s.seg, n0(s.rutas), pct(s.rutas, segTotRutas), n1(s.cj), pct(s.cj, segTotCj)]),
+          total: porSegmento.length ? ['Total', n0(segTotRutas), '100%', n1(segTotCj), '100%'] : undefined,
+        },
+        ...(!unDia
+          ? [
+              {
+                titulo: `Efectividad de entrega ${porSemana ? 'por semana' : 'por día'}`,
+                sub: periodLabel,
+                columnas: [{ t: porSemana ? 'Semana' : 'Día' }, { t: 'Rutas liquidadas', num: true }, { t: 'CJ entregadas', num: true }, { t: 'CJ devueltas', num: true }, { t: 'Efectividad', num: true }],
+                filas: trend.filter((d) => d.rutas > 0).map((d) => [d.label, n0(d.rutas), n1(d.ent), n1(d.dev), pct(d.ent, d.ent + d.dev)]),
+                total: ['Total', n0(sem.rutas), n1(sem.ent), n1(sem.dev), pct(sem.ent, sem.ent + sem.dev)],
+              },
+            ]
+          : []),
+        {
+          titulo: 'Principales motivos de devolución',
+          sub: `Cajas devueltas · ${periodLabel}`,
+          columnas: [{ t: 'Motivo' }, { t: 'Rutas', num: true }, { t: 'CJ devueltas', num: true }, { t: '% CJ devueltas', num: true }],
+          filas: motivos.map((m) => [m.motivo, n0(m.rutas), n1(m.cajas), pct(m.cajas, motTotCj)]),
+          total: motivos.length ? ['Total', n0(motTotRutas), n1(motTotCj), '100%'] : undefined,
+        },
+        {
+          titulo: 'Rutas con mayor devolución',
+          sub: `${periodLabel} · las 15 con más cajas devueltas`,
+          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Segmento' }, { t: 'Viajes con dev.', num: true }, { t: 'CJ salida', num: true }, { t: 'CJ devueltas', num: true }, { t: '% dev.', num: true }, { t: 'Motivo principal' }, { t: 'Piloto(s)' }],
+          filas: topDev.map((x) => [x.id, x.ag, x.seg, n0(x.viajes), n1(x.sal), n1(x.dev), pct(x.dev, x.sal), [...x.motivos.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '-', [...x.pilotos].join(', ')]),
+        },
+        {
+          titulo: 'Rutas con más de 24 h sin entregar ni liquidar',
+          sub: `Todo el tablero · ${n0(atrasadas.length)} ruta(s)${atrasadas.length > 40 ? ' · se muestran las 40 más antiguas' : ''}`,
+          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Estado' }, { t: 'Camión' }, { t: 'Piloto' }, { t: 'Tiempo', num: true }],
+          filas: atrasadas.slice(0, 40).map(({ r, h }) => [String(r.id), r.agencia || '-', r.estado, r.asignacion?.camionPlaca || '-', r.asignacion?.conductor || '-', diaTxt(h)]),
+        },
+        {
+          titulo: 'Camiones de apoyo',
+          sub: periodLabel,
+          columnas: [{ t: 'Agencia' }, { t: 'Rutas con apoyo', num: true }, { t: 'Camiones de apoyo', num: true }, { t: 'CJ al apoyo', num: true }, { t: '% de rutas despachadas', num: true }],
+          filas: apoyosPeriodo.filas.map((f) => [f.ag, n0(f.rutas), n0(f.apoyos), f.cajas ? n1(f.cajas) : '—', pct(f.rutas, f.despachadas)]),
+        },
+      ],
+      notas: [
+        'Se analizan las rutas cuya fecha de ruta cae en el periodo (liquidadas y pendientes). Camiones, personal y rutas atrasadas muestran el estado actual del tablero.',
+        ...(fueraDeHistorial ? [`Solo están cargados los últimos ${historyLimitedDays} días del historial: el periodo puede estar incompleto.`] : []),
+      ],
+    };
+  };
+  useEffect(() => {
+    registrarReporte?.(armarReporte);
+  });
 
   const cumplStatus = cumplimiento >= 0.9 ? { c: C_GOOD, t: 'En meta' } : cumplimiento >= 0.7 ? { c: C_WARN, t: 'En curso' } : { c: C_CRIT, t: 'Bajo' };
   const efStatus = efectividad >= 0.97 ? { c: C_GOOD, t: 'Óptima' } : efectividad >= 0.9 ? { c: C_WARN, t: 'Vigilar' } : { c: C_SERIOUS, t: 'Alta devolución' };
