@@ -20,3 +20,7 @@ select[data-urol],
 [data-pdel-no] { display: none !important; }
 body.no-carga [data-panel="pilotos"] .card:first-child::after { content: none !important; }
 .zr-oculto { display: none !important; }
+
+/* Sin sección Usuarios: los accesos se dan en Usuarios y permisos de DISCARGA CONTROLER. */
+#tab-usuarios,
+[data-panel="usuarios"] { display: none !important; }
