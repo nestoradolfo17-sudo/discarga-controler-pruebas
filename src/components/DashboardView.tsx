@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Route, Truck, Staff } from '../types';
 import { DashboardExecutive } from './DashboardExecutive';
 import { DashboardSeguimiento } from './DashboardSeguimiento';
@@ -6,6 +6,7 @@ import { DashboardRecargas } from './DashboardRecargas';
 import type { SituacionViaje } from '../services/recargas';
 import { FileDown } from 'lucide-react';
 import { Button } from './ui/Button';
+import { descargarReportePdf, type ReportePdf } from '../utils/dashboardPdf';
 
 interface DashboardStats {
   pendientes: number;
@@ -52,7 +53,10 @@ const VISTAS: [DashView, string][] = [
   ['recargas', 'Recargas'],
 ];
 
-// --- Descargar PDF de lo que se ve ---
+// --- Descargar PDF ---
+// Cada dashboard entrega sus DATOS (registrarReporte) y se arma un PDF con
+// formato propio (utils/dashboardPdf.ts). La copia de pantalla de abajo queda
+// solo como respaldo si un dashboard no entregara sus datos.
 // Copia el dashboard tal como está en pantalla (con los filtros elegidos) a una
 // página aparte con los mismos estilos de la app y abre "Guardar como PDF".
 // No usa programas externos (ver la regla de seguridad del navegador).
@@ -149,6 +153,12 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
     }
   };
   const contenidoRef = useRef<HTMLDivElement>(null);
+  // Cómo armar el reporte de la vista actual (lo entrega cada dashboard).
+  const armarRef = useRef<(() => ReportePdf) | null>(null);
+  const registrarReporte = useCallback((armar: () => ReportePdf) => {
+    armarRef.current = armar;
+  }, []);
+  const [generando, setGenerando] = useState(false);
   const nombreVista = VISTAS.find(([k]) => k === view)?.[1] || 'Dashboard';
   const agencia = props.selectedAgency === 'TODAS' ? 'Todas las agencias' : props.selectedAgency;
   const hoy = new Intl.DateTimeFormat('es-GT', { timeZone: 'America/Guatemala', day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -178,17 +188,24 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
           id="btnDashboardPdf"
           variant="secondary"
           icon={FileDown}
-          title="Descargar en PDF el dashboard tal como se ve, con los filtros elegidos"
-          onClick={() =>
-            contenidoRef.current &&
-            descargarPdf(
-              contenidoRef.current,
-              `Dashboard ${nombreVista} - ${agencia} - ${hoy}`,
-              `Vista: ${nombreVista} · Agencia: ${agencia}${props.usuario ? ` · Descargado por: ${props.usuario}` : ''}`
-            )
-          }
+          title="Descargar un reporte PDF con los datos del dashboard y los filtros elegidos"
+          disabled={generando}
+          onClick={async () => {
+            const titulo = `Dashboard ${nombreVista} - ${agencia} - ${hoy}`;
+            if (armarRef.current) {
+              setGenerando(true);
+              try {
+                await descargarReportePdf(armarRef.current(), { archivo: `${titulo}.pdf`, usuario: props.usuario });
+              } finally {
+                setGenerando(false);
+              }
+              return;
+            }
+            if (contenidoRef.current)
+              descargarPdf(contenidoRef.current, titulo, `Vista: ${nombreVista} · Agencia: ${agencia}${props.usuario ? ` · Descargado por: ${props.usuario}` : ''}`);
+          }}
         >
-          Descargar PDF
+          {generando ? 'Generando…' : 'Descargar PDF'}
         </Button>
       </div>
       <div ref={contenidoRef}>
@@ -200,9 +217,16 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
             historyLimitedDays={props.historyLimitedDays}
             onLoadFullHistory={props.onLoadFullHistory}
             isLoadingFullHistory={props.isLoadingFullHistory}
+            registrarReporte={registrarReporte}
           />
         ) : view === 'recargas' ? (
-          <DashboardRecargas staff={props.staff} selectedAgency={props.selectedAgency} puedeVerAgencia={props.puedeVerAgencia} situacionRecargas={props.situacionRecargas} />
+          <DashboardRecargas
+            staff={props.staff}
+            selectedAgency={props.selectedAgency}
+            puedeVerAgencia={props.puedeVerAgencia}
+            situacionRecargas={props.situacionRecargas}
+            registrarReporte={registrarReporte}
+          />
         ) : (
           <DashboardExecutive
             routes={props.routes}
@@ -214,6 +238,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
             historyLimitedDays={props.historyLimitedDays}
             onLoadFullHistory={props.onLoadFullHistory}
             isLoadingFullHistory={props.isLoadingFullHistory}
+            registrarReporte={registrarReporte}
           />
         )}
       </div>
