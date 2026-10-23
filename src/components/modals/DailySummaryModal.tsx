@@ -34,9 +34,11 @@ import {
 } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
-import { generateDailySummaryPdf } from '../../utils/dailySummaryPdf';
 import { toNum, fmtNum } from '../../utils/number';
 import { getRouteKey } from '../../utils/routeKey';
+import { CierreDiaResumen, COLOR_CIERRE } from '../CierreDiaResumen';
+import { calcularCierre, estadoCierre, ETIQUETA_CIERRE, textoDias, type EstadoCierre } from '../../utils/cierreDia';
+import { descargarReportePdf, type ReportePdf } from '../../utils/dashboardPdf';
 
 export type DailySummaryMode = 'inicio' | 'fin';
 export type InicioFilter = 'todas' | 'pendientes' | 'transito' | 'en_tiempo' | 'atrasadas' | 'piso' | 'recargas' | 'bolson';
@@ -361,14 +363,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   // Secciones (análisis de botones, punto 16): en tablet se ve una sección a
   // la vez para no desplazarse por todo el reporte. Solo se dibuja la sección
   // abierta; al imprimir se muestran todas (ver handlePrint).
-  type SummarySection = 'todo' | 'totales' | 'recursos' | 'detalle' | 'segmento' | 'liqsegmot';
+  type SummarySection = 'todo' | 'totales' | 'recursos' | 'detalle' | 'segmento' | 'liqsegmot' | 'resumen';
   // Inicio de Día ya no muestra el detalle ruta por ruta: abre en "Por segmento".
   const [section, setSection] = useState<SummarySection>('segmento');
   const showSection = (k: SummarySection) => section === 'todo' || section === k;
   useEffect(() => {
-    // Fin de Día (cierre): solo "Liquidación por segmento y motivo", "Totales" y "Todo".
-    if (mode === 'fin' && (section === 'recursos' || section === 'detalle' || section === 'segmento')) setSection('liqsegmot');
-    if (mode === 'inicio' && (section === 'liqsegmot' || section === 'detalle')) setSection('segmento');
+    // Fin de Día (cierre): "Resumen del cierre" y "Por segmento y motivo".
+    if (mode === 'fin' && section !== 'resumen' && section !== 'liqsegmot' && section !== 'todo') setSection('resumen');
+    if (mode === 'inicio' && (section === 'liqsegmot' || section === 'detalle' || section === 'resumen')) setSection('segmento');
   }, [mode, section]);
   const [inicioFilter, setInicioFilter] = useState<InicioFilter>('todas');
   const [finFilter, setFinFilter] = useState<FinFilter>('todas');
@@ -976,16 +978,165 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     },
   });
 
+  // ---------- PDF del Cierre del día (formato y logo de DISCARGA) ----------
+  const armarPdfCierre = (): ReportePdf => {
+    const c = calcularCierre(filteredMetrics);
+    const n0 = (v: number) => Math.round(v).toLocaleString('en-US');
+    const n1 = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const pc = (v: number, t: number) => (t > 0 ? `${((v / t) * 100).toFixed(1)}%` : '—');
+    const rgb = (hex: string): [number, number, number] => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+    const estados: EstadoCierre[] = ['liquidada', 'en_ruta', 'abierta', 'sin_despachar', 'piso', 'bolson'];
+    const totDev = c.devoluciones.reduce((a, d) => a + d.cajas, 0);
+    const segs = cierrePorSegmento;
+    return {
+      titulo: 'Fin de Día',
+      periodo: `Fecha: ${fechaReporte}`,
+      agencia: filterAgency === 'TODAS' ? 'Todas' : filterAgency,
+      kpis: [
+        {
+          label: 'Rutas liquidadas',
+          valor: `${n0(c.conteo.liquidada)} / ${n0(c.despachables)}`,
+          sub: `${c.cumplimiento === null ? '—' : (c.cumplimiento * 100).toFixed(1) + '%'} de cumplimiento · ${n0(c.conteo.en_ruta + c.conteo.abierta)} siguen en ruta`,
+          tono: c.cumplimiento === null ? 'info' : c.cumplimiento >= 0.9 ? 'ok' : c.cumplimiento >= 0.7 ? 'warn' : 'crit',
+        },
+        { label: 'Cajas despachadas', valor: n1(c.cajasDespachadas), sub: `de ${n1(c.cajasPlan)} planificadas · ${n1(c.cajasBodega)} en bodega`, tono: 'info' },
+        {
+          label: 'Efectividad de entrega',
+          valor: c.efectividad === null ? '—' : `${(c.efectividad * 100).toFixed(1)}%`,
+          sub: c.efectividad === null ? 'Sin liquidaciones aún' : `${n1(c.cjEnt)} CJ entregadas · ${n1(c.cjDev)} devueltas`,
+          tono: c.efectividad === null ? 'info' : c.efectividad >= 0.97 ? 'ok' : c.efectividad >= 0.9 ? 'warn' : 'crit',
+        },
+        {
+          label: 'Atrasadas (+24 h)',
+          valor: n0(c.atrasadas.total),
+          sub: c.atrasadas.total ? `${c.atrasadas.d1} de 1 día · ${c.atrasadas.d2} de 2-3 días · ${c.atrasadas.d3} de +3 días` : 'Ninguna ruta atrasada',
+          tono: c.atrasadas.total ? 'crit' : 'ok',
+        },
+        { label: 'Quedan en bodega', valor: `${n0(c.conteo.piso)} rutas`, sub: `${n1(c.cajasBodega)} CJ pasan a mañana${c.conteo.bolson ? ` · ${c.conteo.bolson} en bolsón` : ''}`, tono: 'warn' },
+      ],
+      barra: {
+        titulo: 'Balance del día',
+        sub: `Cada ruta cuenta una sola vez · suman las ${n0(c.total)} planificadas`,
+        segmentos: estados.map((e) => ({ label: ETIQUETA_CIERRE[e], valor: c.conteo[e], color: rgb(COLOR_CIERRE[e]) })),
+      },
+      tablas: [
+        {
+          titulo: 'Pendientes para mañana',
+          sub: `${n0(c.pendientes.length)} ruta(s) sin liquidar · primero las más atrasadas${c.pendientes.length > 60 ? ' · se muestran 60' : ''}`,
+          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Estado' }, { t: 'Piloto' }, { t: 'Camión' }, { t: 'Cajas', num: true }, { t: 'Antigüedad', num: true }],
+          filas: c.pendientes.slice(0, 60).map((p) => [String(p.m.id), p.m.agencia, ETIQUETA_CIERRE[p.estado], p.piloto, p.camion, n1(p.m.cajasFisicasPlan), textoDias(p.dias)]),
+          vacio: 'Todo liquidado. No quedan rutas pendientes.',
+        },
+        {
+          titulo: 'Devoluciones del día',
+          sub: 'Cajas devueltas por motivo (rutas liquidadas)',
+          columnas: [{ t: 'Motivo' }, { t: 'Rutas', num: true }, { t: 'CJ devueltas', num: true }, { t: '% CJ', num: true }],
+          filas: c.devoluciones.map((d) => [d.motivo, n0(d.rutas), n1(d.cajas), pc(d.cajas, totDev)]),
+          total: c.devoluciones.length ? ['Total', n0(c.devoluciones.reduce((a, d) => a + d.rutas, 0)), n1(totDev), '100%'] : undefined,
+        },
+        {
+          titulo: 'Resumen por segmento',
+          columnas: [{ t: 'Segmento' }, { t: 'Rutas', num: true }, { t: 'Liquidadas', num: true }, { t: 'Cumplimiento', num: true }, { t: 'CJ plan', num: true }, { t: 'CJ entregadas', num: true }, { t: 'CJ devueltas', num: true }, { t: 'CJ por liquidar', num: true }],
+          filas: segs.map((g) => [g.segmento, n0(g.plan), n0(g.liq), `${g.cumpl.toFixed(1)}%`, n1(g.cjPlan), n1(g.cjEnt), n1(g.cjDev), n1(g.cjPendiente)]),
+          total: segs.length > 1
+            ? ['Total', n0(segs.reduce((a, g) => a + g.plan, 0)), n0(segs.reduce((a, g) => a + g.liq, 0)), pc(segs.reduce((a, g) => a + g.liq, 0), segs.reduce((a, g) => a + g.plan, 0)), n1(segs.reduce((a, g) => a + g.cjPlan, 0)), n1(segs.reduce((a, g) => a + g.cjEnt, 0)), n1(segs.reduce((a, g) => a + g.cjDev, 0)), n1(segs.reduce((a, g) => a + g.cjPendiente, 0))]
+            : undefined,
+        },
+      ],
+      notas: [
+        'Cumplimiento sobre rutas despachables (sin piso ni bolsón). Efectividad = CJ entregadas / (entregadas + devueltas) de las rutas liquidadas. Atrasadas: rutas sin liquidar con 1 día o más desde su fecha planificada.',
+      ],
+    };
+  };
+
+  // ---------- PDF de Inicio de Día (formato y logo de DISCARGA) ----------
+  const armarPdfInicio = (): ReportePdf => {
+    const c = calcularCierre(filteredMetrics);
+    const n0 = (v: number) => Math.round(v).toLocaleString('en-US');
+    const n1 = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const pc = (v: number, t: number) => (t > 0 ? `${((v / t) * 100).toFixed(1)}%` : '—');
+    const rgb = (hex: string): [number, number, number] => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+    const etiquetaInicio: Record<EstadoCierre, string> = {
+      liquidada: 'Liquidada',
+      en_ruta: 'En tránsito',
+      abierta: 'Ruta abierta',
+      sin_despachar: 'Por asignar',
+      piso: 'A piso',
+      bolson: 'Bolsón',
+    };
+    const estados: EstadoCierre[] = ['sin_despachar', 'en_ruta', 'abierta', 'piso', 'bolson', 'liquidada'];
+    const atr = filteredMetrics
+      .filter((m) => m.estaAtrasado && !m.isLiquidada)
+      .sort((a, b) => b.totalHorasDesdePlan - a.totalHorasDesdePlan || String(a.id).localeCompare(String(b.id), 'es', { numeric: true }));
+    const d = (m: RouteSummaryMetric) => Math.round(m.totalHorasDesdePlan / 24);
+    const T = segmentStats.total;
+    return {
+      titulo: 'Inicio de Día',
+      periodo: `Fecha: ${fechaReporte}`,
+      agencia: filterAgency === 'TODAS' ? 'Todas' : filterAgency,
+      kpis: [
+        { label: 'Rutas planificadas', valor: n0(inicioTotalRutas), sub: `${n0(inicioPendientesCount)} por asignar · ${n0(inicioTransitoCount)} en tránsito`, tono: 'info' },
+        { label: 'Cajas físicas del día', valor: n1(inicioTotalCajasPlan), sub: `${n0(inicioTotalParadasPlan)} paradas planificadas`, tono: 'info' },
+        { label: 'Rutas en tiempo', valor: n0(inicioEnTiempoCount), sub: `${pc(inicioEnTiempoCount, inicioTotalRutas)} de las planificadas`, tono: 'ok' },
+        {
+          label: 'Rutas atrasadas',
+          valor: n0(inicioAtrasadasCount),
+          sub: inicioAtrasadasCount ? `${atr.filter((m) => d(m) <= 1).length} de 1 día · ${atr.filter((m) => d(m) >= 2 && d(m) <= 3).length} de 2-3 días · ${atr.filter((m) => d(m) > 3).length} de +3 días` : 'Ninguna ruta atrasada',
+          tono: inicioAtrasadasCount ? 'crit' : 'ok',
+        },
+        { label: 'A piso / recargas', valor: `${n0(inicioPisoCount)} a piso`, sub: `${n0(inicioRecargasCount)} recargas programadas${inicioBolsonCount ? ` · ${n0(inicioBolsonCount)} en bolsón` : ''}`, tono: 'warn' },
+      ],
+      barra: {
+        titulo: 'Estado de las rutas al inicio',
+        sub: `Cada ruta cuenta una sola vez · suman las ${n0(c.total)} planificadas`,
+        segmentos: estados.map((e) => ({ label: etiquetaInicio[e], valor: c.conteo[e], color: rgb(COLOR_CIERRE[e]) })),
+      },
+      tablas: [
+        {
+          titulo: 'Rutas y cajas por segmento',
+          columnas: [{ t: 'Segmento' }, { t: 'Rutas', num: true }, { t: 'CJ planificadas', num: true }, { t: 'Paradas', num: true }, { t: 'Por asignar', num: true }, { t: 'En tránsito', num: true }, { t: 'A piso', num: true }, { t: 'Atrasadas', num: true }],
+          filas: segmentStats.rows.map((g) => [g.segmento, n0(g.rutas), n1(g.cjPlan), n0(g.paradas), n0(g.pendientes), n0(g.transito), n0(g.piso), n0(g.atrasadas)]),
+          total: segmentStats.rows.length > 1 ? ['Total', n0(T.rutas), n1(T.cjPlan), n0(T.paradas), n0(T.pendientes), n0(T.transito), n0(T.piso), n0(T.atrasadas)] : undefined,
+          vacio: 'Sin rutas planificadas para la fecha.',
+        },
+        {
+          titulo: 'Rutas atrasadas',
+          sub: `${n0(atr.length)} ruta(s) sin liquidar con 1 día o más desde su fecha planificada${atr.length > 60 ? ' · se muestran las 60 más antiguas' : ''}`,
+          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Segmento' }, { t: 'Estado' }, { t: 'Fecha planificada' }, { t: 'Cajas', num: true }, { t: 'Antigüedad', num: true }],
+          filas: atr.slice(0, 60).map((m) => [String(m.id), m.agencia, m.segmento || '-', etiquetaInicio[estadoCierre(m)], m.fechaPlanificadaStr, n1(m.cajasFisicasPlan), textoDias(d(m))]),
+        },
+        {
+          titulo: 'Camiones no asignados',
+          sub: 'Con motivo registrado',
+          columnas: [{ t: 'ID camión' }, { t: 'Placa' }, { t: 'Agencia' }, { t: 'Motivo' }],
+          filas: unassignedTrucks.map((t) => [String(t.idCamion || '-'), t.placa, t.agencia || '-', String(t.motivoNoAsignado || '-')]),
+        },
+        {
+          titulo: 'Personal no asignado',
+          sub: 'Con motivo registrado',
+          columnas: [{ t: 'Código' }, { t: 'Nombre' }, { t: 'Puesto' }, { t: 'Agencia' }, { t: 'Motivo' }],
+          filas: unassignedStaff.map((x) => [x.codigoCorto || x.codigo || '-', x.nombre, String(x.puesto || '-'), x.agencia || '-', String(x.motivoNoAsignado || '-')]),
+        },
+      ],
+      notas: ['Atrasadas: rutas sin liquidar con 1 día o más desde su fecha planificada. Recargas programadas: rutas activas asignadas como 2° viaje.'],
+    };
+  };
+
   const handleSavePdf = () => {
-    try {
+    // Inicio y Fin de Día: PDF con formato profesional (logo y colores de DISCARGA).
+    {
       setDownloadFeedback('Generando PDF...');
-      generateDailySummaryPdf(getPdfPayload(), 'save');
-      setDownloadFeedback('✓ PDF guardado');
-      setTimeout(() => setDownloadFeedback(null), 3000);
-    } catch (err) {
-      console.error('Error al generar PDF:', err);
-      setDownloadFeedback('Error al exportar PDF');
-      setTimeout(() => setDownloadFeedback(null), 3000);
+      const agencyLabel = filterAgency === 'TODAS' ? 'Todas_Agencias' : filterAgency.replace(/\s+/g, '_');
+      descargarReportePdf(mode === 'fin' ? armarPdfCierre() : armarPdfInicio(), { archivo: `${mode === 'fin' ? 'Fin' : 'Inicio'}_de_Dia_DISCARGA_${agencyLabel}_${fechaReporte.replace(/\//g, '-')}.pdf` })
+        .then(() => {
+          setDownloadFeedback('✓ PDF guardado');
+          setTimeout(() => setDownloadFeedback(null), 3000);
+        })
+        .catch((err) => {
+          console.error('Error al generar PDF:', err);
+          setDownloadFeedback('Error al exportar PDF');
+          setTimeout(() => setDownloadFeedback(null), 3000);
+        });
     }
   };
 
@@ -1016,7 +1167,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     if (isInIframe || !printSucceeded) {
       setDownloadFeedback('Abriendo reporte / Descargando PDF...');
       try {
-        generateDailySummaryPdf(getPdfPayload(), 'print');
+        void descargarReportePdf(mode === 'fin' ? armarPdfCierre() : armarPdfInicio(), { archivo: `${mode === 'fin' ? 'Fin' : 'Inicio'}_de_Dia_DISCARGA_${cleanFecha}.pdf` });
         setDownloadFeedback('✓ PDF generado');
         setTimeout(() => setDownloadFeedback(null), 3000);
       } catch (err) {
@@ -1087,7 +1238,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               <p className="text-xs text-slate-400 print:text-slate-600 print:text-[11px] mt-0.5">
                 {mode === 'inicio'
                   ? 'DISCARGA CONTROLER • Control de salida: No. Ruta, Fecha planificada, Fecha despachada, Indicador de retraso (24 h / 72 h / +72 h), Cajas físicas, Paradas, Agencia y Segmento'
-                  : 'DISCARGA CONTROLER • Cierre operativo: Comparativo de lo planificado vs ejecución real, efectividad de cajas entregadas, devoluciones y horas transcurridas'}
+                  : 'DISCARGA CONTROLER • Cómo quedaron las rutas del día: indicadores clave, balance, pendientes para mañana y devoluciones'}
               </p>
               {!esJornadaActual && (
                 <p id="avisoFechaReporte" className="mt-1 text-[11px] font-semibold text-amber-300 print:hidden">
@@ -1412,201 +1563,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </p>
               </div>
             </div>
-          ) : (
-            /* KPIs: FIN DE DÍA (CÓMO SE TERMINÓ DE EJECUTAR) */
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {/* KPI 1: Rutas Liquidadas vs Planificadas */}
-              <div
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setFinFilter('liquidadas');
-                  }
-                }}
-                onClick={() => setFinFilter('liquidadas')}
-                className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                  finFilter === 'liquidadas'
-                    ? 'bg-emerald-50/90 border-emerald-400 ring-2 ring-emerald-300/50 shadow-xs'
-                    : 'bg-white border-slate-200 hover:border-emerald-300 hover:shadow-2xs'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider flex items-center">
-                    <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                    Rutas Liquidadas
-                  </span>
-                  <span className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
-                    {fmtNum(finLiquidadasCount)}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-emerald-800">{fmtNum(finLiquidadasCount)}</span>
-                  <span className="text-xs font-semibold text-slate-500">/ {fmtNum(finTotalPlanificadas)} planificadas</span>
-                </div>
-                <p className="text-[11px] text-emerald-700 font-bold mt-0.5">
-                  {finCumplimientoPorc}% cumplimiento de rutas
-                </p>
-              </div>
-
-              {/* KPI 2: Total Cajas Físicas del Día */}
-              <div
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setFinFilter('todas');
-                  }
-                }}
-                onClick={() => setFinFilter('todas')}
-                className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                  finFilter === 'todas'
-                    ? 'bg-indigo-50/90 border-indigo-400 ring-2 ring-indigo-300/50 shadow-xs'
-                    : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-2xs'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider flex items-center">
-                    <Package className="w-3.5 h-3.5 mr-1 text-indigo-600" />
-                    Cajas Físicas del Día
-                  </span>
-                  <span className="w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
-                    <Package className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-                <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-indigo-900">
-                    {finTotalCajasPlan.toLocaleString('en-US', { maximumFractionDigits: 1 })}
-                  </span>
-                  <span className="text-xs font-semibold text-slate-500">cajas del día</span>
-                </div>
-                <p className="text-[11px] text-indigo-700 font-semibold mt-0.5 flex items-center">
-                  <span className="text-emerald-700 font-bold mr-1.5">{finTotalCajasEntregadas.toLocaleString('en-US', { maximumFractionDigits: 1 })} ent.</span>
-                  <span className="text-rose-600">({finTotalCajasDevueltas.toLocaleString('en-US', { maximumFractionDigits: 1 })} dev.)</span>
-                </p>
-                <div className="mt-1.5 pt-1 border-t border-indigo-100 flex items-center justify-between text-[10px] font-bold">
-                  <span className="text-slate-600">Total planificado de la jornada</span>
-                </div>
-              </div>
-
-              {/* KPI 3: Cajas Físicas Entregadas vs Devueltas */}
-              <div
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setFinFilter('todas');
-                  }
-                }}
-                onClick={() => setFinFilter('todas')}
-                className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                  finFilter === 'todas'
-                    ? 'bg-blue-50/90 border-blue-400 ring-2 ring-blue-300/50 shadow-xs'
-                    : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-2xs'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider flex items-center">
-                    <PackageCheck className="w-3.5 h-3.5 mr-1 text-blue-600" />
-                    Cajas Entregadas
-                  </span>
-                  <span className="w-6 h-6 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
-                    {finEfectividadEntregaPorc}%
-                  </span>
-                </div>
-                <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-slate-900">{fmtNum(finTotalCajasEntregadas, 1)}</span>
-                  <span className="text-xs font-semibold text-slate-500">entregadas</span>
-                </div>
-                <p className="text-[11px] text-blue-700 font-semibold mt-0.5 flex items-center">
-                  <span className="text-emerald-700 font-bold mr-1.5">{finEfectividadEntregaPorc}% efectividad</span>
-                  <span className="text-rose-600">({fmtNum(finTotalCajasDevueltas, 1)} devueltas)</span>
-                </p>
-              </div>
-
-              {/* KPI 4: Rutas En Tiempo vs Atrasadas al Cierre */}
-              <div
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setFinFilter('atrasadas');
-                  }
-                }}
-                onClick={() => setFinFilter('atrasadas')}
-                className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                  finFilter === 'atrasadas'
-                    ? 'bg-rose-50/90 border-rose-400 ring-2 ring-rose-300/50 shadow-xs'
-                    : 'bg-white border-slate-200 hover:border-rose-300 hover:shadow-2xs'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider flex items-center">
-                    <Clock className="w-3.5 h-3.5 mr-1 text-rose-600" />
-                    Cierre: En Tiempo vs Atraso
-                  </span>
-                  <span className="w-6 h-6 rounded-md bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-xs">
-                    {fmtNum(finAtrasadasCount)}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-emerald-700">{fmtNum(finEnTiempoCount)}</span>
-                  <span className="text-xs font-bold text-slate-600">a tiempo</span>
-                  <span className="text-slate-300">/</span>
-                  <span className="text-xl font-black text-rose-600">{fmtNum(finAtrasadasCount)}</span>
-                  <span className="text-xs font-bold text-rose-600">atrasadas</span>
-                </div>
-                {/* Mismo desglose de atrasadas que Inicio de Día (días completos). */}
-                <p className="text-[11px] text-rose-600 font-bold mt-0.5">
-                  {finAtrasadasCount > 0
-                    ? `${fmtNum(summaryTotals.rutas24h.totalPlan)} de 24 h · ${fmtNum(summaryTotals.rutas72h.totalPlan)} de 72 h · ${fmtNum(summaryTotals.rutasMayor72h.totalPlan)} de +72 h`
-                    : '0 atrasos registrados'}
-                </p>
-                <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                  {fmtNum(finTotalParadasRealizadas)} paradas completadas exitosas
-                </p>
-              </div>
-
-              {/* KPI 5: Quedan en Bodega */}
-              <div
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setFinFilter('piso');
-                  }
-                }}
-                onClick={() => setFinFilter('piso')}
-                className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                  finFilter === 'piso'
-                    ? 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-300/50 shadow-xs'
-                    : 'bg-white border-slate-200 hover:border-amber-300 hover:shadow-2xs'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider flex items-center">
-                    <Warehouse className="w-3.5 h-3.5 mr-1 text-amber-600" />
-                    Quedan en Bodega
-                  </span>
-                  <span className="w-6 h-6 rounded-md bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xs">
-                    {fmtNum(finPisoCount)}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-baseline space-x-1.5">
-                  <span className="text-2xl font-black text-amber-800">{fmtNum(finPisoCount)}</span>
-                  <span className="text-xs font-semibold text-slate-500">rutas en piso</span>
-                </div>
-                <p className="text-[11px] text-amber-700 font-medium mt-0.5">
-                  No despachadas, se trasladan para mañana
-                </p>
-              </div>
-            </div>
-          )}
+          ) : null /* Fin de Día: los indicadores van en "Resumen del cierre" (abajo). */}
 
           {/* BARRA DE FILTROS RÁPIDOS Y BÚSQUEDA */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1 print:hidden">
@@ -1707,74 +1664,9 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="flex flex-wrap gap-1 bg-slate-200/80 p-1 rounded-xl text-xs font-semibold w-full sm:w-auto">
-                <button
-                  onClick={() => setFinFilter('todas')}
-                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
-                    finFilter === 'todas'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Layers className="w-3.5 h-3.5 mr-1" />
-                  Todas ({filteredMetrics.length})
-                </button>
-                <button
-                  onClick={() => setFinFilter('liquidadas')}
-                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
-                    finFilter === 'liquidadas'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-emerald-700'
-                  }`}
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                  Liquidadas ({fmtNum(finLiquidadasCount)})
-                </button>
-                <button
-                  onClick={() => setFinFilter('en_tiempo')}
-                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
-                    finFilter === 'en_tiempo'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-emerald-700'
-                  }`}
-                >
-                  <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                  En Tiempo ({fmtNum(finEnTiempoCount)})
-                </button>
-                <button
-                  onClick={() => setFinFilter('atrasadas')}
-                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
-                    finFilter === 'atrasadas'
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-rose-700'
-                  }`}
-                >
-                  <AlertCircle className="w-3.5 h-3.5 mr-1" />
-                  Atrasadas ({fmtNum(finAtrasadasCount)})
-                </button>
-                <button
-                  onClick={() => setFinFilter('pendientes')}
-                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
-                    finFilter === 'pendientes'
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-blue-700'
-                  }`}
-                >
-                  <Clock className="w-3.5 h-3.5 mr-1" />
-                  No Concluidas ({filteredMetrics.filter((m) => !m.isLiquidada && !m.isFloor).length})
-                </button>
-                <button
-                  onClick={() => setFinFilter('piso')}
-                  className={`min-h-[40px] px-3 rounded-lg transition flex items-center cursor-pointer ${
-                    finFilter === 'piso'
-                      ? 'bg-amber-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-amber-700'
-                  }`}
-                >
-                  <Warehouse className="w-3.5 h-3.5 mr-1" />
-                  En Bodega ({fmtNum(finPisoCount)})
-                </button>
-              </div>
+              <p className="text-xs text-slate-500 w-full sm:w-auto">
+                Cierre del día de <b className="text-slate-700">{fechaReporte}</b>. Filtra por agencia o busca una ruta, segmento o fecha.
+              </p>
             )}
 
             {/* Selector de Agencia y Barra de búsqueda */}
@@ -1832,14 +1724,17 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
             aria-label="Secciones del reporte"
             className="sticky top-0 z-20 -mx-4 sm:-mx-5 -mt-4 sm:-mt-5 px-4 sm:px-5 py-2 bg-white/95 backdrop-blur border-b border-slate-200 flex flex-wrap gap-2 print:hidden"
           >
-            {([
-              ...(mode === 'inicio'
-                ? [{ k: 'segmento', label: 'Por segmento' }]
-                : [{ k: 'liqsegmot', label: 'Liquidación por segmento y motivo' }]),
-              { k: 'totales', label: 'Totales' },
-              ...(mode === 'inicio' ? [{ k: 'recursos', label: 'Recursos no asignados' }] : []),
-              { k: 'todo', label: 'Todo' },
-            ] as { k: SummarySection; label: string }[]).map(({ k, label }) => (
+            {((mode === 'inicio'
+              ? [
+                  { k: 'segmento', label: 'Por segmento' },
+                  { k: 'totales', label: 'Totales' },
+                  { k: 'recursos', label: 'Recursos no asignados' },
+                  { k: 'todo', label: 'Todo' },
+                ]
+              : [
+                  { k: 'resumen', label: 'Resumen Fin de Día' },
+                  { k: 'liqsegmot', label: 'Por segmento y motivo' },
+                ]) as { k: SummarySection; label: string }[]).map(({ k, label }) => (
               <button
                 key={k}
                 type="button"
@@ -1858,7 +1753,15 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           {/* ============================================================== */}
           {/* ANÁLISIS POR SEGMENTO: rutas y cajas (CJ)                      */}
           {/* ============================================================== */}
-          {showSection('segmento') && (() => {
+          {/* ============================================================== */}
+          {/* FIN DE DÍA: RESUMEN DEL CIERRE (indicadores clave, balance,    */}
+          {/* pendientes para mañana y devoluciones)                         */}
+          {/* ============================================================== */}
+          {mode === 'fin' && showSection('resumen') && (
+            <CierreDiaResumen metrics={filteredMetrics} fecha={fechaReporte} agencia={filterAgency === 'TODAS' ? 'Todas' : filterAgency} />
+          )}
+
+          {mode === 'inicio' && showSection('segmento') && (() => {
             const T = segmentStats.total;
             const n1 = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 1 });
             const pc = (v: number, t: number) => (t > 0 ? ((v / t) * 100).toFixed(1) : '0.0') + '%';
@@ -2219,7 +2122,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           {/* 5. Rutas mayores a 72 horas                                   */}
           {/* Disponible tanto al inicio de día como actualizado en fin     */}
           {/* ============================================================== */}
-          {showSection('totales') && (
+          {mode === 'inicio' && showSection('totales') && (
           <div className="bg-white rounded-xl border border-slate-300 shadow-sm overflow-hidden print:border print:border-slate-400 print:shadow-none print:rounded-lg print:break-inside-avoid">
             {/* Header de la Tabla Resumen de Totales */}
             <div className="px-4 py-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 print:bg-slate-100 print:text-slate-900 print:border-b print:border-slate-300">
@@ -3215,7 +3118,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           {/* ============================================================== */}
           {/* TABLA DETALLADA DE RUTAS (El resto se mantiene exactamente igual) */}
           {/* ============================================================== */}
-          {mode !== 'inicio' && showSection('detalle') && (
+          {mode !== 'inicio' && section === 'detalle' && (
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden print:border print:border-slate-400 print:shadow-none print:rounded-lg">
             <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 print:bg-slate-100 print:text-slate-900">
               <div className="flex items-center space-x-2">
