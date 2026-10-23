@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Route } from '../types';
 import { parseFlexibleDate, formatDateToGuatemala, formatDateTimeToGuatemala } from '../utils/date';
 import { getRouteKey } from '../utils/routeKey';
 import { toNum, fmtNum } from '../utils/number';
 import { loadXLSX, formatoMiles } from '../utils/excel';
 import { Lock, RotateCcw, Clock, Download, AlertTriangle } from 'lucide-react';
+import type { ReportePdf } from '../utils/dashboardPdf';
 
 // --- Dashboard de SEGUIMIENTO: Cajas Abiertas y Rutas Abiertas ---
 // Lo que sigue pendiente de cerrar y cuánto tiempo lleva así, para darle
@@ -21,6 +22,8 @@ interface Props {
   historyLimitedDays?: number;
   onLoadFullHistory?: () => void;
   isLoadingFullHistory?: boolean;
+  // PDF del dashboard: entrega cómo armar el reporte con los datos que se ven.
+  registrarReporte?: (armar: () => ReportePdf) => void;
 }
 
 type Rango = '0-1' | '2-3' | '4-7' | '8+';
@@ -87,6 +90,7 @@ export const DashboardSeguimiento: React.FC<Props> = ({
   historyLimitedDays,
   onLoadFullHistory,
   isLoadingFullHistory,
+  registrarReporte,
 }) => {
   const [agencia, setAgencia] = useState('TODAS');
   const [rangoFiltro, setRangoFiltro] = useState<Rango | ''>('');
@@ -307,6 +311,58 @@ export const DashboardSeguimiento: React.FC<Props> = ({
     formatoMiles(wb);
     XLSX.writeFile(wb, `Seguimiento_Cajas_y_Rutas_Abiertas_${hoy.replace(/\//g, '-')}.xlsx`);
   };
+
+  // ---------- Reporte PDF (los mismos datos de la pantalla, con formato) ----------
+  const armarReporte = (): ReportePdf => {
+    const ag = agencia !== 'TODAS' ? agencia : selectedAgency !== 'TODAS' ? selectedAgency : 'Todas';
+    const diasTxt = (d: number) => (d === 0 ? 'Hoy' : `${d} día${d === 1 ? '' : 's'}`);
+    const filtros = [rangoFiltro ? `Antigüedad: ${infoRango(rangoFiltro).label}` : '', busca.trim() ? `Búsqueda: "${busca.trim()}"` : ''].filter(Boolean).join(' · ');
+    return {
+      titulo: 'Seguimiento de Cajas y Rutas Abiertas',
+      periodo: `Al ${formatDateToGuatemala(new Date())}${filtros ? ` · ${filtros}` : ''}`,
+      agencia: ag,
+      kpis: [
+        { label: 'Cajas abiertas', valor: String(kpi.cajas), sub: `Saldo ${q(kpi.saldo)}`, tono: kpi.cajas ? 'warn' : 'ok' },
+        { label: 'Días promedio (cajas)', valor: n1(kpi.cajasProm), sub: `La más antigua: ${diasTxt(kpi.cajasMax)}`, tono: 'info' },
+        { label: 'Rutas abiertas', valor: String(kpi.rutas), sub: `${fmtNum(kpi.cajasPend)} cajas pendientes`, tono: kpi.rutas ? 'warn' : 'ok' },
+        { label: 'Días promedio (rutas)', valor: n1(kpi.rutasProm), sub: `La más antigua: ${diasTxt(kpi.rutasMax)}`, tono: 'info' },
+        { label: 'Más de 7 días', valor: String(kpi.criticas), sub: 'cajas + rutas abiertas', tono: kpi.criticas ? 'crit' : 'ok' },
+      ],
+      tablas: [
+        {
+          titulo: 'Antigüedad',
+          sub: 'Cajas y rutas abiertas por días transcurridos',
+          columnas: [{ t: 'Antigüedad' }, { t: 'Cajas abiertas', num: true }, { t: 'Rutas abiertas', num: true }, { t: 'Total', num: true }],
+          filas: antig.filter((a) => a.cajas + a.rutas > 0).map((a) => [a.label, String(a.cajas), String(a.rutas), String(a.cajas + a.rutas)]),
+        },
+        {
+          titulo: 'Por agencia',
+          columnas: [{ t: 'Agencia' }, { t: 'Cajas abiertas', num: true }, { t: 'Saldo', num: true }, { t: 'Caja más antigua', num: true }, { t: 'Rutas abiertas', num: true }, { t: 'Cajas pendientes', num: true }, { t: 'Ruta más antigua', num: true }],
+          filas: porAgencia.map((a) => [a.ag, String(a.ca), q(a.saldo), a.ca ? diasTxt(a.caMax) : '—', String(a.ra), fmtNum(a.cj), a.ra ? diasTxt(a.raMax) : '—']),
+          total: porAgencia.length > 1 ? ['Total', String(kpi.cajas), q(kpi.saldo), kpi.cajas ? diasTxt(kpi.cajasMax) : '—', String(kpi.rutas), fmtNum(kpi.cajasPend), kpi.rutas ? diasTxt(kpi.rutasMax) : '—'] : undefined,
+          vacio: 'Nada pendiente de cerrar.',
+        },
+        {
+          titulo: 'Cajas abiertas',
+          sub: 'Rutas liquidadas cuya caja/boleta sigue sin validar',
+          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Fecha ruta' }, { t: 'Liquidada' }, { t: 'Días', num: true }, { t: 'Motivo' }, { t: 'Diferencia', num: true }, { t: 'Abonado', num: true }, { t: 'Saldo', num: true }, { t: 'Piloto' }],
+          filas: cajasF.map((c) => [c.id, c.agencia, c.fechaRuta, c.fechaLiq, diasTxt(c.dias), c.motivo, q(c.monto), q(c.abonado), q(c.saldo), c.piloto]),
+          total: cajasF.length ? ['Total', '', '', '', '', '', q(cajasF.reduce((a, x) => a + x.monto, 0)), q(cajasF.reduce((a, x) => a + x.abonado, 0)), q(kpi.saldo), ''] : undefined,
+        },
+        {
+          titulo: 'Rutas abiertas',
+          sub: 'Regresaron con devolución y esperan volver a salir',
+          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Fecha ruta' }, { t: 'Abierta desde' }, { t: 'Días', num: true }, { t: 'Retornos', num: true }, { t: 'Cajas pend.', num: true }, { t: 'Motivo' }, { t: 'Último piloto' }],
+          filas: rutasF.map((r) => [r.id, r.agencia, r.fechaRuta, r.desde, diasTxt(r.dias), String(r.retornos), fmtNum(r.cajas), r.motivo, r.ultimoPiloto]),
+          total: rutasF.length ? ['Total', '', '', '', '', '', fmtNum(kpi.cajasPend), '', ''] : undefined,
+        },
+      ],
+      notas: historyLimitedDays ? [`Cajas abiertas de los últimos ${historyLimitedDays} días cargados del historial.`] : undefined,
+    };
+  };
+  useEffect(() => {
+    registrarReporte?.(armarReporte);
+  });
 
   const Chip: React.FC<{ r: Rango; dias: number }> = ({ r, dias }) => (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-bold whitespace-nowrap ${infoRango(r).bg}`}>
