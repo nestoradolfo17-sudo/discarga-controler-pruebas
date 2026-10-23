@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Repeat, Plus, Download, Search, Pencil, Trash2, AlertTriangle, RefreshCw, Zap, ShieldCheck, Check, X, Clock, Printer } from 'lucide-react';
-import { EstadoRecarga, Prestamo, Recarga, Route, Staff, TipoRecarga } from '../types';
+import { EstadoRecarga, Prestamo, Recarga, Route, Staff, TipoRecarga, Truck } from '../types';
 import { cubreFecha, prestamoCerrado, formatoCorrelativoPrestamo, estadoPrestamo } from '../utils/prestamos';
 import { RecargaModal, TIPOS_RECARGA } from './modals/RecargaModal';
 import { leerRecargas, guardarRecarga, guardarRecargas, eliminarRecarga, suscribirRecargas, nuevoIdRecarga, formatoCorrelativo, crearSituacionRecargas, estadoRecarga } from '../services/recargas';
@@ -27,6 +27,8 @@ import { fmtNum } from '../utils/number';
 interface RecargasViewProps {
   rutas: Route[];
   staff: Staff[];
+  // Camiones (para buscar rutas por ID de camión al registrar una recarga).
+  trucks?: Truck[];
   agencias: string[]; // agencias que el usuario puede ver
   agenciaGeneral: string; // filtro de agencia de la barra superior ('TODAS' = todas)
   usuario: string;
@@ -83,7 +85,7 @@ const ESTADO_STYLE: Record<EstadoRecarga, string> = {
 const contenido = (r: Partial<Recarga>) =>
   JSON.stringify([r.solicitadoPor || '', r.fecha, r.rutaId, !!r.sinRuta, r.agencia, r.tipo, r.conductor, r.auxiliares, r.camionPlaca, r.comentario || '']);
 
-export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agencias, agenciaGeneral, usuario, isAdmin, canDelete, onShowToast, prestamos = [] as Prestamo[], adminAgencias = [] as string[] }) => {
+export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, trucks = [] as Truck[], agencias, agenciaGeneral, usuario, isAdmin, canDelete, onShowToast, prestamos = [] as Prestamo[], adminAgencias = [] as string[] }) => {
   // ¿Puede autorizar / modificar las recargas de esta agencia?
   const adminDe = (ag?: string) => isAdmin || (!!ag && adminAgencias.includes(ag));
   const aprobador = isAdmin || adminAgencias.length > 0;
@@ -957,6 +959,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, agenci
         inicial={modal.recarga}
         rutas={rutas}
         staff={staff}
+        trucks={trucks}
         prestamos={prestamos}
         agencias={agenciasVisibles}
         agenciaPorDefecto={agencia || (agenciaGeneral !== 'TODAS' ? agenciaGeneral : '')}
