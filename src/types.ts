@@ -457,7 +457,9 @@ export interface AppUser {
 export type TipoRecarga = 'Simple' | 'Doble' | 'Triple';
 // Toda recarga nace "Pendiente" y solo cuenta para pago cuando un
 // administrador la pasa a "Autorizada". "Rechazada" lleva su motivo.
-export type EstadoRecarga = 'Pendiente' | 'Autorizada' | 'Rechazada';
+// "En ruta": viaje de Recarga asignado que aún no se liquida. No se puede
+// autorizar hasta que se liquide (entonces pasa a "Pendiente" = por autorizar).
+export type EstadoRecarga = 'En ruta' | 'Pendiente' | 'Autorizada' | 'Rechazada';
 
 export interface Recarga {
   id: string;
