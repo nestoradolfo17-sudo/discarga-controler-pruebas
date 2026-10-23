@@ -45,6 +45,8 @@ export interface RowActionHandlers {
   onViewConsolidated?: () => void;
   // Cambiar el segmento de la ruta (pide usuario y contraseña de administrador).
   onChangeSegment?: () => void;
+  // Camión de apoyo (caminos angostos): solo con la ruta en tránsito.
+  onApoyo?: () => void;
   onDelete?: () => void;
 }
 
@@ -96,6 +98,7 @@ export function getRowActions(
     case 'En Tránsito':
       primary = { key: 'liquidar', label: 'Liquidar', hint: 'Registrar entrega y cierre', icon: ACTION_ICONS.liquidar, tone: 'success', run: h.onLiquidate };
       more.push({ key: 'reasignar', label: 'Modificar / Reasignar', hint: 'Cambiar camión o tripulación', icon: ACTION_ICONS.reasignar, tone: 'primary', run: h.onAssign });
+      if (h.onApoyo) more.push({ key: 'apoyo', label: 'Camión de apoyo', hint: 'Para caminos angostos o de acceso difícil', icon: ACTION_ICONS.apoyo, tone: 'primary', run: h.onApoyo });
       if (repartir) more.push(repartir);
       if (aPiso) more.push(aPiso);
       break;
