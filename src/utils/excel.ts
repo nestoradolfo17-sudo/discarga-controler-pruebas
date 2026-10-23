@@ -1467,8 +1467,12 @@ export function parseTrucksFromSheet(ws: XLSXTypes.WorkSheet, defaultAgencia?: s
  * Piloto asignado y Segmento de las rutas visibles en el Tablero (mismo orden
  * y filtros que se ven en pantalla). Solo lectura: no modifica ninguna ruta.
  */
-export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Truck[] = [], fechaArchivo?: string): Promise<boolean> {
-  if (!routes || routes.length === 0) return false;
+export async function exportRutasPrioridadesToExcel(routesIn: Route[], trucks: Truck[] = [], fechaArchivo?: string): Promise<boolean> {
+  if (!routesIn || routesIn.length === 0) return false;
+  // Orden: por número de ruta de menor a mayor (números como números: 2 antes que 10).
+  const routes = [...routesIn].sort((a, b) =>
+    String(a.id ?? '').trim().localeCompare(String(b.id ?? '').trim(), 'es', { numeric: true, sensitivity: 'base' })
+  );
   const XLSX = await loadXLSX();
   // "Horario de Carga" y "No. de Prioridad de Carga" salen en blanco para
   // llenarlos en el Excel (la app aún no guarda esos datos).
@@ -1506,11 +1510,17 @@ export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Tru
         return `${t?.idCamion ? `ID ${t.idCamion}` : a.camionPlaca}${a.conductor ? ` (${a.conductor})` : ''}`;
       })
       .join(' | ');
-  const header = ['No. Ruta', 'Tipo de Viaje', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Camión de Apoyo', 'Segmento', 'Cajas', 'Distancia (km)', 'Ruta a Piso', 'Horario de Carga', 'No. de Prioridad de Carga'];
+  // Fecha de despacho: la del despacho asignado; si aún no sale, la fecha de la ruta.
+  const fechaDespachoDe = (r: Route) => {
+    const f = r.asignacion?.fechaDespacho || r.asignacion?.fechaAsignacion || r.fechaAsignacion || r.fechaOriginalRuta || r.fecha || '';
+    return f ? formatDateToGuatemala(f) || String(f).slice(0, 10) : '';
+  };
+  const header = ['No. Ruta', 'Fecha de Despacho', 'Tipo de Viaje', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Camión de Apoyo', 'Segmento', 'Cajas', 'Distancia (km)', 'Ruta a Piso', 'Horario de Carga', 'No. de Prioridad de Carga'];
   const rows: (string | number)[][] = routes.map((r) => {
     const piso = esPiso(r);
     return [
       String(r.id ?? ''),
+      fechaDespachoDe(r),
       tipoViaje(r),
       idCamionDe(r),
       r.asignacion?.camionPlaca || (piso ? 'RUTA A PISO' : ''),
@@ -1524,11 +1534,11 @@ export async function exportRutasPrioridadesToExcel(routes: Route[], trucks: Tru
       '',
     ];
   });
-  const totalCajas = Math.round(rows.reduce((a, x) => a + (typeof x[7] === 'number' ? x[7] : 0), 0) * 1000) / 1000;
-  const totalDist = Math.round(rows.reduce((a, x) => a + (typeof x[8] === 'number' ? x[8] : 0), 0) * 100) / 100;
-  const conApoyo = rows.filter((x) => x[5]).length;
-  const recargas = rows.filter((x) => x[1] === 'RECARGA').length;
-  const pie: (string | number)[] = [`TOTAL: ${rows.length} rutas`, `${rows.length - recargas} primer viaje / ${recargas} recarga`, '', '', '', conApoyo ? `${conApoyo} ruta(s) con apoyo` : '', '', totalCajas, totalDist, '', '', ''];
+  const totalCajas = Math.round(rows.reduce((a, x) => a + (typeof x[8] === 'number' ? x[8] : 0), 0) * 1000) / 1000;
+  const totalDist = Math.round(rows.reduce((a, x) => a + (typeof x[9] === 'number' ? x[9] : 0), 0) * 100) / 100;
+  const conApoyo = rows.filter((x) => x[6]).length;
+  const recargas = rows.filter((x) => x[2] === 'RECARGA').length;
+  const pie: (string | number)[] = [`TOTAL: ${rows.length} rutas`, '', `${rows.length - recargas} primer viaje / ${recargas} recarga`, '', '', '', conApoyo ? `${conApoyo} ruta(s) con apoyo` : '', '', totalCajas, totalDist, '', '', ''];
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows, pie]);
   ws['!cols'] = header.map((h, i) => {
     let maxLen = h.length;
