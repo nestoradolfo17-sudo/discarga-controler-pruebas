@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { isDemoMode } from './demoMode';
-import type { Recarga } from '../types';
+import type { EstadoRecarga, Recarga, Route } from '../types';
+import { getRouteKey } from '../utils/routeKey';
 
 // --- Módulo de Recargas: lectura y guardado ---
 //
@@ -174,16 +175,80 @@ export async function eliminarRecarga(id: string): Promise<string | null> {
   }
 }
 
+// --- Recargas automáticas y liquidación del viaje ---
+// Un viaje "Recarga" del Tablero se registra al ASIGNARLO, pero queda "En ruta"
+// (no se puede autorizar). Solo cuando el viaje se LIQUIDA pasa a "Pendiente"
+// (Recargas → Por autorizar). Las recargas manuales no dependen de un viaje.
+
+/** ¿En qué quedó el viaje de una recarga automática? (según su clave) */
+export type SituacionViaje = 'transito' | 'liquidado' | null;
+
+/**
+ * Lee la clave de una recarga automática: AUTO__<clave de ruta>__<fecha>__<viaje>.
+ * Devuelve la clave de la ruta y el número de viaje (1 = primer despacho).
+ */
+const partesIdAuto = (id: string): { routeKey: string; intento: number } | null => {
+  if (!id.startsWith('AUTO__')) return null;
+  const p = id.slice(6).split('__');
+  let intento = 1;
+  if (p.length > 1 && /^\d+$/.test(p[p.length - 1])) intento = Number(p.pop());
+  if (p.length > 1 && /^\d{4}-\d{2}-\d{2}$/.test(p[p.length - 1])) p.pop();
+  return p.length ? { routeKey: p.join('__'), intento } : null;
+};
+
+/**
+ * Prepara la consulta "¿el viaje de esta recarga ya se liquidó?" a partir de las
+ * rutas (activas e históricas) que tiene la app. Solo lee; no cambia nada.
+ */
+export function crearSituacionRecargas(rutas: Route[]): (recargaId: string) => SituacionViaje {
+  const porClave = new Map<string, Route>();
+  rutas.forEach((r) => {
+    const k = getRouteKey(r);
+    const previa = porClave.get(k);
+    // Si hay dos copias (activa e histórica), manda la que tiene más viajes.
+    if (!previa || (r.historialDespachos?.length || 0) > (previa.historialDespachos?.length || 0)) porClave.set(k, r);
+  });
+  return (recargaId: string) => {
+    const x = partesIdAuto(recargaId);
+    if (!x) return null;
+    const r = porClave.get(x.routeKey);
+    if (!r) return null;
+    const previos = r.historialDespachos?.length || 0;
+    // "Abierta" ya guardó su viaje en el historial; "Liquidada" no.
+    const cerrados = previos + (r.estado === 'Liquidada' ? 1 : 0);
+    if (x.intento <= cerrados) return 'liquidado';
+    if (r.estado === 'En Tránsito' && x.intento === previos + 1) return 'transito';
+    return null;
+  };
+}
+
+/**
+ * Estado de una recarga tal como se usa en pantalla: una recarga automática
+ * cuyo viaje sigue en ruta (sin liquidar) se muestra "En ruta" aunque se haya
+ * guardado "Pendiente" (las registradas antes de este cambio), y una guardada
+ * "En ruta" cuyo viaje ya se liquidó pasa a "Pendiente".
+ */
+export function estadoRecarga(r: Recarga, situacion?: (id: string) => SituacionViaje): EstadoRecarga {
+  const e: EstadoRecarga = r.estado || 'Pendiente';
+  if (e === 'Autorizada' || e === 'Rechazada') return e;
+  if (r.origen !== 'asignacion' || !situacion) return e;
+  const s = situacion(r.id);
+  if (s === 'transito') return 'En ruta';
+  if (s === 'liquidado') return 'Pendiente';
+  return e;
+}
+
 /**
  * Registro automático de un viaje "Recarga" del Tablero: se crea al ASIGNAR
- * (queda en Recargas → Por autorizar) y se actualiza la misma recarga al
- * LIQUIDAR (misma clave: ruta, fecha y número de despacho; nunca se duplica).
+ * en estado "En ruta" (todavía NO se puede autorizar) y al LIQUIDAR el viaje
+ * se actualiza la misma recarga (misma clave: ruta, fecha y número de
+ * despacho; nunca se duplica) y pasa a "Pendiente" = Recargas → Por autorizar.
  * Si ya existe (por ejemplo, al corregir la tripulación con Modificar /
  * Reasignar) se actualiza la tripulación y se conservan el tipo y el
  * comentario que alguien haya puesto. Nunca muestra
  * errores: si algo falla, la recarga se puede registrar a mano.
  */
-export async function registrarRecargaAuto(base: Omit<Recarga, 'tipo' | 'origen' | 'creadoEn'>): Promise<void> {
+export async function registrarRecargaAuto(base: Omit<Recarga, 'tipo' | 'origen' | 'creadoEn'>, liquidada: boolean): Promise<void> {
   try {
     let previa: Recarga | undefined;
     if (isDemoMode && demoGuardadas.has(base.id)) {
@@ -199,11 +264,16 @@ export async function registrarRecargaAuto(base: Omit<Recarga, 'tipo' | 'origen'
     // administrador la modifica, desde Recargas).
     if (previa && previa.estado === 'Autorizada') return;
     const ahora = new Date().toISOString();
-    // Si cambió la tripulación de una recarga ya revisada, vuelve a quedar
-    // Pendiente: el administrador debe autorizarla otra vez.
+    // Mientras el viaje no se liquida queda "En ruta"; al liquidar, "Pendiente".
+    const estadoViaje: EstadoRecarga = liquidada ? 'Pendiente' : 'En ruta';
+    // Si cambió la tripulación de una recarga ya revisada (o el viaje se acaba
+    // de liquidar), vuelve a quedar por revisar: el administrador la autoriza.
     const tripulacion = (x: { conductor?: string; auxiliares?: string[]; camionPlaca?: string }) =>
       [x.conductor || '', ...(x.auxiliares || []), x.camionPlaca || ''].join('|');
     const cambio = !!previa && tripulacion(previa) !== tripulacion(base);
+    const estadoPrevio: EstadoRecarga = previa?.estado || 'Pendiente';
+    // Una rechazada se respeta al liquidar, salvo que cambie la tripulación.
+    const reabrir = cambio || estadoPrevio === 'En ruta' || (estadoPrevio === 'Pendiente' && !liquidada);
     const r: Recarga = previa
       ? {
           ...previa,
@@ -215,9 +285,9 @@ export async function registrarRecargaAuto(base: Omit<Recarga, 'tipo' | 'origen'
           creadoEn: previa.creadoEn,
           editadoPor: base.creadoPor,
           editadoEn: ahora,
-          ...(cambio ? { estado: 'Pendiente' as const, autorizadoPor: undefined, autorizadoEn: undefined, motivoRechazo: undefined } : {}),
+          ...(reabrir ? { estado: estadoViaje, autorizadoPor: undefined, autorizadoEn: undefined, motivoRechazo: undefined } : {}),
         }
-      : { ...base, tipo: 'Simple', origen: 'asignacion', creadoEn: ahora, estado: 'Pendiente' };
+      : { ...base, tipo: 'Simple', origen: 'asignacion', creadoEn: ahora, estado: estadoViaje };
     await guardarRecarga(r);
   } catch {
     // Silencioso a propósito (ver comentario arriba).
