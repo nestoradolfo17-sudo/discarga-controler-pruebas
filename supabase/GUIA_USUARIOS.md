@@ -96,6 +96,13 @@ Reglas:
 - Al **liquidar** el viaje (cualquier cierre, también Contingencia) pasa a **Por autorizar**.
 - Las recargas manuales (botón "Nueva recarga") siguen igual: quedan por autorizar de una vez.
 
+## Camión de apoyo (caminos angostos)
+
+No requiere correr nada en Supabase.
+- En el Tablero, en una ruta **En Tránsito**: menú **⋯ → Camión de apoyo**. Se elige camión, piloto, auxiliares, motivo, cajas que lleva (opcional) y hora de salida.
+- La ruta sigue siendo una sola (no se duplican cajas). El camión y la tripulación de apoyo quedan **En Ruta** hasta que se liquida la ruta; entonces quedan libres solos.
+- Se ve en el Tablero (etiqueta "+1 apoyo"), en el detalle de la ruta, en los Excel (columna "Camión de Apoyo") y en el Dashboard (tarjeta "Camiones de apoyo").
+
 ## ¿Qué fases tiene aplicada mi base?
 Supabase → SQL Editor → pega `supabase/diagnostico_fases.sql` → Run. Solo lee: muestra cada fase con SÍ/NO, las tablas sin seguridad por filas (debe salir vacío) y los administradores activos.
 
