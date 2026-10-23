@@ -16,10 +16,12 @@ import {
   Warehouse,
   Sparkles,
   AlertCircle,
-  CheckCircle2,
   Trash2,
   Maximize2,
-  Minimize2
+  Minimize2,
+  ChevronDown,
+  Info,
+  Search
 } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ModalFooter } from '../ui/ModalFooter';
@@ -123,6 +125,8 @@ export const AssignModal: React.FC<AssignModalProps> = ({
   const [assignmentType, setAssignmentType] = useState<AssignmentType>('Primer Viaje');
   // Texto del buscador de rutas en tránsito (carga compartida).
   const [buscaCrew, setBuscaCrew] = useState('');
+  // Modalidades sin tripulación (A Piso, Self Service, Bolsón) en "Otras".
+  const [verOtras, setVerOtras] = useState(false);
   const [truckId, setTruckId] = useState('');
   const [driverName, setDriverName] = useState('');
   const [helper1, setHelper1] = useState('');
@@ -163,6 +167,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
       const currentH = String(now.getHours()).padStart(2, '0');
       const currentM = String(now.getMinutes()).padStart(2, '0');
       setHoraSalida(`${currentH}:${currentM}`);
+      setVerOtras(false);
       const lastDispatch = route.historialDespachos && route.historialDespachos.length > 0
         ? route.historialDespachos[route.historialDespachos.length - 1]
         : null;
@@ -756,310 +761,121 @@ export const AssignModal: React.FC<AssignModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 sm:p-7 space-y-4 sm:space-y-5 text-xs sm:text-sm overflow-y-auto flex-1">
-          {/* Selector de Modalidad: Primer Viaje | Recarga | Revisita | Ruta a Piso */}
+          {/* Modalidad: una sola línea. Las que no llevan tripulación (A Piso,
+              Self Service, Bolsón) quedan en "Otras". La descripción de cada
+              una aparece al pasar el cursor. */}
           <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-              Modalidad de Asignación / Destino de la Carga *
-            </label>
-            <div className={`grid grid-cols-2 gap-2 ${canBolson || canSelfService ? 'sm:grid-cols-3 lg:grid-cols-6' : 'sm:grid-cols-4'}`}>
-              {/* Opción 1: Primer Viaje */}
-              <button
-                type="button"
-                onClick={() => setAssignmentType('Primer Viaje')}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  assignmentType === 'Primer Viaje'
-                    ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-500/20 shadow-xs'
-                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-xs text-blue-900 flex items-center">
-                    <Send className="w-3.5 h-3.5 mr-1 text-blue-600" />
-                    Primer Viaje
-                  </span>
-                  {assignmentType === 'Primer Viaje' && (
-                    <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                  )}
-                </div>
-                <p className="text-[10px] text-slate-500 leading-tight">
-                  Despacho ordinario de la jornada.
-                </p>
-              </button>
-
-              {/* Opción 2: Recarga (Segundo Viaje) */}
-              <button
-                type="button"
-                onClick={() => setAssignmentType('Recarga')}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  assignmentType === 'Recarga'
-                    ? 'bg-purple-50 border-purple-400 ring-2 ring-purple-500/20 shadow-xs'
-                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-xs text-purple-900 flex items-center">
-                    <Repeat className="w-3.5 h-3.5 mr-1 text-purple-600" />
-                    Recarga
-                  </span>
-                  {assignmentType === 'Recarga' && (
-                    <span className="w-2 h-2 rounded-full bg-purple-600"></span>
-                  )}
-                </div>
-                <p className="text-[10px] text-slate-500 leading-tight">
-                  2° viaje de tripulación.
-                </p>
-              </button>
-
-              {/* Opción 3: Revisita (Reasignación de salida previa) */}
-              <button
-                type="button"
-                disabled={!canAssignRevisita}
-                onClick={() => {
-                  if (canAssignRevisita) {
-                    setAssignmentType('Revisita');
-                  }
-                }}
-                title={
-                  !canAssignRevisita
-                    ? 'La opción Revisita solo puede ser asignada si la ruta ha sido asignada previamente'
-                    : 'Reasignación de salida previa o por tiempo'
-                }
-                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
-                  !canAssignRevisita
-                    ? 'opacity-40 bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed select-none'
-                    : assignmentType === 'Revisita'
-                    ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-500/20 shadow-xs cursor-pointer'
-                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700 cursor-pointer'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span
-                    className={`font-bold text-xs flex items-center ${
-                      !canAssignRevisita ? 'text-slate-400' : 'text-amber-900'
+            <span className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">Modalidad *</span>
+            <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Modalidad de asignación">
+              {(
+                [
+                  { t: 'Primer Viaje', l: 'Primer Viaje', d: 'Despacho ordinario de la jornada.', icon: Send, on: 'bg-blue-600 border-blue-600 text-white', off: 'text-blue-900' },
+                  { t: 'Recarga', l: 'Recarga', d: '2° viaje de una tripulación.', icon: Repeat, on: 'bg-purple-600 border-purple-600 text-white', off: 'text-purple-900' },
+                  {
+                    t: 'Revisita',
+                    l: 'Revisita',
+                    d: canAssignRevisita ? 'Reasignación de una salida previa o por tiempo.' : 'Solo se puede usar si la ruta ya fue asignada antes.',
+                    icon: RotateCcw,
+                    on: 'bg-amber-500 border-amber-500 text-white',
+                    off: 'text-amber-900',
+                    disabled: !canAssignRevisita,
+                  },
+                ] as { t: AssignmentType; l: string; d: string; icon: typeof Send; on: string; off: string; disabled?: boolean }[]
+              ).map((m) => {
+                const Icon = m.icon;
+                const activo = assignmentType === m.t;
+                return (
+                  <button
+                    key={m.t}
+                    type="button"
+                    role="radio"
+                    aria-checked={activo}
+                    disabled={m.disabled}
+                    title={m.d}
+                    onClick={() => !m.disabled && setAssignmentType(m.t)}
+                    className={`min-h-[40px] px-3.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition ${
+                      m.disabled
+                        ? 'opacity-40 bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                        : activo
+                        ? `${m.on} shadow-xs cursor-pointer`
+                        : `bg-white border-slate-200 hover:bg-slate-50 cursor-pointer ${m.off}`
                     }`}
                   >
-                    <RotateCcw
-                      className={`w-3.5 h-3.5 mr-1 ${
-                        !canAssignRevisita ? 'text-slate-400' : 'text-amber-700'
-                      }`}
-                    />
-                    Revisita
-                  </span>
-                  {assignmentType === 'Revisita' && canAssignRevisita && (
-                    <span className="w-2 h-2 rounded-full bg-amber-600"></span>
-                  )}
-                  {!canAssignRevisita && (
-                    <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-tighter bg-slate-200 px-1 py-0.5 rounded">
-                      Inactiva
-                    </span>
-                  )}
-                </div>
-                <p
-                  className={`text-[10px] leading-tight ${
-                    !canAssignRevisita ? 'text-slate-400' : 'text-slate-500'
-                  }`}
-                >
-                  {!canAssignRevisita
-                    ? 'Requiere asignación previa.'
-                    : 'Reasignación previa o por tiempo.'}
-                </p>
-              </button>
-
-              {/* Opción 4: Ruta a Piso */}
+                    <Icon className="w-3.5 h-3.5" />
+                    {m.l}
+                  </button>
+                );
+              })}
               <button
                 type="button"
-                onClick={() => setAssignmentType('Ruta a Piso')}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  assignmentType === 'Ruta a Piso'
-                    ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-500/20 shadow-xs'
-                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                onClick={() => setVerOtras((v) => !v)}
+                aria-expanded={verOtras || isPiso || isBolson || isSelfService}
+                title="A Piso, Self Service y Bolsón (sin tripulación)"
+                className={`min-h-[40px] px-3 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer ${
+                  isPiso || isBolson || isSelfService ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-xs text-amber-900 flex items-center">
-                    <Warehouse className="w-3.5 h-3.5 mr-1 text-amber-700" />
-                    A Piso
-                  </span>
-                  {assignmentType === 'Ruta a Piso' && (
-                    <span className="w-2 h-2 rounded-full bg-amber-600"></span>
-                  )}
-                </div>
-                <p className="text-[10px] text-slate-500 leading-tight">
-                  Queda para mañana.
-                </p>
+                Otras
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${verOtras || isPiso || isBolson || isSelfService ? 'rotate-180' : ''}`} />
               </button>
-
-              {/* Opción 6: Self Service (el cliente recoge; sin tripulación) */}
-              {canSelfService && (
-                <button
-                  type="button"
-                  id="optSelfService"
-                  onClick={() => setAssignmentType('Self Service')}
-                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                    isSelfService
-                      ? 'bg-teal-50 border-teal-400 ring-2 ring-teal-500/20 shadow-xs'
-                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-xs text-teal-900 flex items-center">
-                      <Package className="w-3.5 h-3.5 mr-1 text-teal-700" />
-                      Self Service
-                    </span>
-                    {isSelfService && <span className="w-2 h-2 rounded-full bg-teal-600"></span>}
-                  </div>
-                  <p className="text-[10px] text-slate-500 leading-tight">
-                    Sin tripulación.
-                  </p>
-                </button>
-              )}
-
-              {/* Opción 5: Ruta Bolsón (se envía a rechazo, no sale) */}
-              {canBolson && (
-                <button
-                  type="button"
-                  onClick={() => setAssignmentType('Ruta Bolsón')}
-                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                    isBolson
-                      ? 'bg-rose-50 border-rose-400 ring-2 ring-rose-500/20 shadow-xs'
-                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-xs text-rose-900 flex items-center">
-                      <Warehouse className="w-3.5 h-3.5 mr-1 text-rose-700" />
-                      Bolsón
-                    </span>
-                    {isBolson && <span className="w-2 h-2 rounded-full bg-rose-600"></span>}
-                  </div>
-                  <p className="text-[10px] text-slate-500 leading-tight">
-                    A rechazo, no sale.
-                  </p>
-                </button>
+              {(verOtras || isPiso || isBolson || isSelfService) && (
+                <>
+                  <span className="w-px h-6 bg-slate-200 mx-0.5" aria-hidden />
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={isPiso}
+                    title="Queda en bodega para despacho de mañana."
+                    onClick={() => setAssignmentType('Ruta a Piso')}
+                    className={`min-h-[40px] px-3 rounded-lg border text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                      isPiso ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-amber-900 hover:bg-amber-50'
+                    }`}
+                  >
+                    <Warehouse className="w-3.5 h-3.5" /> A Piso
+                  </button>
+                  {canSelfService && (
+                    <button
+                      type="button"
+                      id="optSelfService"
+                      role="radio"
+                      aria-checked={isSelfService}
+                      title="El cliente recoge: sin camión ni tripulación."
+                      onClick={() => setAssignmentType('Self Service')}
+                      className={`min-h-[40px] px-3 rounded-lg border text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                        isSelfService ? 'bg-teal-600 border-teal-600 text-white' : 'bg-white border-slate-200 text-teal-900 hover:bg-teal-50'
+                      }`}
+                    >
+                      <Package className="w-3.5 h-3.5" /> Self Service
+                    </button>
+                  )}
+                  {canBolson && (
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={isBolson}
+                      title="Se envía a rechazo: no sale a ruta."
+                      onClick={() => setAssignmentType('Ruta Bolsón')}
+                      className={`min-h-[40px] px-3 rounded-lg border text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                        isBolson ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-rose-900 hover:bg-rose-50'
+                      }`}
+                    >
+                      <Warehouse className="w-3.5 h-3.5" /> Bolsón
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
 
-          {/* VISTA AVISO REVISITA */}
+          {/* Revisita: aviso corto */}
           {isRevisita && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-950 space-y-1">
-              <div className="flex items-center font-bold text-xs text-amber-900">
-                <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-amber-700" />
-                Modalidad Revisita (Reasignación de Ruta Previa)
-              </div>
-              <p className="text-[11px] leading-relaxed text-amber-800">
-                Esta ruta corresponde a una salida previa que volvió a salir (usualmente por falta de tiempo de entrega o reprogramación). En las boletas y descargas de Excel quedará registrada como <strong>Revisita</strong>.
-              </p>
-              {route.motivoDevolucion && (
-                <div className="text-[10px] bg-white/80 p-1.5 rounded border border-amber-300 text-amber-900 font-medium">
-                  Motivo de retorno previo: {route.motivoDevolucion}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* VISTA 1 & 2: RECARGA NOTICE / QUICK PICKER */}
-          {isRecarga && (
-            <div className="p-3.5 bg-purple-50 border border-purple-200 rounded-xl text-purple-950 space-y-2">
-              <div className="flex items-center font-bold text-xs text-purple-900">
-                <Repeat className="w-3.5 h-3.5 mr-1.5 text-purple-700" />
-                Asignación como Recarga (2do Viaje)
-              </div>
-              <p className="text-[11px] leading-relaxed text-purple-800">
-                Esta ruta se asigna como segundo viaje a una tripulación y camión. Puedes seleccionarla de las tripulaciones actualmente en ruta o elegir libremente la unidad y personal.
-              </p>
-
-              {activeRoutesWithCrew.length > 0 && (
-                <div className="pt-1.5 border-t border-purple-200/70">
-                  <label htmlFor="quickCrewSelect" className="block text-[11px] font-bold text-purple-900 mb-1 flex items-center">
-                    <Sparkles className="w-3 h-3 mr-1 text-purple-600" />
-                    Autocompletar con tripulación de camión en ruta activa:
-                  </label>
-                  <select
-                    id="quickCrewSelect"
-                    value={selectedActiveCrewRouteId}
-                    onChange={(e) => handleActiveCrewSelect(e.target.value)}
-                    className="w-full min-h-[44px] p-2 border border-purple-300 rounded-lg text-xs font-semibold bg-white text-purple-950 outline-none cursor-pointer"
-                  >
-                    <option value="">-- Seleccionar tripulación en tránsito --</option>
-                    {activeRoutesWithCrew.map((ar) => (
-                      <option key={getRouteKey(ar)} value={getRouteKey(ar)}>
-                        Ruta {ar.id} → Unidad {ar.asignacion?.camionPlaca} | Piloto: {ar.asignacion?.conductor}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* VISTA OPTIMIZACIÓN: CARGA COMPARTIDA EN EL MISMO CAMIÓN Y TRIPULACIÓN */}
-          {!isRecarga && !isPiso && !isBolson && activeRoutesWithCrew.length > 0 && (
-            <div className="p-3.5 bg-sky-50/80 border border-sky-200 rounded-xl text-sky-950 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center font-bold text-xs text-sky-900">
-                  <TruckIcon className="w-3.5 h-3.5 mr-1.5 text-sky-700" />
-                  Optimización de Carga (Mismo camión y tripulación para 2 o más rutas)
-                </div>
-                <span className="text-[10px] font-bold bg-sky-100 text-sky-800 px-2 py-0.5 rounded border border-sky-200">
-                  Carga Compartida
-                </span>
-              </div>
-              <p className="text-[11px] leading-relaxed text-sky-800">
-                Es posible cargar dos o más rutas al mismo camión y tripulación para optimizar el transporte. Puedes autocompletar con una ruta en tránsito o seleccionarlos directamente en los campos inferiores.
-              </p>
-
-              <div className="pt-1.5 border-t border-sky-200/70">
-                <label htmlFor="quickSharedCrewSelect" className="block text-[11px] font-bold text-sky-900 mb-1 flex items-center">
-                  <Sparkles className="w-3 h-3 mr-1 text-sky-600" />
-                  Cargar mismo camión y tripulación de ruta en tránsito:
-                </label>
-                {/* Buscar por número de ruta (también placa o piloto) */}
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="search"
-                    value={buscaCrew}
-                    onChange={(e) => setBuscaCrew(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key !== 'Enter') return;
-                      e.preventDefault();
-                      const exacta = crewFiltradas.find((r) => String(r.id).trim().toLowerCase() === buscaCrew.trim().toLowerCase());
-                      const elegida = exacta || (crewFiltradas.length === 1 ? crewFiltradas[0] : null);
-                      if (elegida) handleActiveCrewSelect(getRouteKey(elegida));
-                    }}
-                    placeholder="Buscar No. de ruta, piloto o ID camión…"
-                    aria-label="Buscar ruta en tránsito por número de ruta, piloto, ID de camión o placa"
-                    className="sm:w-64 min-h-[44px] px-3 border border-sky-300 rounded-lg text-xs font-semibold bg-white text-sky-950 outline-none focus:ring-2 focus:ring-sky-400"
-                  />
-                <select
-                  id="quickSharedCrewSelect"
-                  value={selectedActiveCrewRouteId}
-                  onChange={(e) => handleActiveCrewSelect(e.target.value)}
-                  className="flex-1 min-w-0 min-h-[44px] p-2 border border-sky-300 rounded-lg text-xs font-semibold bg-white text-sky-950 outline-none cursor-pointer"
-                >
-                  <option value="">
-                    {buscaCrew.trim()
-                      ? `-- ${crewFiltradas.length} ruta(s) coinciden con "${buscaCrew.trim()}" --`
-                      : '-- Seleccionar ruta activa para combinar carga --'}
-                  </option>
-                  {crewOpciones.map((ar) => (
-                    <option key={getRouteKey(ar)} value={getRouteKey(ar)}>
-                      Ruta {ar.id} ({fmtNum(ar.cajasFisicas)} cajas) → {idCamionDe(ar) ? `ID ${idCamionDe(ar)} · ` : ''}Unidad {ar.asignacion?.camionPlaca} | Piloto: {ar.asignacion?.conductor}
-                      {ar.agencia && ar.agencia !== route.agencia ? ` | ${ar.agencia}` : ''}
-                    </option>
-                  ))}
-                </select>
-                </div>
-                {buscaCrew.trim() && crewFiltradas.length === 0 && (
-                  <p className="text-[11px] font-semibold text-amber-700 mt-1">Ninguna ruta en tránsito coincide con "{buscaCrew.trim()}".</p>
-                )}
-                {buscaCrew.trim() && crewFiltradas.length > 0 && (
-                  <p className="text-[11px] text-sky-800 mt-1">
-                    {crewFiltradas.length === 1 ? 'Presione Enter para elegirla, o selecciónela en la lista.' : 'Elija la ruta en la lista (Enter elige la que tenga ese número exacto).'}
-                  </p>
-                )}
-              </div>
-            </div>
+            <p className="flex items-start gap-1.5 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <RotateCcw className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-700" />
+              <span>
+                Quedará registrada como <strong>Revisita</strong> en boletas y Excel.
+                {route.motivoDevolucion && <span className="block font-medium">Motivo del retorno previo: {route.motivoDevolucion}</span>}
+              </span>
+            </p>
           )}
 
           {/* VISTA 6: SELF SERVICE (SIN TRIPULACIÓN) */}
@@ -1209,132 +1025,167 @@ export const AssignModal: React.FC<AssignModalProps> = ({
               </div>
             </div>
           ) : (
-            /* VISTA DE ASIGNACIÓN (PRIMER VIAJE O RECARGA) */
+            /* VISTA DE ASIGNACIÓN (PRIMER VIAJE, RECARGA O REVISITA) */
             <div className="space-y-3.5">
               {isReassign && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-950 space-y-1">
-                  <div className="flex items-center font-bold text-xs text-amber-900">
-                    <RotateCcw className="w-3.5 h-3.5 mr-1 text-amber-700" />
-                    Ruta Abierta Previa (Despacho #{(route.historialDespachos?.length || 0) + 1})
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-amber-900">
-                    Esta ruta ya salió previamente y retornó. Los recursos anteriores fueron liberados.
+                <p className="flex items-start gap-1.5 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <RotateCcw className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-700" />
+                  <span>
+                    <strong>Ruta abierta · Despacho #{(route.historialDespachos?.length || 0) + 1}.</strong> Ya salió y retornó; los recursos anteriores quedaron libres.
                     {route.ultimoDespacho && (
-                      <span className="block mt-0.5">
-                        <strong>Salida previa:</strong> {route.ultimoDespacho.camionPlaca} | Piloto: {route.ultimoDespacho.conductor}
-                      </span>
+                      <> Salida previa: {route.ultimoDespacho.camionPlaca} · {route.ultimoDespacho.conductor}</>
                     )}
-                  </p>
-                </div>
+                  </span>
+                </p>
               )}
 
               {/* Aviso: existen camiones/personal en el sistema pero ninguno tiene
                   asignada la agencia de esta ruta (o todavía no tienen agencia) */}
               {(availableTrucks.length === 0 && trucks.length > 0) ||
               (availableDrivers.length === 0 && staff.length > 0) ? (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 space-y-1">
-                  <div className="flex items-center font-bold text-xs text-rose-800">
-                    <AlertCircle className="w-3.5 h-3.5 mr-1.5 text-rose-600" />
-                    Sin camiones/personal registrados para la agencia "{route.agencia}"
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-rose-800">
-                    Los camiones y colaboradores solo pueden asignarse a rutas de su misma agencia.
-                    Verifica en las pestañas Camiones y Personal que tengan la Agencia "{route.agencia}"
-                    asignada (puedes corregirlo con Carga Masiva de Excel).
-                  </p>
-                </div>
+                <p className="flex items-start gap-1.5 text-[11px] text-rose-800 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-rose-600" />
+                  <span>
+                    <strong>Sin camiones/personal de la agencia "{route.agencia}".</strong> Solo se asignan recursos de la misma agencia: revisa la
+                    agencia en Camiones y Personal (o corrígela con Carga Masiva de Excel).
+                  </span>
+                </p>
               ) : null}
 
-              {/* Tripulación sugerida: la más frecuente de esta misma ruta */}
-              {suggestion && (
-                <div className="p-3.5 sm:p-4 bg-violet-50 border border-violet-200 rounded-xl space-y-2.5">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="font-bold text-xs sm:text-sm text-violet-900 flex items-center">
-                      <Sparkles className="w-4 h-4 mr-1.5 text-violet-600 flex-shrink-0" />
-                      Tripulación más frecuente de la ruta {route.id}
-                      <span className="ml-1.5 font-medium text-violet-700">
-                        ({suggestion.samples} salida{suggestion.samples === 1 ? '' : 's'} anterior{suggestion.samples === 1 ? '' : 'es'})
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={applySuggestion}
-                      className="min-h-[48px] px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm flex items-center gap-1.5 cursor-pointer active:scale-95"
+              {/* Copiar tripulación: UNA sola barra para carga compartida
+                  (Optimización de Carga), recarga y la tripulación frecuente. */}
+              {(activeRoutesWithCrew.length > 0 || suggestion) && (
+                <div className="p-3 bg-sky-50/70 border border-sky-200 rounded-xl space-y-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-sky-900">
+                    <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                    Copiar camión y tripulación de…
+                    <span
+                      className="inline-flex text-sky-500 cursor-help"
+                      title={
+                        isRecarga
+                          ? 'Recarga: elige la ruta en tránsito de la tripulación que hace este segundo viaje, o la tripulación frecuente de esta ruta.'
+                          : 'Optimización de Carga: elige una ruta en tránsito para cargar esta ruta en el mismo camión y con la misma tripulación (carga compartida), o usa la tripulación frecuente de esta ruta.'
+                      }
                     >
-                      <Sparkles className="w-4 h-4" />
-                      Usar sugerencia
-                    </button>
+                      <Info className="w-3.5 h-3.5" />
+                    </span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                    <div className="bg-white rounded-lg border border-violet-100 px-3 py-2">
-                      <div className="text-[10px] font-bold uppercase text-violet-500">Camión</div>
-                      <div className="font-bold text-slate-800 truncate">
-                        {sugTruck ? (sugTruck.idCamion ? `ID ${sugTruck.idCamion}` : sugTruck.placa) : '—'}
-                        {sugTruck && <span className="font-medium text-slate-500"> · {fmtNum(suggestion.truckCount)} de {suggestion.samples}</span>}
-                        {sugTruck && sugTruck.idCamion && <span className="block text-[11px] font-semibold text-slate-600">Placa {sugTruck.placa}</span>}
+                  <div className="flex flex-col lg:flex-row gap-2">
+                    {activeRoutesWithCrew.length > 0 && (
+                      <div className="flex flex-1 min-w-0 flex-col sm:flex-row gap-2">
+                        <div className="relative sm:w-56">
+                          <Search className="w-3.5 h-3.5 text-sky-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="search"
+                            value={buscaCrew}
+                            onChange={(e) => setBuscaCrew(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key !== 'Enter') return;
+                              e.preventDefault();
+                              const exacta = crewFiltradas.find((r) => String(r.id).trim().toLowerCase() === buscaCrew.trim().toLowerCase());
+                              const elegida = exacta || (crewFiltradas.length === 1 ? crewFiltradas[0] : null);
+                              if (elegida) handleActiveCrewSelect(getRouteKey(elegida));
+                            }}
+                            placeholder="No. ruta, piloto o ID camión…"
+                            aria-label="Buscar ruta en tránsito por número de ruta, piloto, ID de camión o placa"
+                            className="w-full min-h-[44px] pl-8 pr-2 border border-sky-300 rounded-lg text-xs font-semibold bg-white text-sky-950 outline-none focus:ring-2 focus:ring-sky-400"
+                          />
+                        </div>
+                        <select
+                          id={isRecarga ? 'quickCrewSelect' : 'quickSharedCrewSelect'}
+                          value={selectedActiveCrewRouteId}
+                          onChange={(e) => handleActiveCrewSelect(e.target.value)}
+                          aria-label="Ruta en tránsito de la que se copia camión y tripulación"
+                          className="flex-1 min-w-0 min-h-[44px] p-2 border border-sky-300 rounded-lg text-xs font-semibold bg-white text-sky-950 outline-none cursor-pointer"
+                        >
+                          <option value="">
+                            {buscaCrew.trim()
+                              ? `-- ${crewFiltradas.length} ruta(s) coinciden con "${buscaCrew.trim()}" --`
+                              : isRecarga
+                              ? '-- Ruta en tránsito (tripulación de la recarga) --'
+                              : '-- Ruta en tránsito (carga compartida) --'}
+                          </option>
+                          {crewOpciones.map((ar) => (
+                            <option key={getRouteKey(ar)} value={getRouteKey(ar)}>
+                              Ruta {ar.id} ({fmtNum(ar.cajasFisicas)} cj) → {idCamionDe(ar) ? `ID ${idCamionDe(ar)} · ` : ''}
+                              {ar.asignacion?.camionPlaca} | {ar.asignacion?.conductor}
+                              {ar.agencia && ar.agencia !== route.agencia ? ` | ${ar.agencia}` : ''}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                    </div>
-                    <div className="bg-white rounded-lg border border-violet-100 px-3 py-2">
-                      <div className="text-[10px] font-bold uppercase text-violet-500">Piloto</div>
-                      <div className="font-bold text-slate-800 truncate">
-                        {suggestion.driverName || '—'}
-                        {suggestion.driverName && <span className="font-medium text-slate-500"> · {fmtNum(suggestion.driverCount)} de {suggestion.samples}</span>}
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg border border-violet-100 px-3 py-2">
-                      <div className="text-[10px] font-bold uppercase text-violet-500">Auxiliares</div>
-                      <div className="font-bold text-slate-800 truncate">
-                        {suggestion.helpers.length > 0 ? suggestion.helpers.join(', ') : '—'}
-                      </div>
-                    </div>
+                    )}
+                    {suggestion && (
+                      <button
+                        type="button"
+                        onClick={applySuggestion}
+                        title={[
+                          `Tripulación más frecuente de la ruta ${route.id} (${suggestion.samples} salida${suggestion.samples === 1 ? '' : 's'} anterior${suggestion.samples === 1 ? '' : 'es'})`,
+                          `Camión: ${sugTruck ? `${sugTruck.idCamion ? `ID ${sugTruck.idCamion} · ` : ''}${sugTruck.placa} (${suggestion.truckCount} de ${suggestion.samples})` : '—'}`,
+                          `Piloto: ${suggestion.driverName ? `${suggestion.driverName} (${suggestion.driverCount} de ${suggestion.samples})` : '—'}`,
+                          `Auxiliares: ${suggestion.helpers.length ? suggestion.helpers.join(', ') : '—'}`,
+                        ].join('\n')}
+                        className="min-h-[44px] px-3 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer active:scale-95 lg:max-w-[45%] min-w-0"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">
+                          Usar frecuente: {sugTruck ? (sugTruck.idCamion ? `ID ${sugTruck.idCamion}` : sugTruck.placa) : 'sin camión'}
+                          {suggestion.driverName ? ` · ${suggestion.driverName.split(' ').slice(0, 2).join(' ')}` : ''}
+                        </span>
+                      </button>
+                    )}
                   </div>
+                  {buscaCrew.trim() && activeRoutesWithCrew.length > 0 && (
+                    <p className={`text-[11px] ${crewFiltradas.length ? 'text-sky-800' : 'font-semibold text-amber-700'}`}>
+                      {crewFiltradas.length === 0
+                        ? `Ninguna ruta en tránsito coincide con "${buscaCrew.trim()}".`
+                        : crewFiltradas.length === 1
+                        ? 'Presione Enter para elegirla, o selecciónela en la lista.'
+                        : 'Elija la ruta en la lista (Enter elige la que tenga ese número exacto).'}
+                    </p>
+                  )}
                 </div>
               )}
 
-              <p className="text-[11px] text-slate-500 -mt-1">
-                Las unidades, pilotos y auxiliares que ya están asignados a otra ruta en tránsito no aparecen en los buscadores.
-                Para cargar dos rutas en un mismo camión usa <strong>Optimización de Carga</strong>.
-              </p>
-              <p id="hintSoloCamion" className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 -mt-1">
-                Solo el <strong>camión</strong> es obligatorio. El piloto y los auxiliares son opcionales: puedes asignar solo la unidad
-                (por ejemplo la noche anterior) y completar la tripulación después con <strong>Modificar / Reasignar</strong>.
-              </p>
-
-              {/* Camión y Piloto: botones grandes que abren el buscador táctil */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800 text-xs sm:text-sm flex items-center">
-                      <TruckIcon className="w-4 h-4 mr-1.5 text-blue-600" />
-                      1. Camión / Unidad *
-                    </span>
-                    {isRecarga && (
-                      <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">Modo Recarga</span>
-                    )}
-                  </div>
+              {/* Tripulación: camión, piloto y auxiliares en un solo bloque */}
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                Tripulación
+                <span
+                  id="hintSoloCamion"
+                  className="inline-flex text-slate-400 normal-case cursor-help"
+                  title="Solo el camión es obligatorio. El piloto y los auxiliares son opcionales: se puede asignar solo la unidad (por ejemplo la noche anterior) y completar la tripulación después con Modificar / Reasignar. Las unidades y personas que ya están en otra ruta en tránsito no aparecen en los buscadores; para cargar dos rutas en el mismo camión usa Copiar camión y tripulación."
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Camión */}
+                <div className="space-y-1.5 min-w-0">
+                  <span className="font-bold text-slate-800 text-xs flex items-center">
+                    <TruckIcon className="w-4 h-4 mr-1.5 text-blue-600" />
+                    Camión *
+                  </span>
                   <button
                     type="button"
                     onClick={() => setPickerOpen('truck')}
-                    className={`w-full min-h-[64px] text-left px-4 py-3 rounded-xl border-2 flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] transition ${
+                    className={`w-full min-h-[60px] text-left px-3 py-2 rounded-xl border-2 flex items-center justify-between gap-2 cursor-pointer active:scale-[0.99] transition ${
                       selectedTruckObj ? 'border-blue-300 bg-blue-50/60' : 'border-dashed border-slate-300 bg-slate-50 hover:border-blue-400'
                     }`}
                   >
                     {selectedTruckObj ? (
                       <div className="min-w-0">
-                        <div id="selTruckId" className="font-black text-slate-900 text-lg leading-tight truncate">
+                        <div id="selTruckId" className="font-black text-slate-900 text-base leading-tight truncate">
                           {selectedTruckObj.idCamion ? `ID ${selectedTruckObj.idCamion}` : selectedTruckObj.placa}
                         </div>
-                        <div id="selTruckPlaca" className="text-sm font-bold text-blue-800 truncate">
+                        <div id="selTruckPlaca" className="text-[11px] font-bold text-blue-800 truncate">
                           {selectedTruckObj.idCamion ? `Placa ${selectedTruckObj.placa}` : 'Sin ID de camión'}
-                        </div>
-                        <div className="text-xs text-slate-500 truncate">
-                          Capacidad {selectedTruckObj.capacidad} · Carga ruta {fmtNum(route.cajasFisicas)} cajas
+                          <span className="font-medium text-slate-500"> · Cap. {selectedTruckObj.capacidad}</span>
                         </div>
                       </div>
                     ) : (
-                      <span className="text-sm font-semibold text-slate-500">Tocar para buscar camión (placa o ID)</span>
+                      <span className="text-xs font-semibold text-slate-500">Buscar placa o ID</span>
                     )}
-                    <span className="text-xs font-bold text-blue-700 flex-shrink-0">{selectedTruckObj ? 'Cambiar' : 'Elegir'}</span>
+                    <span className="text-[11px] font-bold text-blue-700 flex-shrink-0">{selectedTruckObj ? 'Cambiar' : 'Elegir'}</span>
                   </button>
                   {selectedTruckObj && (() => {
                     const routesOnTruck = inTransitOthers.filter((ar) => ar.asignacion?.camionId === selectedTruckObj.id);
@@ -1343,40 +1194,36 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                     const combined = fmtNum((otherBoxes + (toNum(route.cajasFisicas) || 0)), 1);
                     return (
                       <div className="text-[11px] bg-sky-50 border border-sky-200 rounded-lg px-2.5 py-1.5 text-sky-900">
-                        <strong>Carga compartida</strong> con {routesOnTruck.map((r) => `Ruta ${r.id}`).join(', ')} ({fmtNum(otherBoxes, 1)} cajas) · Total camión: <strong>{combined} cajas</strong>
+                        <strong>Carga compartida</strong> con {routesOnTruck.map((r) => `Ruta ${r.id}`).join(', ')} ({fmtNum(otherBoxes, 1)} cj) · Total camión: <strong>{combined} cj</strong>
                       </div>
                     );
                   })()}
                 </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800 text-xs sm:text-sm flex items-center">
-                      <User className="w-4 h-4 mr-1.5 text-indigo-600" />
-                      2. Piloto Titular (VPP / VPPB) <span className="ml-1 font-normal text-slate-400 text-[11px]">(opcional)</span>
-                    </span>
-                    {isRecarga && (
-                      <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">Segundo Viaje</span>
-                    )}
-                  </div>
+                {/* Piloto */}
+                <div className="space-y-1.5 min-w-0">
+                  <span className="font-bold text-slate-800 text-xs flex items-center">
+                    <User className="w-4 h-4 mr-1.5 text-indigo-600" />
+                    Piloto <span className="ml-1 font-normal text-slate-400 text-[11px]">(opcional)</span>
+                  </span>
                   <button
                     type="button"
                     onClick={() => setPickerOpen('driver')}
-                    className={`w-full min-h-[64px] text-left px-4 py-3 rounded-xl border-2 flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] transition ${
+                    className={`w-full min-h-[60px] text-left px-3 py-2 rounded-xl border-2 flex items-center justify-between gap-2 cursor-pointer active:scale-[0.99] transition ${
                       selectedDriverObj ? 'border-indigo-300 bg-indigo-50/60' : 'border-dashed border-slate-300 bg-slate-50 hover:border-indigo-400'
                     }`}
                   >
                     {selectedDriverObj ? (
                       <div className="min-w-0">
-                        <div className="font-bold text-slate-900 text-base truncate">{selectedDriverObj.nombre}</div>
-                        <div className="text-xs text-slate-500 truncate">
-                          {selectedDriverObj.puesto || 'VPP'} · Cód. {selectedDriverObj.codigoCorto || selectedDriverObj.codigo || '—'} · DPI {selectedDriverObj.dpi || 'N/A'}
+                        <div className="font-bold text-slate-900 text-sm leading-tight truncate" title={selectedDriverObj.nombre}>{selectedDriverObj.nombre}</div>
+                        <div className="text-[11px] text-slate-500 truncate">
+                          {selectedDriverObj.puesto || 'VPP'} · Cód. {selectedDriverObj.codigoCorto || selectedDriverObj.codigo || '—'}
                         </div>
                       </div>
                     ) : (
-                      <span className="text-sm font-semibold text-slate-500">Tocar para buscar piloto (nombre, código o DPI)</span>
+                      <span className="text-xs font-semibold text-slate-500">Buscar nombre, código o DPI</span>
                     )}
-                    <span className="text-xs font-bold text-indigo-700 flex-shrink-0">{selectedDriverObj ? 'Cambiar' : 'Elegir'}</span>
+                    <span className="text-[11px] font-bold text-indigo-700 flex-shrink-0">{selectedDriverObj ? 'Cambiar' : 'Elegir'}</span>
                   </button>
                   {selectedDriverObj && (() => {
                     const routesOnDriver = inTransitOthers.filter((ar) => ar.asignacion?.conductor === selectedDriverObj.nombre);
@@ -1386,7 +1233,7 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                       <>
                         {sameTruckRoutes.length > 0 && (
                           <div className="text-[11px] bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5 text-indigo-900">
-                            Asignado también en: <strong>{sameTruckRoutes.map((r) => `Ruta ${r.id}`).join(', ')}</strong> (Carga Compartida)
+                            También en: <strong>{sameTruckRoutes.map((r) => `Ruta ${r.id}`).join(', ')}</strong> (carga compartida)
                           </div>
                         )}
                         {differentTruckRoutes.length > 0 && (
@@ -1398,145 +1245,85 @@ export const AssignModal: React.FC<AssignModalProps> = ({
                     );
                   })()}
                 </div>
-              </div>
 
-              {/* Auxiliares: etiquetas táctiles + un solo botón para agregar */}
-              <div className="bg-indigo-50/40 p-4 rounded-xl border border-indigo-100 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <span className="font-bold text-indigo-950 text-xs sm:text-sm flex items-center">
-                    <Users className="w-4 h-4 mr-1.5 text-indigo-700" />
-                    3. Auxiliares de Reparto (hasta 4)
-                  </span>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <label
-                      className={`inline-flex items-center min-h-[40px] px-3 rounded-lg border text-xs font-semibold cursor-pointer select-none ${
-                        allowPilotsAsHelpers ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-300 text-slate-700'
-                      }`}
-                      title="Permite elegir pilotos (VPP/VPPB) como auxiliares en esta ruta"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={allowPilotsAsHelpers}
-                        onChange={(e) => setAllowPilotsAsHelpers(e.target.checked)}
-                        className="w-4 h-4 mr-2 accent-indigo-600 cursor-pointer"
-                      />
-                      Permitir piloto como auxiliar
-                    </label>
-                    {helpersSelected.length > 0 && (
+                {/* Auxiliares */}
+                <div className="space-y-1.5 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-slate-800 text-xs flex items-center">
+                      <Users className="w-4 h-4 mr-1.5 text-indigo-700" />
+                      Auxiliares <span className="ml-1 font-normal text-slate-400 text-[11px]">(hasta 4)</span>
+                    </span>
+                    {helpersSelected.length > 1 && (
                       <button
                         type="button"
                         onClick={() => setHelpersList([])}
-                        className="min-h-[44px] px-3 rounded-lg text-xs font-semibold text-slate-500 hover:text-red-600 border border-transparent hover:border-red-200 hover:bg-red-50 flex items-center cursor-pointer"
+                        className="text-[11px] font-semibold text-slate-500 hover:text-red-600 flex items-center cursor-pointer"
+                        title="Quitar todos los auxiliares"
                       >
-                        <Trash2 className="w-3.5 h-3.5 mr-1" />
-                        Quitar todos
+                        <Trash2 className="w-3 h-3 mr-0.5" /> Quitar todos
+                      </button>
+                    )}
+                  </div>
+                  <div className="min-h-[60px] p-1.5 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/30 flex flex-wrap items-center gap-1.5">
+                    {helpersSelected.map((h) => (
+                      <span
+                        key={h}
+                        className={`inline-flex items-center max-w-full min-h-[36px] pl-2.5 pr-0.5 rounded-lg border text-xs font-semibold ${
+                          getIsPilot(h) ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-white border-indigo-200 text-slate-800'
+                        }`}
+                      >
+                        <span className="truncate" title={h}>{h}</span>
+                        {getIsPilot(h) && <span className="ml-1 text-[10px] font-bold text-amber-700">(Piloto)</span>}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveHelper(h)}
+                          className="ml-0.5 min-w-[32px] min-h-[32px] rounded-md flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                          title={`Quitar a ${h}`}
+                          aria-label={`Quitar a ${h}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                    {helpersSelected.length < 4 && (
+                      <button
+                        type="button"
+                        onClick={() => setPickerOpen('helpers')}
+                        title="Para elegir un piloto como auxiliar, marca 'Incluir pilotos' en el buscador."
+                        className="min-h-[36px] px-3 rounded-lg text-indigo-700 font-semibold text-xs hover:bg-indigo-100 cursor-pointer active:scale-95"
+                      >
+                        + Agregar
                       </button>
                     )}
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {helpersSelected.map((h) => (
-                    <span
-                      key={h}
-                      className={`inline-flex items-center min-h-[48px] pl-4 pr-1.5 rounded-xl border-2 text-sm font-semibold ${
-                        getIsPilot(h) ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-white border-indigo-200 text-slate-800'
-                      }`}
-                    >
-                      {h}
-                      {getIsPilot(h) && <span className="ml-1.5 text-[10px] font-bold text-amber-700">(Piloto)</span>}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveHelper(h)}
-                        className="ml-1.5 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
-                        title={`Quitar a ${h}`}
-                        aria-label={`Quitar a ${h}`}
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </span>
-                  ))}
-                  {helpersSelected.length < 4 && (
-                    <button
-                      type="button"
-                      onClick={() => setPickerOpen('helpers')}
-                      className="min-h-[48px] px-4 rounded-xl border-2 border-dashed border-indigo-300 text-indigo-700 font-semibold text-sm hover:bg-indigo-50 cursor-pointer active:scale-95"
-                    >
-                      + Agregar auxiliar
-                    </button>
-                  )}
-                </div>
               </div>
 
-              {/* Hora Estimada de Salida con botón rápido de hora actual */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <label htmlFor="horaSalidaInput" className="font-bold text-slate-800 text-xs sm:text-sm flex items-center">
-                    <Clock className="w-4 h-4 mr-1.5 text-slate-600" />
-                    Hora Estimada de Salida *
-                  </label>
-                  <p className="text-xs text-slate-500 mt-0.5">Hora de inicio de viaje para control de tiempos de entrega</p>
-                </div>
-                <div className="flex items-center space-x-2.5">
-                  <input
-                    id="horaSalidaInput"
-                    type="time"
-                    value={horaSalida}
-                    onChange={(e) => setHoraSalida(e.target.value)}
-                    required
-                    className="p-2.5 border border-slate-300 rounded-lg font-mono font-bold text-sm bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const n = new Date();
-                      setHoraSalida(`${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`);
-                    }}
-                    className="min-h-[44px] px-3.5 py-2.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs sm:text-sm font-semibold rounded-lg transition-colors cursor-pointer shadow-2xs active:scale-95"
-                    title="Asignar hora actual del sistema"
-                  >
-                    Hora Actual
-                  </button>
-                </div>
-              </div>
-
-              {/* Resumen Operativo de Tripulación */}
-              <div className="p-4 sm:p-5 bg-slate-900 text-slate-100 rounded-xl shadow-xs space-y-2">
-                <div className="flex items-center justify-between text-xs sm:text-sm font-bold text-slate-300 border-b border-slate-800 pb-2">
-                  <span className="flex items-center uppercase tracking-wider text-xs">
-                    <CheckCircle2 className="w-4 h-4 mr-2 text-emerald-400" />
-                    Resumen de Tripulación a Despachar
-                  </span>
-                  <span className="font-mono text-emerald-400 text-xs sm:text-sm font-bold">
-                    {horaSalida ? `Salida Programada: ${horaSalida}` : 'Hora pendiente'}
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                  <div>
-                    <span className="text-slate-400 text-xs block">Unidad / Camión:</span>
-                    <span className="font-bold text-white text-sm truncate block mt-0.5">
-                      {selectedTruckObj ? (selectedTruckObj.idCamion ? `ID ${selectedTruckObj.idCamion}` : selectedTruckObj.placa) : '—'}
-                    </span>
-                    <span className="text-slate-300 text-xs block">
-                      {selectedTruckObj ? `${selectedTruckObj.idCamion ? `Placa ${selectedTruckObj.placa} · ` : ''}Capacidad ${selectedTruckObj.capacidad}` : ''}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 text-xs block">Piloto Titular:</span>
-                    <span className="font-bold text-white text-sm truncate block mt-0.5">
-                      {driverName || '—'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 text-xs block">
-                      Auxiliares ({[helper1, helper2, helper3, helper4].filter(Boolean).length}):
-                    </span>
-                    <span className="font-medium text-slate-200 truncate block text-xs sm:text-sm mt-0.5">
-                      {[helper1, helper2, helper3, helper4].filter(Boolean).length > 0
-                        ? [helper1, helper2, helper3, helper4].filter(Boolean).join(', ')
-                        : 'Sin auxiliares'}
-                    </span>
-                  </div>
-                </div>
+              {/* Hora de salida: en una línea */}
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="horaSalidaInput" className="font-bold text-slate-800 text-xs flex items-center" title="Hora de inicio de viaje para control de tiempos de entrega">
+                  <Clock className="w-4 h-4 mr-1.5 text-slate-600" />
+                  Hora de salida *
+                </label>
+                <input
+                  id="horaSalidaInput"
+                  type="time"
+                  value={horaSalida}
+                  onChange={(e) => setHoraSalida(e.target.value)}
+                  required
+                  className="min-h-[40px] px-2.5 border border-slate-300 rounded-lg font-mono font-bold text-sm bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const n = new Date();
+                    setHoraSalida(`${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`);
+                  }}
+                  className="min-h-[40px] px-3 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer active:scale-95"
+                  title="Asignar hora actual del sistema"
+                >
+                  Ahora
+                </button>
               </div>
             </div>
           )}
@@ -1553,6 +1340,15 @@ export const AssignModal: React.FC<AssignModalProps> = ({
             info={
               <span className="hidden md:inline">
                 Ruta <b className="text-slate-700">{route.id}</b> · {fmtNum(route.cajasFisicas)} cajas
+                {!isPiso && !isBolson && !isSelfService && (
+                  <>
+                    {' · '}
+                    {selectedTruckObj ? <b className="text-slate-700">{selectedTruckObj.idCamion ? `ID ${selectedTruckObj.idCamion}` : selectedTruckObj.placa}</b> : 'sin camión'}
+                    {driverName ? ` · ${driverName.split(' ').slice(0, 2).join(' ')}` : ''}
+                    {helpersSelected.length ? ` · ${helpersSelected.length} aux.` : ''}
+                    {horaSalida ? ` · sale ${horaSalida}` : ''}
+                  </>
+                )}
               </span>
             }
           >
