@@ -42,7 +42,9 @@ from (values
   (14, 'Fase 11 (módulo ZR)', 'ZR: autorizaciones controladas por la base',
         exists (select 1 from pg_trigger where tgname = 'trg_zr_control' and not tgisinternal)),
   (15, 'Fase 11 (módulo ZR)', 'ZR: almacenamiento de fotos y PDF',
-        exists (select 1 from storage.buckets where id = 'zr'))
+        exists (select 1 from storage.buckets where id = 'zr')),
+  (16, 'Fase 12 (recargas en ruta)', 'Recargas: se autorizan hasta liquidar el viaje',
+        exists (select 1 from fn where proname = 'dc_recargas_control' and prosrc like '%En ruta%'))
 ) as t(orden, fase, que_revisa, ok)
 order by orden;
 
