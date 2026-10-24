@@ -9,6 +9,7 @@
 #   alguien lograra meter código en una página, no podría enviar la sesión a
 #   otro servidor.
 # - X-Robots-Tag: Google y otros buscadores no muestran la app.
+# - Strict-Transport-Security: el navegador siempre usa la conexión segura (https).
 /*
   X-Frame-Options: SAMEORIGIN
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
@@ -16,6 +17,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   X-Robots-Tag: noindex, nofollow
+  Strict-Transport-Security: max-age=31536000
 
 # Caché de la app: los archivos de /assets/ llevan un código único en el nombre
 # (Vite) que cambia en cada publicación, así que el navegador puede guardarlos
