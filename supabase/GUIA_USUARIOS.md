@@ -103,6 +103,18 @@ No requiere correr nada en Supabase.
 - La ruta sigue siendo una sola (no se duplican cajas). El camión y la tripulación de apoyo quedan **En Ruta** hasta que se liquida la ruta; entonces quedan libres solos.
 - Se ve en el Tablero (etiqueta "+1 apoyo"), en el detalle de la ruta, en los Excel (columna "Camión de Apoyo") y en el Dashboard (tarjeta "Camiones de apoyo").
 
+## Seguridad (Fase 13)
+
+1. Supabase → **SQL Editor → New query** → pega TODO el contenido de `supabase/fase13_seguridad.sql` → **Run**. Al final deben salir 3 filas con **SÍ** y "Solo alerta (no bloquea)". No cambia nada para los usuarios.
+2. (Recomendado) pega y corre `supabase/borrar_contrasenas_antiguas.sql`: borra la tabla vieja con contraseñas en texto (la app no la usa).
+3. Revisión de seguridad completa (solo lee): `supabase/diagnostico_seguridad_rls.sql`.
+
+Qué hace la Fase 13:
+- Registra en la bitácora quién crea, cambia (permisos, agencias, administrador, activo) o elimina usuarios.
+- Si alguien que no es administrador cambia los resultados de una liquidación cerrada, deja una **ALERTA** en la bitácora (por ahora no bloquea). Para ver las alertas: `select fecha, usuario, detalle from public.app_audit_log where accion = 'ALERTA_LIQUIDACION' order by fecha desc;`
+- Cuando no salgan alertas de trabajo normal, se activa el bloqueo: `update public.app_seguridad_config set valor = 'si' where clave = 'bloquear_cambios_liquidacion';`
+- Las funciones de la base ya no se pueden usar sin iniciar sesión.
+
 ## ¿Qué fases tiene aplicada mi base?
 Supabase → SQL Editor → pega `supabase/diagnostico_fases.sql` → Run. Solo lee: muestra cada fase con SÍ/NO, las tablas sin seguridad por filas (debe salir vacío) y los administradores activos.
 
