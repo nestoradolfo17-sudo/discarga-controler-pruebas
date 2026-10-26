@@ -87,6 +87,8 @@ const PERMISSION_LABELS: { key: keyof TablePermissions; label: string; grandfath
   { key: 'canBulkUploadStaff', label: 'Subir Excel Personal', grandfathered: true },
   { key: 'canCreateUsers', label: 'Crear usuarios' },
   { key: 'zr', label: 'ZR' },
+  // Solo consulta: ve sus pantallas pero no guarda cambios (para DEMO / capacitación).
+  { key: 'soloLectura', label: 'Solo consulta' },
 ];
 
 // Devuelve si un permiso está habilitado para un usuario, respetando la
@@ -815,7 +817,9 @@ export const UsersView: React.FC<UsersViewProps> = ({
                               aria-pressed={isPermEnabled(u, key, grandfathered)}
                               className={`min-h-[36px] text-[11px] font-semibold px-2 rounded-lg border transition cursor-pointer ${
                                 isPermEnabled(u, key, grandfathered)
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  ? key === 'soloLectura'
+                                    ? 'bg-sky-50 text-sky-800 border-sky-300'
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-300'
                                   : 'bg-white text-slate-400 border-slate-200 line-through decoration-slate-300'
                               }`}
                             >
@@ -1076,9 +1080,26 @@ export const UsersView: React.FC<UsersViewProps> = ({
           <div>
             <h3 className="font-bold text-slate-800 text-sm">Respaldo de datos</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Descarga una copia completa (rutas, liquidadas, camiones y personal) para guardarla fuera de Supabase.
-              Además, Supabase guarda un respaldo automático cada día.
+              Descarga una copia completa (rutas, liquidadas, camiones, personal, recargas, préstamos, ZR y usuarios)
+              y guárdala FUERA de Supabase (OneDrive de la empresa o USB), al menos una vez por semana. Además,
+              Supabase guarda un respaldo automático cada día.
             </p>
+            {(() => {
+              let ultimo: string | null = null;
+              try {
+                ultimo = localStorage.getItem('dc-ultimo-respaldo');
+              } catch {
+                ultimo = null;
+              }
+              const dias = ultimo ? Math.floor((Date.now() - new Date(ultimo).getTime()) / 86400000) : null;
+              return (
+                <p className={`text-[11px] mt-1 font-semibold ${dias === null || dias > 7 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  {ultimo
+                    ? `Última descarga en este equipo: ${new Date(ultimo).toLocaleString('es-GT', { timeZone: 'America/Guatemala' })}${dias !== null && dias > 7 ? ' · ya toca descargar otro' : ''}`
+                    : 'Aún no se ha descargado un respaldo en este equipo.'}
+                </p>
+              );
+            })()}
           </div>
           <Button
             variant="secondary"
