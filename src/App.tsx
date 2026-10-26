@@ -20,6 +20,7 @@ import {
   ApoyoRuta,
 } from './types';
 import { INITIAL_ROUTES, INITIAL_TRUCKS, INITIAL_STAFF, INITIAL_USERS } from './data/initialData';
+import { supabase } from './services/supabaseClient';
 import {
   isSupabaseConfigured,
   fetchSharedCollection,
@@ -41,7 +42,7 @@ import { getRouteKey, routeMatchesKey, isSameSplitGroup, clavesDuplicado } from 
 import { esJornadaFutura } from './utils/jornada';
 import { normBusqueda, clientesQueCoinciden } from './utils/busqueda';
 import { asignadosEnFecha, camionesSinAsignar, personalSinAsignar } from './utils/recursosSinAsignar';
-import { isDemoMode } from './services/demoMode';
+import { isDemoMode, setSoloConsulta } from './services/demoMode';
 import {
   getSessionUserId,
   touchLastLogin,
@@ -278,6 +279,10 @@ export default function App() {
     }
     return users.find((u) => u.username.toLowerCase() === (currentUsername || '').toLowerCase()) || null;
   }, [users, currentUsername, authUserId]);
+  // Usuario de SOLO CONSULTA: la conexión deja de enviar cambios (como el DEMO).
+  // Se fija aquí mismo para que aplique antes de cualquier guardado.
+  const esSoloConsulta = !!currentUser && !currentUser.isAdmin && currentUser.permissions?.soloLectura === true;
+  setSoloConsulta(esSoloConsulta);
 
   // Última conexión: además del inicio de sesión, se registra al abrir la app
   // con una sesión guardada y cada 10 minutos mientras la pestaña está visible,
@@ -1013,12 +1018,39 @@ export default function App() {
       }
       result[t] = rows.map((r) => ({ id: r.key, data: r.data }));
     }
+    // Fase 14: también recargas, préstamos, ZR y perfiles de usuarios (sin
+    // contraseñas: esas solo las tiene Supabase Auth). Si una tabla no existe
+    // o no se puede leer, se anota y el respaldo sigue con las demás.
+    const extras = ['app_recargas', 'app_prestamos', 'app_zr', 'app_users'];
+    const omitidas: string[] = [];
+    for (const t of extras) {
+      if (!supabase) break;
+      const filas: unknown[] = [];
+      let fallo = false;
+      for (let desde = 0; ; desde += 1000) {
+        const { data, error } = await supabase.from(t).select('*').range(desde, desde + 999);
+        if (error) {
+          fallo = true;
+          break;
+        }
+        filas.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+      if (fallo) omitidas.push(t);
+      else result[t] = filas;
+    }
+    if (omitidas.length) result.omitidas = omitidas;
     const blob = new Blob([JSON.stringify(result)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     a.href = url;
     a.download = `respaldo_discarga_${stamp}.json`;
+    try {
+      localStorage.setItem('dc-ultimo-respaldo', new Date().toISOString());
+    } catch {
+      /* sin almacenamiento local */
+    }
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -2215,9 +2247,17 @@ export default function App() {
   const handleVerifyAdminForSegment = async (
     username: string,
     password: string,
-    agencia?: string
+    agencia?: string,
+    // Fase 14: la autorización queda registrada en la base para este cambio.
+    aprobacion?: { tipo: 'segmento' | 'estatus_camion'; ref: string }
   ): Promise<{ ok: boolean; nombre?: string; error?: string }> => {
-    if (isSupabaseConfigured) return verifyAdminCredentials(username, password, agencia);
+    if (isSupabaseConfigured)
+      return verifyAdminCredentials(
+        username,
+        password,
+        agencia,
+        aprobacion ? { ...aprobacion, para: currentUser?.id || null } : undefined
+      );
     const u = users.find((x) => x.username.toLowerCase() === username.toLowerCase());
     if (!u || u.password !== password) return { ok: false, error: 'Usuario o contraseña de administrador incorrectos.' };
     const deAgencia = !!agencia && (u.adminAgencies || []).includes(agencia);
@@ -2361,7 +2401,11 @@ export default function App() {
     // viajes hijos bajo IDs distintos, así que su clave compuesta (id+fecha) ya
     // no aparece en el arreglo — hay que pedir su borrado a propósito en vez de
     // depender de una sincronización que infiera la diferencia.
-    void deleteSharedRecords('app_routes', [getRouteKey(originalRoute)]);
+    // Primero se guardan los viajes y después se borra la original: así la base
+    // reconoce el borrado como parte de la división (Fase 14).
+    void pushSharedCollection('app_routes', childRoutes, routeSyncKey).then(() =>
+      deleteSharedRecords('app_routes', [getRouteKey(originalRoute)])
+    );
     showToast(
       `Ruta ${originalRoute.id} dividida en ${childRoutes.length} viajes independientes.`,
       'success'
@@ -4483,6 +4527,11 @@ export default function App() {
           VERSIÓN DEMO · Práctica y presentaciones — nada de lo que hagas aquí se guarda en los datos reales. Recarga la página para volver a los datos actuales.
         </div>
       )}
+      {esSoloConsulta && !isDemoMode && (
+        <div className="sticky top-0 z-[60] bg-sky-600 text-white text-center text-xs sm:text-sm font-bold py-1.5 px-4 shadow">
+          USUARIO DE SOLO CONSULTA · Puedes ver la información, pero los cambios no se guardan.
+        </div>
+      )}
       <Navbar
         agencies={boardAgencies}
         selectedAgency={selectedAgency}
@@ -4984,14 +5033,25 @@ export default function App() {
         route={segmentTarget}
         splitCount={segmentSplitGroup(segmentTarget).length}
         defaultAdminUser={esAdminDe(segmentTarget?.agencia) ? currentUser.username : ''}
-        onVerifyAdmin={(u, p) => handleVerifyAdminForSegment(u, p, segmentTarget?.agencia)}
+        onVerifyAdmin={(u, p) =>
+          handleVerifyAdminForSegment(u, p, segmentTarget?.agencia, {
+            tipo: 'segmento',
+            // Número de ruta base (los viajes 300.1 / 300.2 de una ruta dividida usan 300).
+            ref: String(segmentTarget?.parentRouteId || segmentTarget?.id || '').split('.')[0],
+          })
+        }
         onConfirm={handleConfirmSegmentChange}
         onClose={() => setSegmentTarget(null)}
       />
       <ChangeTruckStatusModal
         truck={truckStatusTarget}
         defaultAdminUser={esAdminDe(truckStatusTarget?.agencia) ? currentUser.username : ''}
-        onVerifyAdmin={(u, p) => handleVerifyAdminForSegment(u, p, truckStatusTarget?.agencia)}
+        onVerifyAdmin={(u, p) =>
+          handleVerifyAdminForSegment(u, p, truckStatusTarget?.agencia, {
+            tipo: 'estatus_camion',
+            ref: String(truckStatusTarget?.id || ''),
+          })
+        }
         onConfirm={handleConfirmTruckStatus}
         onClose={() => setTruckStatusTarget(null)}
       />
