@@ -47,7 +47,12 @@ from (values
         exists (select 1 from fn where proname = 'dc_recargas_control' and prosrc like '%En ruta%')),
   (17, 'Fase 13 (seguridad)', 'Bitácora de usuarios y vigilancia de liquidaciones',
         exists (select 1 from pg_trigger where tgname = 'trg_audit_usuarios' and not tgisinternal)
-        and exists (select 1 from pg_trigger where tgname = 'trg_vigilar_liquidacion' and not tgisinternal))
+        and exists (select 1 from pg_trigger where tgname = 'trg_vigilar_liquidacion' and not tgisinternal)),
+  (18, 'Fase 14 (seguridad 2)', 'Permisos por pantalla, autorizaciones, borrado de rutas y solo consulta',
+        exists (select 1 from pg_trigger where tgname = 'trg_vigilar_permisos' and not tgisinternal)
+        and exists (select 1 from pg_trigger where tgname = 'trg_vigilar_autorizacion' and not tgisinternal)
+        and exists (select 1 from pg_trigger where tgname = 'trg_vigilar_borrado_ruta' and not tgisinternal)
+        and exists (select 1 from fn where proname = 'dc_solo_lectura'))
 ) as t(orden, fase, que_revisa, ok)
 order by orden;
 
