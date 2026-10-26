@@ -115,6 +115,25 @@ Qué hace la Fase 13:
 - Cuando no salgan alertas de trabajo normal, se activa el bloqueo: `update public.app_seguridad_config set valor = 'si' where clave = 'bloquear_cambios_liquidacion';`
 - Las funciones de la base ya no se pueden usar sin iniciar sesión.
 
+## Seguridad, segunda etapa (Fase 14)
+
+1. Supabase → **SQL Editor → New query** → pega TODO el contenido de `supabase/fase14_seguridad.sql` → **Run**. Deben salir 4 filas con **SÍ** y "Solo alerta (no bloquea)". Nadie deja de trabajar.
+2. Publica la app (rama demo → probar → main), para que las autorizaciones de administrador queden registradas en la base.
+
+Qué hace la Fase 14 (todo empieza en **modo alerta**):
+- **Permisos por pantalla en la base**: quien no tiene Asignación / Cargar Rutas / Liquidadas no guarda rutas; quien no tiene Camiones / Personal solo puede cambiar lo de la asignación diaria (En Ruta / Disponible, motivo de no asignado).
+- **Segmento y estatus de camión**: la base comprueba que un administrador (general o de la agencia) lo autorizó con su contraseña.
+- **Borrar rutas del tablero**: solo con "Puede eliminar" o administrador. Lo automático (archivar liquidadas, dividir / revertir rutas) sigue igual. Toda ruta borrada queda completa en la bitácora.
+- **Usuarios de solo consulta**: en Usuarios, botón **Solo consulta**. Ven sus pantallas, pero la app y la base rechazan cualquier cambio. Úsalo para las cuentas del DEMO, capacitación o supervisión.
+- **Respaldo**: el diario y el botón **Descargar respaldo** incluyen ahora recargas, préstamos, ZR y usuarios. Descárgalo cada semana y guárdalo **fuera de Supabase** (OneDrive de la empresa o USB); la pantalla Usuarios avisa cuando ya pasaron más de 7 días.
+
+Revisar alertas (una semana después):
+`select fecha at time zone 'America/Guatemala' as fecha, accion, usuario, tabla, registro, detalle from public.app_audit_log where accion in ('ALERTA_PERMISO','ALERTA_AUTORIZACION','ALERTA_BORRADO') order by fecha desc limit 200;`
+
+Si solo aparecen casos reales (no trabajo normal), activa cada bloqueo:
+`update public.app_seguridad_config set valor = 'si', actualizado = now() where clave = 'bloquear_segmento_estatus';`
+(igual con `bloquear_borrado_rutas` y `bloquear_permisos_pantalla`; con `valor = 'no'` se regresa a solo alerta).
+
 ## ¿Qué fases tiene aplicada mi base?
 Supabase → SQL Editor → pega `supabase/diagnostico_fases.sql` → Run. Solo lee: muestra cada fase con SÍ/NO, las tablas sin seguridad por filas (debe salir vacío) y los administradores activos.
 
