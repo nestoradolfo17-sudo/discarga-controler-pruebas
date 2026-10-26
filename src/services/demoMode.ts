@@ -47,6 +47,14 @@ export const isDemoMode: boolean = (() => {
   }
 })();
 
+// Usuario de SOLO CONSULTA (permiso "soloLectura"): misma protección que el
+// DEMO, activada al iniciar sesión con ese usuario (ver App.tsx).
+let soloConsulta = false;
+export const setSoloConsulta = (v: boolean) => {
+  soloConsulta = v;
+};
+export const isSoloConsulta = () => soloConsulta;
+
 export const DEMO_BLOCK_MESSAGE = 'Versión DEMO: esta acción no se aplica a los datos reales.';
 
 // Funciones de la base que solo LEEN y que el demo puede llamar.
@@ -87,6 +95,8 @@ export const demoFetch: typeof fetch = async (input, init) => {
   if (path.startsWith('/rest/v1/rpc/')) {
     const name = path.slice('/rest/v1/rpc/'.length).split('?')[0];
     if (READ_ONLY_RPCS.has(name)) return fetch(input, init);
+    // Solo consulta (fuera del DEMO): sí registra su última conexión.
+    if (name === 'touch_last_login' && soloConsulta && !isDemoMode) return fetch(input, init);
     return new Response(null, { status: 204 });
   }
 
@@ -100,3 +110,7 @@ export const demoFetch: typeof fetch = async (input, init) => {
   if (isRead) return fetch(input, init);
   return json(403, { error: DEMO_BLOCK_MESSAGE });
 };
+
+/** Conexión de la app: normal, o de solo lectura si es DEMO o usuario de solo consulta. */
+export const appFetch: typeof fetch = (input, init) =>
+  isDemoMode || soloConsulta ? demoFetch(input, init) : fetch(input, init);
