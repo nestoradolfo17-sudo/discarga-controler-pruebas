@@ -121,7 +121,10 @@ export async function verifyAdminCredentials(
   username: string,
   password: string,
   // Si se indica, también se acepta al ADMINISTRADOR DE ESA AGENCIA.
-  agencia?: string
+  agencia?: string,
+  // Si se indica, el administrador deja registrada en la base su autorización
+  // (Fase 14): la base comprueba que el cambio fue autorizado de verdad.
+  aprobacion?: { tipo: 'segmento' | 'estatus_camion' | 'borrar_ruta'; ref: string; para?: string | null }
 ): Promise<{ ok: boolean; nombre?: string; error?: string }> {
   if (!supabase) return { ok: false, error: 'La base de datos no está configurada.' };
   const url = import.meta.env.VITE_SUPABASE_URL as string;
@@ -152,6 +155,19 @@ export async function verifyAdminCredentials(
           ? `Ese usuario no es administrador general ni administrador de la agencia ${agencia}.`
           : 'Ese usuario no es un administrador activo.',
       };
+    }
+    if (aprobacion && !isDemoMode) {
+      // Si la Fase 14 aún no está en la base, esto falla sin afectar nada.
+      try {
+        await temp.rpc('dc_registrar_aprobacion', {
+          p_tipo: aprobacion.tipo,
+          p_ref: aprobacion.ref,
+          p_agencia: agencia || '',
+          p_para: aprobacion.para || null,
+        });
+      } catch {
+        /* sin registro: la base solo anotará una alerta */
+      }
     }
     return { ok: true, nombre: prof.nombre || prof.username };
   } catch (e) {
