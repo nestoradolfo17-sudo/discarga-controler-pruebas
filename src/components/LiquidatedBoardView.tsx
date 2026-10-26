@@ -21,6 +21,44 @@ export interface LiquidatedKpis {
   cajaAbierta: number;
 }
 
+
+// --- Estados de una ruta liquidada (filtro) ---
+type EstadoLiqFiltro = 'TODOS' | 'liquidada' | 'caja_pendiente' | 'caja_validada' | 'con_devolucion';
+
+const devueltas = (r: Route) => parseFloat(String(r.liquidacion?.cajasDevueltas)) || 0;
+
+const ESTADOS_LIQ: { k: EstadoLiqFiltro; label: string; ayuda: string; activo: string; cumple: (r: Route) => boolean }[] = [
+  { k: 'TODOS', label: 'Todas', ayuda: 'Todas las rutas liquidadas', activo: 'bg-slate-800 text-white border-slate-800', cumple: () => true },
+  {
+    k: 'liquidada',
+    label: 'Liquidada',
+    ayuda: 'Liquidadas sin Caja Abierta',
+    activo: 'bg-emerald-600 text-white border-emerald-600',
+    cumple: (r) => !r.liquidacion?.cajaAbierta,
+  },
+  {
+    k: 'caja_pendiente',
+    label: 'Caja Abierta pendiente',
+    ayuda: 'Caja Abierta sin Liquidación Final',
+    activo: 'bg-amber-500 text-white border-amber-500',
+    cumple: (r) => !!r.liquidacion?.cajaAbierta && !r.liquidacion?.cajaAbiertaResuelta,
+  },
+  {
+    k: 'caja_validada',
+    label: 'Caja Abierta validada',
+    ayuda: 'Caja Abierta con Liquidación Final registrada',
+    activo: 'bg-teal-600 text-white border-teal-600',
+    cumple: (r) => !!r.liquidacion?.cajaAbierta && !!r.liquidacion?.cajaAbiertaResuelta,
+  },
+  {
+    k: 'con_devolucion',
+    label: 'Con devolución',
+    ayuda: 'Liquidadas con cajas devueltas (cualquier estado)',
+    activo: 'bg-rose-600 text-white border-rose-600',
+    cumple: (r) => devueltas(r) > 0,
+  },
+];
+
 interface LiquidatedBoardViewProps {
   onKpisChange?: (kpis: LiquidatedKpis) => void;
   // Si viene definido, solo se cargaron los últimos N días del historial.
@@ -66,6 +104,8 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
   const [selectedAgency, setSelectedAgency] = useState('TODAS');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  // Filtro por estado de la liquidación (ver ESTADOS_LIQ más abajo).
+  const [estadoFiltro, setEstadoFiltro] = useState<EstadoLiqFiltro>('TODOS');
   const [expandedClientesKey, setExpandedClientesKey] = useState<string | null>(null);
   // Ventanita (ojo) con camión y tripulación de una ruta liquidada.
   const [unidadPop, setUnidadPop] = useState<{
@@ -94,7 +134,9 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
     };
   }, [unidadPop]);
 
-  const filteredList = useMemo(() => {
+  // Lista con los filtros de búsqueda, agencia y fecha (sin el de estado):
+  // de aquí salen los conteos de cada estado.
+  const baseList = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
     const fromTime = dateFrom ? new Date(dateFrom + 'T00:00:00').getTime() : null;
     const toTime = dateTo ? new Date(dateTo + 'T23:59:59').getTime() : null;
@@ -147,6 +189,22 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
       return true;
     });
   }, [liquidatedRoutes, searchTerm, selectedAgency, dateFrom, dateTo]);
+
+  const conteoEstados = useMemo(() => {
+    const c: Record<EstadoLiqFiltro, number> = { TODOS: baseList.length, liquidada: 0, caja_pendiente: 0, caja_validada: 0, con_devolucion: 0 };
+    baseList.forEach((r) => {
+      ESTADOS_LIQ.forEach((e) => {
+        if (e.k !== 'TODOS' && e.cumple(r)) c[e.k] += 1;
+      });
+    });
+    return c;
+  }, [baseList]);
+
+  const filteredList = useMemo(() => {
+    if (estadoFiltro === 'TODOS') return baseList;
+    const def = ESTADOS_LIQ.find((e) => e.k === estadoFiltro);
+    return def ? baseList.filter((r) => def.cumple(r)) : baseList;
+  }, [baseList, estadoFiltro]);
 
   // Selección para eliminar (solo administradores): se conserva solo lo que sigue visible.
   const visibleKeys = useMemo(() => Array.from(new Set(filteredList.map((r) => getRouteKey(r)))), [filteredList]);
@@ -300,7 +358,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
           />
         </div>
 
-        {(searchTerm || selectedAgency !== 'TODAS' || dateFrom || dateTo) && (
+        {(searchTerm || selectedAgency !== 'TODAS' || dateFrom || dateTo || estadoFiltro !== 'TODOS') && (
           <button
             type="button"
             onClick={() => {
@@ -308,6 +366,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
               setSelectedAgency('TODAS');
               setDateFrom('');
               setDateTo('');
+              setEstadoFiltro('TODOS');
             }}
             className="min-h-[40px] px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-300 rounded-lg bg-white cursor-pointer"
             title="Quitar todos los filtros"
@@ -320,6 +379,34 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
         <Button variant="secondary" size="sm" icon={ACTION_ICONS.exportar} onClick={handleExport} className="text-emerald-700 ml-auto">
           Exportar vista ({filteredList.length})
         </Button>
+      </div>
+
+      {/* Filtro por estado de la liquidación: cada botón muestra cuántas rutas
+          hay en ese estado con los demás filtros aplicados. */}
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar por estado de la liquidación">
+        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mr-1">Estado</span>
+        {ESTADOS_LIQ.map((e) => {
+          const activo = estadoFiltro === e.k;
+          const n = conteoEstados[e.k];
+          return (
+            <button
+              key={e.k}
+              type="button"
+              onClick={() => setEstadoFiltro(e.k)}
+              aria-pressed={activo}
+              title={e.ayuda}
+              disabled={!activo && n === 0 && e.k !== 'TODOS'}
+              className={`min-h-[36px] px-3 rounded-full border text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                activo ? e.activo : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              {e.label}
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activo ? 'bg-white/25' : 'bg-slate-100 text-slate-600'}`}>
+                {fmtNum(n)}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {historyLimitedDays && onLoadFullHistory && (
