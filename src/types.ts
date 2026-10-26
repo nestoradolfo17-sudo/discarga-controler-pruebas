@@ -439,6 +439,9 @@ export interface TablePermissions {
   canCreateUsers?: boolean;
   // Módulo ZR (Control de pagos de zonas rojas). Sin el permiso no se ve.
   zr?: boolean;
+  // Usuario de SOLO CONSULTA (demo, capacitación, supervisión): ve todo lo de
+  // sus pantallas, pero no guarda cambios (la base también se los rechaza).
+  soloLectura?: boolean;
 }
 
 export interface AppUser {
