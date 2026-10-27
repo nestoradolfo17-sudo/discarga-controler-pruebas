@@ -36,7 +36,7 @@ import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { toNum, fmtNum } from '../../utils/number';
 import { getRouteKey } from '../../utils/routeKey';
-import { CierreDiaResumen, COLOR_CIERRE } from '../CierreDiaResumen';
+import { CierreDiaResumen, COLOR_CIERRE, TablaPorEstado } from '../CierreDiaResumen';
 import { calcularCierre, estadoCierre, ETIQUETA_CIERRE, textoDias, type EstadoCierre } from '../../utils/cierreDia';
 import { descargarReportePdf, type ReportePdf } from '../../utils/dashboardPdf';
 
@@ -978,6 +978,29 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     },
   });
 
+  // Tabla del PDF: rutas, cajas (CJ) y paradas según el estado de la ruta.
+  const tablaPdfPorEstado = (
+    c: ReturnType<typeof calcularCierre>,
+    orden: EstadoCierre[],
+    etiqueta: Record<EstadoCierre, string>,
+    sub: string
+  ): ReportePdf['tablas'][number] => {
+    const n0 = (v: number) => Math.round(v).toLocaleString('en-US');
+    const n1 = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const pc = (v: number, t: number) => (t > 0 ? `${((v / t) * 100).toFixed(1)}%` : '—');
+    return {
+      titulo: 'Rutas, cajas y paradas por estado',
+      sub,
+      columnas: [{ t: 'Estado' }, { t: 'Rutas', num: true }, { t: '% Rutas', num: true }, { t: 'CJ', num: true }, { t: '% CJ', num: true }, { t: 'Paradas', num: true }, { t: '% Paradas', num: true }],
+      filas: orden.map((e) => {
+        const f = c.porEstado[e];
+        return [etiqueta[e], n0(f.rutas), pc(f.rutas, c.total), n1(f.cajas), pc(f.cajas, c.cajasPlan), n0(f.paradas), pc(f.paradas, c.paradasPlan)];
+      }),
+      total: ['Total', n0(c.total), c.total ? '100%' : '—', n1(c.cajasPlan), c.cajasPlan ? '100%' : '—', n0(c.paradasPlan), c.paradasPlan ? '100%' : '—'],
+      vacio: 'Sin rutas para la fecha.',
+    };
+  };
+
   // ---------- PDF del Cierre del día (formato y logo de DISCARGA) ----------
   const armarPdfCierre = (): ReportePdf => {
     const c = calcularCierre(filteredMetrics);
@@ -1020,6 +1043,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         segmentos: estados.map((e) => ({ label: ETIQUETA_CIERRE[e], valor: c.conteo[e], color: rgb(COLOR_CIERRE[e]) })),
       },
       tablas: [
+        tablaPdfPorEstado(c, estados, ETIQUETA_CIERRE, 'CJ y paradas planificadas de cada ruta, según su estado al cierre · cada ruta cuenta una sola vez'),
         {
           titulo: 'Pendientes para mañana',
           sub: `${n0(c.pendientes.length)} ruta(s) sin liquidar · primero las más atrasadas${c.pendientes.length > 60 ? ' · se muestran 60' : ''}`,
@@ -1092,6 +1116,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         segmentos: estados.map((e) => ({ label: etiquetaInicio[e], valor: c.conteo[e], color: rgb(COLOR_CIERRE[e]) })),
       },
       tablas: [
+        tablaPdfPorEstado(c, estados, etiquetaInicio, 'CJ y paradas planificadas de cada ruta, según su estado al inicio · cada ruta cuenta una sola vez'),
         {
           titulo: 'Rutas y cajas por segmento',
           columnas: [{ t: 'Segmento' }, { t: 'Rutas', num: true }, { t: 'CJ planificadas', num: true }, { t: 'Paradas', num: true }, { t: 'Por asignar', num: true }, { t: 'En tránsito', num: true }, { t: 'A piso', num: true }, { t: 'Atrasadas', num: true }],
@@ -1759,6 +1784,16 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           {/* ============================================================== */}
           {mode === 'fin' && showSection('resumen') && (
             <CierreDiaResumen metrics={filteredMetrics} fecha={fechaReporte} agencia={filterAgency === 'TODAS' ? 'Todas' : filterAgency} />
+          )}
+
+          {/* Inicio de Día: rutas, cajas (CJ) y paradas según el estado de la ruta. */}
+          {mode === 'inicio' && showSection('segmento') && (
+            <TablaPorEstado
+              datos={calcularCierre(filteredMetrics)}
+              orden={['sin_despachar', 'en_ruta', 'abierta', 'piso', 'bolson', 'liquidada']}
+              etiquetas={{ sin_despachar: 'Por asignar', en_ruta: 'En tránsito', abierta: 'Ruta abierta', piso: 'A piso', bolson: 'Bolsón', liquidada: 'Liquidada' }}
+              sub="CJ y paradas planificadas de cada ruta, según su estado al inicio · cada ruta cuenta una sola vez"
+            />
           )}
 
           {mode === 'inicio' && showSection('segmento') && (() => {
