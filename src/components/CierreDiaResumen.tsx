@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { CheckCircle2, Package, PackageCheck, AlertTriangle, Warehouse, ClipboardList, PackageX } from 'lucide-react';
 import type { RouteSummaryMetric } from './modals/DailySummaryModal';
-import { calcularCierre, ETIQUETA_CIERRE, textoDias, type EstadoCierre } from '../utils/cierreDia';
+import { calcularCierre, ETIQUETA_CIERRE, textoDias, type EstadoCierre, type CierreDatos } from '../utils/cierreDia';
 import logoDiscarga from '../assets/logo-discarga.png';
 
 // --- Fin de Día: resumen ---
@@ -56,6 +56,81 @@ const Indicador: React.FC<{
     {pie && <div className="mt-auto pt-2 text-[11px] text-slate-500">{pie}</div>}
   </div>
 );
+
+// --- Rutas, cajas (CJ) y paradas según el estado de la ruta ---
+// Se usa en Inicio de Día y en Fin de Día. Cada ruta cae en un solo estado,
+// así las filas suman el total planificado del día.
+export const TablaPorEstado: React.FC<{
+  datos: CierreDatos;
+  orden: EstadoCierre[];
+  etiquetas?: Partial<Record<EstadoCierre, string>>;
+  titulo?: string;
+  sub?: string;
+  conTitulo?: boolean;
+}> = ({ datos, orden, etiquetas, titulo = 'Rutas, cajas y paradas por estado', sub, conTitulo = true }) => {
+  const th = 'px-3 py-2 text-[10.5px] font-bold uppercase tracking-wider text-white whitespace-nowrap';
+  const td = 'px-3 py-2 tabular-nums text-right';
+  const tot = { rutas: datos.total, cajas: datos.cajasPlan, paradas: datos.paradasPlan };
+  return (
+    <div className={conTitulo ? 'bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden print:shadow-none print:break-inside-avoid' : ''}>
+      {conTitulo && (
+        <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3 border-b border-slate-200">
+          <h4 className="text-sm font-black" style={{ color: MARINO }}>
+            {titulo}
+          </h4>
+          <span className="text-[11px] text-slate-500">{sub || `CJ y paradas planificadas de cada ruta · suman las ${n0(datos.total)} rutas del día`}</span>
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead style={{ backgroundColor: MARINO }}>
+            <tr>
+              <th className={`${th} text-left`}>Estado</th>
+              <th className={`${th} text-right`}>Rutas</th>
+              <th className={`${th} text-right`}>% Rutas</th>
+              <th className={`${th} text-right`}>CJ</th>
+              <th className={`${th} text-right`}>% CJ</th>
+              <th className={`${th} text-right`}>Paradas</th>
+              <th className={`${th} text-right`}>% Paradas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orden.map((e, i) => {
+              const f = datos.porEstado[e];
+              return (
+                <tr key={e} className={`border-b border-slate-100 ${i % 2 ? 'bg-[#EAF5FC]/60' : 'bg-white'} ${f.rutas === 0 ? 'text-slate-400' : 'text-slate-700'}`}>
+                  <td className="px-3 py-2">
+                    <span className="inline-flex items-center gap-2 font-semibold">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLOR_CIERRE[e] }} aria-hidden />
+                      {etiquetas?.[e] || ETIQUETA_CIERRE[e]}
+                    </span>
+                  </td>
+                  <td className={`${td} font-bold`} style={f.rutas ? { color: MARINO } : undefined}>{n0(f.rutas)}</td>
+                  <td className={`${td} text-slate-500`}>{pct(f.rutas, tot.rutas)}</td>
+                  <td className={`${td} font-bold`} style={f.rutas ? { color: MARINO } : undefined}>{n1(f.cajas)}</td>
+                  <td className={`${td} text-slate-500`}>{pct(f.cajas, tot.cajas)}</td>
+                  <td className={`${td} font-bold`} style={f.rutas ? { color: MARINO } : undefined}>{n0(f.paradas)}</td>
+                  <td className={`${td} text-slate-500`}>{pct(f.paradas, tot.paradas)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="font-black" style={{ backgroundColor: '#D6E4F5', color: MARINO }}>
+              <td className="px-3 py-2">Total</td>
+              <td className={td}>{n0(tot.rutas)}</td>
+              <td className={td}>{tot.rutas ? '100%' : '—'}</td>
+              <td className={td}>{n1(tot.cajas)}</td>
+              <td className={td}>{tot.cajas ? '100%' : '—'}</td>
+              <td className={td}>{n0(tot.paradas)}</td>
+              <td className={td}>{tot.paradas ? '100%' : '—'}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+};
 
 export const CierreDiaResumen: React.FC<{
   metrics: RouteSummaryMetric[];
@@ -175,7 +250,7 @@ export const CierreDiaResumen: React.FC<{
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 print:shadow-none print:break-inside-avoid">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
           <h4 className="text-sm font-black" style={{ color: MARINO }}>
-            Balance del día
+            Balance del día · rutas, cajas y paradas por estado
           </h4>
           <span className="text-[11px] text-slate-500">Cada ruta cuenta una sola vez · suman las {n0(c.total)} planificadas</span>
         </div>
@@ -190,18 +265,10 @@ export const CierreDiaResumen: React.FC<{
             ) : null
           )}
         </div>
-        <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          {estados.map((e) => (
-            <div key={e} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLOR_CIERRE[e] }} aria-hidden />
-              <span className="text-[11px] font-semibold text-slate-600 flex-1 truncate">{ETIQUETA_CIERRE[e]}</span>
-              <span className="text-sm font-black tabular-nums" style={{ color: MARINO }}>
-                {n0(c.conteo[e])}
-              </span>
-              <span className="text-[10.5px] text-slate-400 tabular-nums w-10 text-right">{pct(c.conteo[e], c.total)}</span>
-            </div>
-          ))}
+        <div className="mt-3 rounded-lg border border-slate-200 overflow-hidden">
+          <TablaPorEstado datos={c} orden={estados} conTitulo={false} />
         </div>
+        <p className="mt-1.5 text-[10.5px] text-slate-500">CJ y paradas planificadas de cada ruta, según su estado al cierre.</p>
       </div>
 
       {/* 3. Pendientes para mañana + 4. Devoluciones */}
