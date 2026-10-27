@@ -63,6 +63,9 @@ export interface CierreDatos {
   pendientes: PendienteCierre[];
   devoluciones: { motivo: string; rutas: number; cajas: number }[];
   cajasAbiertas: number;
+  // Rutas, cajas físicas y paradas planificadas de cada estado (suman el total).
+  porEstado: Record<EstadoCierre, { rutas: number; cajas: number; paradas: number }>;
+  paradasPlan: number;
 }
 
 const ORDEN_PEND: EstadoCierre[] = ['en_ruta', 'abierta', 'sin_despachar', 'piso'];
@@ -81,11 +84,20 @@ export function calcularCierre(metrics: RouteSummaryMetric[]): CierreDatos {
   let enPlazo = 0;
   const pendientes: PendienteCierre[] = [];
   const dev = new Map<string, { rutas: number; cajas: number }>();
+  const vacio = () => ({ rutas: 0, cajas: 0, paradas: 0 });
+  const porEstado: Record<EstadoCierre, { rutas: number; cajas: number; paradas: number }> = {
+    liquidada: vacio(), en_ruta: vacio(), abierta: vacio(), sin_despachar: vacio(), piso: vacio(), bolson: vacio(),
+  };
+  let paradasPlan = 0;
 
   metrics.forEach((m) => {
     const e = estadoCierre(m);
     conteo[e] += 1;
     cajasPlan += m.cajasFisicasPlan;
+    paradasPlan += m.paradasPlan || 0;
+    porEstado[e].rutas += 1;
+    porEstado[e].cajas += m.cajasFisicasPlan || 0;
+    porEstado[e].paradas += m.paradasPlan || 0;
     if (e === 'piso') cajasBodega += m.cajasFisicasPlan;
     if (e === 'bolson') cajasBolson += m.cajasFisicasPlan;
     if (e === 'sin_despachar') cajasSinDespachar += m.cajasFisicasPlan;
@@ -148,6 +160,8 @@ export function calcularCierre(metrics: RouteSummaryMetric[]): CierreDatos {
     pendientes,
     devoluciones: [...dev.entries()].map(([motivo, v]) => ({ motivo, ...v })).sort((a, b) => b.cajas - a.cajas),
     cajasAbiertas,
+    porEstado,
+    paradasPlan,
   };
 }
 
