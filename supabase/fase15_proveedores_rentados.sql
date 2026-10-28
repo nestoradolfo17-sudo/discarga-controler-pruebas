@@ -25,6 +25,31 @@ $$;
 grant execute on function public.dc_tiene_permiso(text, boolean) to authenticated;
 revoke execute on function public.dc_tiene_permiso(text, boolean) from public, anon;
 
+-- Ayudantes propios de esta fase (no dependen de funciones de fases anteriores).
+-- ¿El usuario en sesión está activo y puede ver esta agencia?
+create or replace function public.dc15_ve_agencia(ag text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.app_users u
+    where u.id = auth.uid() and u.activo
+      and (u.is_admin
+           or to_jsonb(u) -> 'agency_access' = '"all"'::jsonb
+           or (jsonb_typeof(to_jsonb(u) -> 'agency_access') = 'array' and (to_jsonb(u) -> 'agency_access') ? ag))
+  );
+$$;
+-- ¿Es administrador general o administrador de esta agencia?
+create or replace function public.dc15_admin_agencia(ag text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.app_users u
+    where u.id = auth.uid() and u.activo
+      and (u.is_admin
+           or (jsonb_typeof(to_jsonb(u) -> 'admin_agencies') = 'array' and (to_jsonb(u) -> 'admin_agencies') ? ag))
+  );
+$$;
+revoke execute on function public.dc15_ve_agencia(text), public.dc15_admin_agencia(text) from public, anon;
+grant execute on function public.dc15_ve_agencia(text), public.dc15_admin_agencia(text) to authenticated;
+
 -- 1) Código corto de cada agencia (fijo, para que el ID se lea fácil).
 create or replace function public.dc_codigo_agencia(p_agencia text)
 returns text language sql immutable set search_path = public as $$
@@ -79,14 +104,14 @@ drop policy if exists "Proveedores crear" on public.app_proveedores;
 drop policy if exists "Proveedores editar" on public.app_proveedores;
 drop policy if exists "Proveedores eliminar" on public.app_proveedores;
 create policy "Proveedores ver" on public.app_proveedores for select to authenticated
-  using (public.is_app_user() and public.can_access_agency(agencia));
+  using (public.dc15_ve_agencia(agencia));
 create policy "Proveedores crear" on public.app_proveedores for insert to authenticated
-  with check (public.is_app_user() and public.can_access_agency(agencia)
-              and (public.is_agency_admin(agencia) or public.dc_tiene_permiso('trucks')));
+  with check (public.dc15_ve_agencia(agencia)
+              and (public.dc15_admin_agencia(agencia) or public.dc_tiene_permiso('trucks')));
 create policy "Proveedores editar" on public.app_proveedores for update to authenticated
-  using (public.is_agency_admin(agencia)) with check (public.is_agency_admin(agencia));
+  using (public.dc15_admin_agencia(agencia)) with check (public.dc15_admin_agencia(agencia));
 create policy "Proveedores eliminar" on public.app_proveedores for delete to authenticated
-  using (public.is_agency_admin(agencia));
+  using (public.dc15_admin_agencia(agencia));
 grant select, insert, update, delete on public.app_proveedores to authenticated;
 
 -- Usuarios de solo consulta (Fase 14): tampoco crean proveedores.
@@ -132,10 +157,10 @@ declare
   v_cod text := upper(trim(coalesce(p_codigo, '')));
   v_n   integer;
 begin
-  if auth.uid() is null or not public.is_app_user() or not public.can_access_agency(p_agencia) then
+  if auth.uid() is null or not public.dc15_ve_agencia(p_agencia) then
     raise exception 'NO_AUTORIZADO: sin acceso a la agencia %.', p_agencia;
   end if;
-  if not (public.is_agency_admin(p_agencia) or public.dc_tiene_permiso('trucks')
+  if not (public.dc15_admin_agencia(p_agencia) or public.dc_tiene_permiso('trucks')
           or public.dc_tiene_permiso('canManualAddTrucks', true)) then
     raise exception 'NO_AUTORIZADO: se necesita permiso de Camiones.';
   end if;
