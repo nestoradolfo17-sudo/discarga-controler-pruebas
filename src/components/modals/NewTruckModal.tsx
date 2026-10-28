@@ -3,6 +3,8 @@ import { X, Truck } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { AGENCIA_LOCATION_OPTIONS } from '../../data/agencies';
+import type { TipoUnidad } from '../../types';
+import { SelectorTipo } from '../ui/SelectorTipo';
 
 interface NewTruckModalProps {
   isOpen: boolean;
@@ -15,6 +17,7 @@ interface NewTruckModalProps {
     ton: string;
     bahias: string;
     capacidad: string;
+    tipo: TipoUnidad;
   }) => void;
 }
 
@@ -30,10 +33,14 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
   const [ton, setTon] = useState('');
   const [bahias, setBahias] = useState('');
   const [capacidad, setCapacidad] = useState('');
+  const [tipo, setTipo] = useState<TipoUnidad | null>(null);
+  const [faltaTipo, setFaltaTipo] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setAgencia(defaultAgencia || AGENCIA_LOCATION_OPTIONS[0]);
+      setTipo(null);
+      setFaltaTipo(false);
     }
   }, [isOpen, defaultAgencia]);
 
@@ -43,6 +50,10 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
     e.preventDefault();
     if (!placa.trim()) return;
     if (!agencia) return;
+    if (!tipo) {
+      setFaltaTipo(true);
+      return;
+    }
     onSubmit({
       placa: placa.trim().toUpperCase(),
       agencia,
@@ -50,12 +61,14 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
       ton: ton.trim(),
       bahias: bahias.trim(),
       capacidad: capacidad.trim() || '0',
+      tipo,
     });
     setPlaca('');
     setProveedor('');
     setTon('');
     setBahias('');
     setCapacidad('');
+    setTipo(null);
   };
 
   return (
@@ -100,8 +113,20 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
             </select>
           </div>
 
+          <SelectorTipo
+            valor={tipo}
+            onChange={(t) => {
+              setTipo(t);
+              setFaltaTipo(false);
+            }}
+            error={faltaTipo}
+            etiquetas={{ Propio: 'Propio', Rentado: 'Rentado' }}
+            ayudas={{ Propio: 'Unidad de la empresa', Rentado: 'Unidad de un proveedor' }}
+            titulo="Tipo de camión *"
+          />
+
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Proveedor</label>
+            <label className="block font-semibold text-slate-700 mb-1">Proveedor{tipo === 'Rentado' ? ' (empresa que renta)' : ''}</label>
             <input
               type="text"
               value={proveedor}
