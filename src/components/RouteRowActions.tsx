@@ -67,7 +67,7 @@ export function getRowActions(
   const split: RowAction = { key: 'partir', label: 'Partir en viajes', hint: 'Dividir clientes y carga', icon: ACTION_ICONS.partir, tone: 'purple', run: h.onSplit };
   const repartir: RowAction | null =
     h.onRepartirCajas && route.isSplitRoute && (route.clientesRuta?.length || 0) <= 1
-      ? { key: 'repartirCajas', label: 'Repartir cajas', hint: 'Cambiar las cajas de cada viaje', icon: ACTION_ICONS.partir, tone: 'purple', run: h.onRepartirCajas }
+      ? { key: 'repartirCajas', label: 'Confirmar cajas', hint: 'Confirmar cajas reales y repartir el resto', icon: ACTION_ICONS.partir, tone: 'purple', run: h.onRepartirCajas }
       : null;
   const revert: RowAction = { key: 'revertir', label: 'Revertir partición', hint: 'Volver a la ruta original', icon: ACTION_ICONS.revertir, tone: 'danger', run: h.onRevertSplit };
 
