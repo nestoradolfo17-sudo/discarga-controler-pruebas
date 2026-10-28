@@ -89,6 +89,8 @@ import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiert
 import { AbonosCajaModal, totalAbonado } from './components/modals/AbonosCajaModal';
 import { ReceiptModal } from './components/modals/ReceiptModal';
 import { NewTruckModal } from './components/modals/NewTruckModal';
+import { AsignarIdRentadoModal } from './components/modals/AsignarIdRentadoModal';
+import { siguienteIdRentado, type Proveedor } from './services/proveedores';
 import { NewStaffModal } from './components/modals/NewStaffModal';
 // Optimización (análisis, punto 13): el Resumen Diario (y su generador de PDF)
 // es la pantalla más pesada; se descarga solo la primera vez que se abre.
@@ -1022,7 +1024,7 @@ export default function App() {
     // Fase 14: también recargas, préstamos, ZR y perfiles de usuarios (sin
     // contraseñas: esas solo las tiene Supabase Auth). Si una tabla no existe
     // o no se puede leer, se anota y el respaldo sigue con las demás.
-    const extras = ['app_recargas', 'app_prestamos', 'app_zr', 'app_users'];
+    const extras = ['app_recargas', 'app_prestamos', 'app_zr', 'app_users', 'app_proveedores'];
     const omitidas: string[] = [];
     for (const t of extras) {
       if (!supabase) break;
@@ -3981,7 +3983,7 @@ export default function App() {
     );
   };
 
-  const handleCreateTruck = (truckData: {
+  const handleCreateTruck = async (truckData: {
     placa: string;
     agencia: string;
     proveedor: string;
@@ -3989,7 +3991,8 @@ export default function App() {
     bahias: string;
     capacidad: string;
     tipo: TipoUnidad;
-  }) => {
+    proveedorCodigo?: string;
+  }): Promise<boolean> => {
     // Corrección: antes el ID interno del camión se generaba como `T-${Date.now()}`,
     // sin relación visible con el vehículo, y además se pedía escribir un "ID
     // Camión" aparte a mano. Ahora ya no se pide: el ID se genera solo a partir de
@@ -4000,16 +4003,33 @@ export default function App() {
     const newTruckId = `TR-${truckData.placa}`;
     if (trucks.some((t) => t.id === newTruckId || t.placa === truckData.placa)) {
       showToast(`Ya existe un camión registrado con la placa ${truckData.placa}.`, 'error');
-      return;
+      return false;
+    }
+
+    // Rentado: el "ID Camión" visible es el correlativo del proveedor en la
+    // agencia (lo entrega la base). La clave interna sigue siendo TR-placa.
+    let idVisible = newTruckId;
+    if (truckData.tipo === 'Rentado' && truckData.proveedorCodigo) {
+      try {
+        idVisible = await siguienteIdRentado(
+          truckData.agencia,
+          truckData.proveedorCodigo,
+          trucks.map((t) => String(t.idCamion || ''))
+        );
+      } catch (e) {
+        showToast(`No se generó el ID del camión rentado: ${(e as Error).message}`, 'error');
+        return false;
+      }
     }
 
     const newT: Truck = {
       id: newTruckId,
-      idCamion: newTruckId,
+      idCamion: idVisible,
       placa: truckData.placa,
       agencia: truckData.agencia,
       proveedor: truckData.proveedor || undefined,
       tipo: truckData.tipo,
+      ...(truckData.proveedorCodigo ? { proveedorCodigo: truckData.proveedorCodigo } : {}),
       capacidad: truckData.capacidad,
       ton: truckData.ton || undefined,
       bahias: truckData.bahias || undefined,
@@ -4018,7 +4038,30 @@ export default function App() {
     };
     setTrucks((prev) => [...prev, newT]);
     setIsNewTruckModalOpen(false);
-    showToast(`Camión ${newT.placa} agregado a la agencia ${newT.agencia}`, 'success');
+    showToast(
+      `Camión ${newT.placa} agregado a la agencia ${newT.agencia}${idVisible !== newTruckId ? ` con ID ${idVisible}` : ''}`,
+      'success'
+    );
+    return true;
+  };
+
+  // Camión rentado que ya existía: asignarle su ID correlativo.
+  const [asignarIdTarget, setAsignarIdTarget] = useState<Truck | null>(null);
+  const handleAsignarIdRentado = async (truck: Truck, proveedor: Proveedor): Promise<boolean> => {
+    if (!truck.agencia) return false;
+    try {
+      const nuevoId = await siguienteIdRentado(truck.agencia, proveedor.codigo, trucks.map((t) => String(t.idCamion || '')));
+      setTrucks((prev) =>
+        prev.map((t) =>
+          t.id === truck.id ? { ...t, idCamion: nuevoId, proveedor: proveedor.nombre, proveedorCodigo: proveedor.codigo, tipo: 'Rentado' } : t
+        )
+      );
+      showToast(`Camión ${truck.placa}: nuevo ID ${nuevoId}.`, 'success');
+      return true;
+    } catch (e) {
+      showToast(`No se generó el ID: ${(e as Error).message}`, 'error');
+      return false;
+    }
   };
 
   const handleCreateStaff = (staffData: {
@@ -4889,6 +4932,7 @@ export default function App() {
           <ResourcesView
             mode="trucks"
             trucks={listaTrucks}
+            onRequestAsignarIdRentado={(t) => setAsignarIdTarget(t)}
             onRequestTruckStatusChange={(t) => setTruckStatusTarget(t)}
             staff={listaStaff}
             defaultAgencia={effectiveAgencyForCreation}
@@ -5195,6 +5239,14 @@ export default function App() {
         onClose={() => setIsNewTruckModalOpen(false)}
         defaultAgencia={effectiveAgencyForCreation}
         onSubmit={handleCreateTruck}
+        puedeAgregarProveedor={canManualAddTrucks}
+      />
+
+      <AsignarIdRentadoModal
+        truck={asignarIdTarget}
+        puedeAgregarProveedor={canManualAddTrucks}
+        onClose={() => setAsignarIdTarget(null)}
+        onConfirm={handleAsignarIdRentado}
       />
 
       <NewStaffModal
