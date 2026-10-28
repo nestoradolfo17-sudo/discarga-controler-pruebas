@@ -128,7 +128,8 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
                 <table className="min-w-full text-left">
                   <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-[10px]">
                     <tr>
-                      <th className="py-2 px-3">Placa / Código</th>
+                      <th className="py-2 px-3">ID Camión</th>
+                      <th className="py-2 px-3">Placa</th>
                       <th className="py-2 px-3">Capacidad</th>
                       <th className="py-2 px-3">Motivo</th>
                       <th className="py-2 px-3">Remunera</th>
@@ -140,7 +141,8 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
                         key={t.id}
                         className={!t.motivoNoAsignado ? 'bg-amber-50/40' : 'bg-white'}
                       >
-                        <td className="py-2 px-3 font-mono font-bold text-slate-800">{t.placa}</td>
+                        <td className="py-2 px-3 font-mono font-bold text-blue-700 whitespace-nowrap">{t.idCamion || '—'}</td>
+                        <td className="py-2 px-3 font-mono font-bold text-slate-800 whitespace-nowrap">{t.placa}</td>
                         <td className="py-2 px-3 text-slate-600">{t.capacidad}</td>
                         <td className="py-2 px-3">
                           <select
@@ -202,6 +204,7 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
                 <table className="min-w-full text-left">
                   <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-[10px]">
                     <tr>
+                      <th className="py-2 px-3">Código</th>
                       <th className="py-2 px-3">Nombre</th>
                       <th className="py-2 px-3">Puesto</th>
                       <th className="py-2 px-3">Motivo</th>
@@ -214,6 +217,7 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
                         key={s.id}
                         className={!s.motivoNoAsignado ? 'bg-amber-50/40' : 'bg-white'}
                       >
+                        <td className="py-2 px-3 font-mono font-bold text-indigo-700 whitespace-nowrap">{s.codigoCorto || s.codigo || '—'}</td>
                         <td className="py-2 px-3 font-semibold text-slate-800">{s.nombre}</td>
                         <td className="py-2 px-3 text-slate-500 font-mono">{s.puesto}</td>
                         <td className="py-2 px-3">
