@@ -10,6 +10,7 @@ import {
   TruckUnavailableReason,
   StaffUnavailableReason,
   StaffEstatus,
+  TipoUnidad,
   AppUser,
   TablePermissions,
   MotivoDevolucionReason,
@@ -79,7 +80,7 @@ import { SplitRouteModal } from './components/modals/SplitRouteModal';
 import { ChangeSegmentModal } from './components/modals/ChangeSegmentModal';
 import { ChangeTruckStatusModal } from './components/modals/ChangeTruckStatusModal';
 import { RevertSplitModal } from './components/modals/RevertSplitModal';
-import { RepartirCajasModal } from './components/modals/RepartirCajasModal';
+import { RepartirCajasModal, type CambioRepartoCajas } from './components/modals/RepartirCajasModal';
 import { ZRView } from './components/ZRView';
 import { NotificationBell, DestinoNotificacion } from './components/NotificationBell';
 import { AssignModal } from './components/modals/AssignModal';
@@ -2356,36 +2357,60 @@ export default function App() {
   };
 
   const openRepartirCajas = (r: Route) => {
-    if (repartirCajasTrips(r).length < 2) {
-      showToast('Para repartir cajas se necesitan al menos 2 viajes de la ruta sin liquidar.', 'info');
+    if (repartirCajasTrips(r).length < 1) {
+      showToast('Esta ruta ya no tiene viajes sin liquidar para confirmar cajas.', 'info');
       return;
     }
     setRepartirCajasTarget(r);
   };
 
-  const handleConfirmRepartirCajas = (cambios: { key: string; cajas: number }[]) => {
-    const byKey = new Map(cambios.map((c) => [c.key, c.cajas]));
+  // Viajes del mismo grupo ya liquidados (se muestran como entregados).
+  const repartirCajasLiquidados = (r: Route | null): Route[] => {
+    if (!r || !r.isSplitRoute) return [];
+    const parent = String(r.parentRouteId || String(r.id).split('.')[0]);
+    return routes.filter((x) => isSameSplitGroup(x, parent, r) && x.estado === 'Liquidada');
+  };
+
+  const handleConfirmRepartirCajas = (cambios: CambioRepartoCajas[], totalAntes: number, totalNuevo: number) => {
+    const byKey = new Map(cambios.map((c) => [c.key, c]));
     const fecha = formatDateTimeToGuatemala(new Date());
     const por = currentUser?.nombre || currentUser?.username || '';
+    const cambioTotal = Math.abs(totalNuevo - totalAntes) >= 0.0005;
     setRoutes((prev) =>
       prev.map((r) => {
-        const nuevo = byKey.get(getRouteKey(r));
-        if (nuevo === undefined) return r;
+        const cambio = byKey.get(getRouteKey(r));
+        if (!cambio) return r;
+        const nuevo = cambio.cajas;
         const antes = toNum(r.cajasFisicas) || 0;
-        if (Math.abs(antes - nuevo) < 0.0005) return r;
+        const cambiaCajas = Math.abs(antes - nuevo) >= 0.0005;
+        const yaConfirmada = r.cajasConfirmadas && Math.abs(r.cajasConfirmadas.cajas - nuevo) < 0.0005;
+        const confirmacion = cambio.confirmada ? (yaConfirmada ? r.cajasConfirmadas : { cajas: nuevo, fecha, por }) : null;
+        if (!cambiaCajas && !!confirmacion === !!r.cajasConfirmadas && (!confirmacion || yaConfirmada)) return r;
+        const motivo = cambio.confirmada
+          ? 'Cajas reales confirmadas'
+          : cambioTotal
+          ? `Ajuste proporcional (total por entregar ${totalAntes} → ${totalNuevo})`
+          : 'Ajuste proporcional por cajas confirmadas en otros viajes';
         return {
           ...r,
           cajasFisicas: nuevo,
+          cajasConfirmadas: confirmacion,
           ...(r.clientesRuta && r.clientesRuta.length === 1
             ? { clientesRuta: [{ ...r.clientesRuta[0], cajas: nuevo }] }
             : {}),
-          historialRepartoCajas: [...(r.historialRepartoCajas || []), { fecha, de: antes, a: nuevo, por }],
+          historialRepartoCajas: cambiaCajas
+            ? [...(r.historialRepartoCajas || []), { fecha, de: antes, a: nuevo, por, motivo }]
+            : r.historialRepartoCajas,
         };
       })
     );
     const parent = repartirCajasTarget?.parentRouteId || String(repartirCajasTarget?.id || '').split('.')[0];
+    const nConf = cambios.filter((c) => c.confirmada).length;
     setRepartirCajasTarget(null);
-    showToast(`Cajas repartidas entre los viajes de la ruta ${parent}.`, 'success');
+    showToast(
+      `Ruta ${parent}: ${nConf} de ${cambios.length} viaje(s) con cajas confirmadas; el resto se ajustó en proporción.`,
+      'success'
+    );
   };
 
   const handleConfirmSplit = (originalRoute: Route, childRoutes: Route[]) => {
@@ -3963,6 +3988,7 @@ export default function App() {
     ton: string;
     bahias: string;
     capacidad: string;
+    tipo: TipoUnidad;
   }) => {
     // Corrección: antes el ID interno del camión se generaba como `T-${Date.now()}`,
     // sin relación visible con el vehículo, y además se pedía escribir un "ID
@@ -3983,6 +4009,7 @@ export default function App() {
       placa: truckData.placa,
       agencia: truckData.agencia,
       proveedor: truckData.proveedor || undefined,
+      tipo: truckData.tipo,
       capacidad: truckData.capacidad,
       ton: truckData.ton || undefined,
       bahias: truckData.bahias || undefined,
@@ -4003,6 +4030,7 @@ export default function App() {
     codigoCorto: string;
     telefono: string;
     estatus: StaffEstatus;
+    tipo: TipoUnidad;
   }) => {
     const newS: Staff = {
       id: `S-${Date.now()}`,
@@ -4016,10 +4044,19 @@ export default function App() {
       telefono: staffData.telefono,
       estado: 'Disponible',
       estatus: staffData.estatus || 'ALTA',
+      tipo: staffData.tipo,
     };
     setStaff((prev) => [...prev, newS]);
     setIsNewStaffModalOpen(false);
     showToast(`Colaborador ${newS.nombre} (${newS.puesto}) registrado en ${newS.agencia}`, 'success');
+  };
+
+  // Clasificación Propio / Rentado (camiones y personal).
+  const handleUpdateTruckTipo = (truckId: string, tipo: TipoUnidad) => {
+    setTrucks((prev) => prev.map((t) => (t.id === truckId ? { ...t, tipo } : t)));
+  };
+  const handleUpdateStaffTipo = (staffId: string, tipo: TipoUnidad) => {
+    setStaff((prev) => prev.map((x) => (x.id === staffId ? { ...x, tipo } : x)));
   };
 
   const handleUpdateStaffEstatus = (staffId: string, newEstatus: StaffEstatus) => {
@@ -4859,6 +4896,8 @@ export default function App() {
             onOpenNewStaffModal={() => setIsNewStaffModalOpen(true)}
             onUpdateStaffStatus={handleUpdateStaffStatus}
             onUpdateStaffEstatus={handleUpdateStaffEstatus}
+            onUpdateTruckTipo={handleUpdateTruckTipo}
+            onUpdateStaffTipo={handleUpdateStaffTipo}
             onImportStaffBatch={handleImportStaffBatch}
             onImportTrucksBatch={handleImportTrucksBatch}
             onDeleteTrucks={handleDeleteTrucks}
@@ -4883,6 +4922,8 @@ export default function App() {
             onOpenNewStaffModal={() => setIsNewStaffModalOpen(true)}
             onUpdateStaffStatus={handleUpdateStaffStatus}
             onUpdateStaffEstatus={handleUpdateStaffEstatus}
+            onUpdateTruckTipo={handleUpdateTruckTipo}
+            onUpdateStaffTipo={handleUpdateStaffTipo}
             onImportStaffBatch={handleImportStaffBatch}
             onImportTrucksBatch={handleImportTrucksBatch}
             onDeleteTrucks={handleDeleteTrucks}
@@ -5066,6 +5107,7 @@ export default function App() {
         isOpen={!!repartirCajasTarget}
         onClose={() => setRepartirCajasTarget(null)}
         trips={repartirCajasTrips(repartirCajasTarget)}
+        liquidados={repartirCajasLiquidados(repartirCajasTarget)}
         onConfirm={handleConfirmRepartirCajas}
       />
 
