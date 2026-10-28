@@ -134,6 +134,13 @@ Si solo aparecen casos reales (no trabajo normal), activa cada bloqueo:
 `update public.app_seguridad_config set valor = 'si', actualizado = now() where clave = 'bloquear_segmento_estatus';`
 (igual con `bloquear_borrado_rutas` y `bloquear_permisos_pantalla`; con `valor = 'no'` se regresa a solo alerta).
 
+## Camiones rentados: proveedores e ID correlativo (Fase 15)
+
+1. Supabase → **SQL Editor → New query** → pega TODO `supabase/fase15_proveedores_rentados.sql` → **Run**. Deben salir 2 filas con **SÍ**.
+2. Al registrar un camión **Rentado** se elige el proveedor del catálogo de la agencia (o se agrega uno nuevo: nombre + código de 2 a 5 letras). Agrega proveedores quien tiene permiso de Camiones.
+3. El ID visible queda como **R-TRX-XEL-001** (proveedor, agencia, número). El número lo da la base: no se repite ni se reutiliza. La clave interna del camión (TR-placa) no cambia.
+4. Rentados que ya existían: en Camiones, botón **"Asignar ID de rentado"** en la columna ID Camión.
+
 ## ¿Qué fases tiene aplicada mi base?
 Supabase → SQL Editor → pega `supabase/diagnostico_fases.sql` → Run. Solo lee: muestra cada fase con SÍ/NO, las tablas sin seguridad por filas (debe salir vacío) y los administradores activos.
 
