@@ -125,6 +125,9 @@ export interface Truck {
   proveedor?: string;
   // Propio (de la empresa) o Rentado (de un proveedor). Ausente = sin definir.
   tipo?: TipoUnidad;
+  // Rentados: código del proveedor en el catálogo de la agencia (va en el ID
+  // correlativo R-<PROVEEDOR>-<AGENCIA>-<NNN>).
+  proveedorCodigo?: string;
   capacidad: string;
   ton?: number | string;
   bahias?: number | string;
