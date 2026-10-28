@@ -75,6 +75,8 @@ interface ResourcesViewProps {
   // Clasificar un camión o colaborador como Propio / Rentado.
   onUpdateTruckTipo?: (truckId: string, tipo: TipoUnidad) => void;
   onUpdateStaffTipo?: (staffId: string, tipo: TipoUnidad) => void;
+  // Camión rentado sin ID correlativo: abre la ventana para asignárselo.
+  onRequestAsignarIdRentado?: (truck: Truck) => void;
 }
 
 export const ResourcesView: React.FC<ResourcesViewProps> = ({
@@ -100,6 +102,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
   onRequestTruckStatusChange,
   onUpdateTruckTipo,
   onUpdateStaffTipo,
+  onRequestAsignarIdRentado,
 }) => {
   const [isBatchStaffModalOpen, setIsBatchStaffModalOpen] = useState(false);
   const [isBatchTruckModalOpen, setIsBatchTruckModalOpen] = useState(false);
@@ -428,7 +431,19 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                       className="cursor-pointer w-5 h-5"
                     />
                   </td>
-                  <td className="py-3 px-4 font-mono text-slate-600">{t.idCamion || '-'}</td>
+                  <td className="py-3 px-4 font-mono text-slate-600">
+                    <span className={String(t.idCamion || '').startsWith('R-') ? 'font-bold text-violet-800' : ''}>{t.idCamion || '-'}</span>
+                    {t.tipo === 'Rentado' && !String(t.idCamion || '').startsWith('R-') && canBulkUploadTrucks && onRequestAsignarIdRentado && (
+                      <button
+                        type="button"
+                        onClick={() => onRequestAsignarIdRentado(t)}
+                        className="mt-1 block min-h-[32px] px-2 rounded-md border border-violet-300 bg-violet-50 text-violet-800 text-[10.5px] font-sans font-bold cursor-pointer hover:bg-violet-100"
+                        title="Asignar el ID correlativo del proveedor"
+                      >
+                        Asignar ID de rentado
+                      </button>
+                    )}
+                  </td>
                   <td className="py-3 px-4 font-mono font-bold text-slate-800">{t.placa}</td>
                   <td className="py-3 px-4">
                     {t.agencia ? (
