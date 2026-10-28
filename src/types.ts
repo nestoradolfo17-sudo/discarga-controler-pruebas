@@ -123,6 +123,8 @@ export interface Truck {
   // Proveedor / empresa dueña del camión (por ejemplo, si es una unidad propia o de
   // un proveedor de transporte tercerizado).
   proveedor?: string;
+  // Propio (de la empresa) o Rentado (de un proveedor). Ausente = sin definir.
+  tipo?: TipoUnidad;
   capacidad: string;
   ton?: number | string;
   bahias?: number | string;
@@ -141,8 +143,14 @@ export interface Truck {
   prestamoInfo?: PrestamoInfo;
 }
 
+// Propio o Rentado: en camiones indica de quién es la unidad; en personal,
+// si es personal propio o personal de camiones rentados.
+export type TipoUnidad = 'Propio' | 'Rentado';
+
 export interface Staff {
   id: string;
+  // Personal propio o personal de camiones rentados. Ausente = sin definir.
+  tipo?: TipoUnidad;
   dpi: string;
   codigo?: string;
   codigoCorto?: string;
@@ -326,6 +334,9 @@ export interface Route {
   // Bitácora de "Repartir cajas" entre los viajes de una ruta partida (rutas de
   // un solo cliente), cuando cambian las cajas reales a entregar por viaje.
   historialRepartoCajas?: { fecha: string; de: number; a: number; por: string; motivo?: string }[];
+  // Cajas reales confirmadas para este viaje (ruta de un cliente partida en
+  // varios viajes). Los viajes confirmados no se ajustan solos al repartir.
+  cajasConfirmadas?: { cajas: number; fecha: string; por: string } | null;
   fecha: string;
   fechaAsignacion?: string;
   fechaLiquidacion?: string;
