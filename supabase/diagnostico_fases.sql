@@ -52,7 +52,10 @@ from (values
         exists (select 1 from pg_trigger where tgname = 'trg_vigilar_permisos' and not tgisinternal)
         and exists (select 1 from pg_trigger where tgname = 'trg_vigilar_autorizacion' and not tgisinternal)
         and exists (select 1 from pg_trigger where tgname = 'trg_vigilar_borrado_ruta' and not tgisinternal)
-        and exists (select 1 from fn where proname = 'dc_solo_lectura'))
+        and exists (select 1 from fn where proname = 'dc_solo_lectura')),
+  (19, 'Fase 15 (rentados)', 'Proveedores por agencia e ID correlativo de camiones rentados',
+        to_regclass('public.app_proveedores') is not null
+        and exists (select 1 from fn where proname = 'dc_siguiente_id_rentado'))
 ) as t(orden, fase, que_revisa, ok)
 order by orden;
 
