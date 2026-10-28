@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StaffPuesto, StaffEstatus } from '../../types';
+import { StaffPuesto, StaffEstatus, TipoUnidad } from '../../types';
+import { SelectorTipo } from '../ui/SelectorTipo';
 import { X, UserPlus } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
@@ -18,6 +19,7 @@ interface NewStaffModalProps {
     codigoCorto: string;
     telefono: string;
     estatus: StaffEstatus;
+    tipo: TipoUnidad;
   }) => void;
 }
 
@@ -35,10 +37,14 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
   const [codigoCorto, setCodigoCorto] = useState('');
   const [telefono, setTelefono] = useState('');
   const [estatus, setEstatus] = useState<StaffEstatus>('ALTA');
+  const [tipo, setTipo] = useState<TipoUnidad | null>(null);
+  const [faltaTipo, setFaltaTipo] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setAgencia(defaultAgencia || AGENCIA_LOCATION_OPTIONS[0]);
+      setTipo(null);
+      setFaltaTipo(false);
     }
   }, [isOpen, defaultAgencia]);
 
@@ -48,6 +54,10 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
     e.preventDefault();
     if (!nombre.trim()) return;
     if (!agencia) return;
+    if (!tipo) {
+      setFaltaTipo(true);
+      return;
+    }
     onSubmit({
       dpi: dpi.trim() || 'N/A',
       codigo: codigo.trim(),
@@ -57,6 +67,7 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
       codigoCorto: codigoCorto.trim(),
       telefono: telefono.trim(),
       estatus,
+      tipo,
     });
     setDpi('');
     setCodigo('');
@@ -65,6 +76,7 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
     setCodigoCorto('');
     setTelefono('');
     setEstatus('ALTA');
+    setTipo(null);
   };
 
   return (
@@ -132,6 +144,18 @@ export const NewStaffModal: React.FC<NewStaffModalProps> = ({
               ))}
             </select>
           </div>
+
+          <SelectorTipo
+            valor={tipo}
+            onChange={(t) => {
+              setTipo(t);
+              setFaltaTipo(false);
+            }}
+            error={faltaTipo}
+            etiquetas={{ Propio: 'Personal propio', Rentado: 'De camión rentado' }}
+            ayudas={{ Propio: 'Colaborador de la empresa', Rentado: 'Tripulación de una unidad rentada' }}
+            titulo="Tipo de personal *"
+          />
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Puesto Operativo *</label>
