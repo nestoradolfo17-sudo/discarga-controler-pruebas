@@ -25,7 +25,7 @@ export function viajesQueRecibenCajas(rutas: Route[], viaje: Route): Route[] {
   if (!viaje.isSplitRoute) return [];
   const padre = padreDeViaje(viaje);
   const k = getRouteKey(viaje);
-  return rutas
+  const candidatos = rutas
     .filter(
       (x) =>
         getRouteKey(x) !== k &&
@@ -34,6 +34,10 @@ export function viajesQueRecibenCajas(rutas: Route[], viaje: Route): Route[] {
         (x.clientesRuta?.length || 0) <= 1
     )
     .sort((a, b) => (a.tripNumber || 0) - (b.tripNumber || 0));
+  // Si hay viajes sin cajas confirmadas, reciben ellos (los confirmados ya
+  // llevan sus cajas reales); si todos están confirmados, reciben todos.
+  const sinConfirmar = candidatos.filter((x) => !x.cajasConfirmadas);
+  return sinConfirmar.length > 0 ? sinConfirmar : candidatos;
 }
 
 export interface ResumenGrupo {
