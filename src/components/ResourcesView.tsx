@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Truck, Staff, ResourceStatus, StaffEstatus, PrestamoInfo } from '../types';
+import { Truck, Staff, ResourceStatus, StaffEstatus, PrestamoInfo, TipoUnidad } from '../types';
 import { Truck as TruckIcon, UserPlus, Users, ChevronDown, FileSpreadsheet, Download, Trash2, Plus } from 'lucide-react';
 import { BatchStaffModal } from './modals/BatchStaffModal';
 import { BatchTruckModal } from './modals/BatchTruckModal';
@@ -27,6 +27,10 @@ const disponibilidadDe = (
   }
   return 'no_disponibles';
 };
+
+// --- Segmentación Propio / Rentado ---
+type TipoFiltro = 'todos' | 'Propio' | 'Rentado' | 'sin';
+const tipoDe = (r: { tipo?: TipoUnidad }): Exclude<TipoFiltro, 'todos'> => r.tipo || 'sin';
 
 // Etiqueta de préstamo vigente hoy (dato de pantalla, ver App.tsx).
 const PrestamoBadge: React.FC<{ info?: PrestamoInfo }> = ({ info }) =>
@@ -68,6 +72,9 @@ interface ResourcesViewProps {
   // Cambio manual del estatus de un camión (abre la ventana con autorización
   // de administrador; ver ChangeTruckStatusModal).
   onRequestTruckStatusChange?: (truck: Truck) => void;
+  // Clasificar un camión o colaborador como Propio / Rentado.
+  onUpdateTruckTipo?: (truckId: string, tipo: TipoUnidad) => void;
+  onUpdateStaffTipo?: (staffId: string, tipo: TipoUnidad) => void;
 }
 
 export const ResourcesView: React.FC<ResourcesViewProps> = ({
@@ -91,6 +98,8 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
   canBulkUploadStaff = true,
   canManualAddStaff = true,
   onRequestTruckStatusChange,
+  onUpdateTruckTipo,
+  onUpdateStaffTipo,
 }) => {
   const [isBatchStaffModalOpen, setIsBatchStaffModalOpen] = useState(false);
   const [isBatchTruckModalOpen, setIsBatchTruckModalOpen] = useState(false);
@@ -113,9 +122,20 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
   const words = norm(resSearch).split(/\s+/).filter(Boolean);
   const matches = (text: string) => words.every((w) => text.includes(w));
   const [dispFiltro, setDispFiltro] = useState<DisponibilidadFiltro>('todos');
+  const [tipoFiltro, setTipoFiltro] = useState<TipoFiltro>('todos');
+  const contarTipo = (list: { tipo?: TipoUnidad }[]): Record<TipoFiltro, number> => ({
+    todos: list.length,
+    Propio: list.filter((x) => tipoDe(x) === 'Propio').length,
+    Rentado: list.filter((x) => tipoDe(x) === 'Rentado').length,
+    sin: list.filter((x) => tipoDe(x) === 'sin').length,
+  });
+  const truckTipoCounts = contarTipo(trucks);
+  const staffTipoCounts = contarTipo(staff);
+  const trucksByTipo = tipoFiltro === 'todos' ? trucks : trucks.filter((t) => tipoDe(t) === tipoFiltro);
+  const staffByTipo = tipoFiltro === 'todos' ? staff : staff.filter((st) => tipoDe(st) === tipoFiltro);
   const hoyStr = formatDateToGuatemala(new Date());
-  const truckDisp = trucks.map((t) => disponibilidadDe(t as any, hoyStr));
-  const staffDisp = staff.map((st) => disponibilidadDe(st as any, hoyStr));
+  const truckDisp = trucksByTipo.map((t) => disponibilidadDe(t as any, hoyStr));
+  const staffDisp = staffByTipo.map((st) => disponibilidadDe(st as any, hoyStr));
   const countDisp = (list: string[]) => ({
     todos: list.length,
     disponibles: list.filter((d) => d === 'disponibles').length,
@@ -124,8 +144,8 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
   });
   const truckCounts = countDisp(truckDisp);
   const staffCounts = countDisp(staffDisp);
-  const trucksByDisp = dispFiltro === 'todos' ? trucks : trucks.filter((_, i) => truckDisp[i] === dispFiltro);
-  const staffByDisp = dispFiltro === 'todos' ? staff : staff.filter((_, i) => staffDisp[i] === dispFiltro);
+  const trucksByDisp = dispFiltro === 'todos' ? trucksByTipo : trucksByTipo.filter((_, i) => truckDisp[i] === dispFiltro);
+  const staffByDisp = dispFiltro === 'todos' ? staffByTipo : staffByTipo.filter((_, i) => staffDisp[i] === dispFiltro);
   const filteredTrucks = words.length
     ? trucksByDisp.filter((t) => matches(norm(`${t.placa} ${t.idCamion || ''} ${t.id} ${t.proveedor || ''} ${t.agencia || ''} ${t.capacidad}`)))
     : trucksByDisp;
@@ -165,8 +185,77 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
       </div>
     );
   };
+  const renderTipoFilter = () => {
+    const counts = mode === 'trucks' ? truckTipoCounts : staffTipoCounts;
+    const opts: { key: TipoFiltro; label: string; on: string }[] =
+      mode === 'trucks'
+        ? [
+            { key: 'todos', label: 'Toda la flota', on: 'bg-slate-900 text-white border-slate-900' },
+            { key: 'Propio', label: 'Propios', on: 'bg-emerald-600 text-white border-emerald-600' },
+            { key: 'Rentado', label: 'Rentados', on: 'bg-violet-600 text-white border-violet-600' },
+            { key: 'sin', label: 'Sin definir', on: 'bg-amber-500 text-white border-amber-500' },
+          ]
+        : [
+            { key: 'todos', label: 'Todo el personal', on: 'bg-slate-900 text-white border-slate-900' },
+            { key: 'Propio', label: 'Personal propio', on: 'bg-emerald-600 text-white border-emerald-600' },
+            { key: 'Rentado', label: 'De camiones rentados', on: 'bg-violet-600 text-white border-violet-600' },
+            { key: 'sin', label: 'Sin definir', on: 'bg-amber-500 text-white border-amber-500' },
+          ];
+    return (
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar por propio o rentado">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mr-1">Tipo</span>
+        {opts
+          .filter((o) => o.key !== 'sin' || counts.sin > 0 || tipoFiltro === 'sin')
+          .map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              aria-pressed={tipoFiltro === o.key}
+              onClick={() => {
+                setTipoFiltro(o.key);
+                setLimit(PAGE);
+              }}
+              className={`min-h-[40px] px-3 rounded-xl text-xs sm:text-sm font-semibold border transition cursor-pointer ${
+                tipoFiltro === o.key ? o.on : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              {o.label} ({fmtNum(counts[o.key])})
+            </button>
+          ))}
+      </div>
+    );
+  };
+  // Insignia o selector Propio / Rentado de cada fila.
+  const renderTipoCelda = (tipo: TipoUnidad | undefined, onChange?: (t: TipoUnidad) => void, etiquetaRentado = 'Rentado') => {
+    const cls =
+      tipo === 'Propio'
+        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+        : tipo === 'Rentado'
+        ? 'bg-violet-50 text-violet-800 border-violet-200'
+        : 'bg-amber-50 text-amber-800 border-amber-300';
+    if (!onChange) {
+      return (
+        <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${cls}`}>
+          {tipo === 'Rentado' ? etiquetaRentado : tipo || 'Sin definir'}
+        </span>
+      );
+    }
+    return (
+      <select
+        value={tipo || ''}
+        onChange={(e) => e.target.value && onChange(e.target.value as TipoUnidad)}
+        aria-label="Propio o rentado"
+        className={`min-h-[36px] text-[11px] font-bold px-2 rounded-md border outline-none cursor-pointer ${cls}`}
+      >
+        {!tipo && <option value="">Sin definir</option>}
+        <option value="Propio">Propio</option>
+        <option value="Rentado">{etiquetaRentado}</option>
+      </select>
+    );
+  };
   const renderListBar = (total: number, shown: number, placeholder: string) => (
     <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50/60">
+      <div className="basis-full">{renderTipoFilter()}</div>
       {renderDispFilter(mode === 'trucks' ? truckCounts : staffCounts, 'En tránsito (en ruta)')}
       <input
         type="search"
@@ -319,6 +408,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                 <th className="py-3 px-4">ID Camión</th>
                 <th className="py-3 px-4">Placa</th>
                 <th className="py-3 px-4">Agencia</th>
+                <th className="py-3 px-4">Tipo</th>
                 <th className="py-3 px-4">Proveedor</th>
                 <th className="py-3 px-4">Estatus</th>
                 <th className="py-3 px-4">TON</th>
@@ -349,6 +439,9 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                       </span>
                     )}
                     <PrestamoBadge info={t.prestamoInfo} />
+                  </td>
+                  <td className="py-3 px-4">
+                    {renderTipoCelda(t.tipo, canBulkUploadTrucks && onUpdateTruckTipo ? (v) => onUpdateTruckTipo(t.id, v) : undefined)}
                   </td>
                   <td className="py-3 px-4 text-slate-600">{t.proveedor || '-'}</td>
                   <td className="py-3 px-4">
@@ -535,6 +628,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                 <th className="py-3 px-4">Código</th>
                 <th className="py-3 px-4">Nombre Completo</th>
                 <th className="py-3 px-4">Agencia</th>
+                <th className="py-3 px-4">Tipo</th>
                 <th className="py-3 px-4">Puesto</th>
                 <th className="py-3 px-4">Código Corto</th>
                 {/* Corrección: esta columna en realidad contiene dos selectores
@@ -588,6 +682,13 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                         </span>
                       )}
                       <PrestamoBadge info={s.prestamoInfo} />
+                    </td>
+                    <td className="py-3 px-4">
+                      {renderTipoCelda(
+                        s.tipo,
+                        canBulkUploadStaff && onUpdateStaffTipo ? (v) => onUpdateStaffTipo(s.id, v) : undefined,
+                        'Camión rentado'
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       <span className={`${puestoBadge} px-2 py-0.5 rounded text-xs font-bold font-mono`}>
