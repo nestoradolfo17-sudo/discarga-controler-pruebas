@@ -5,6 +5,8 @@ import { ACTION_ICONS } from '../ui/actionIcons';
 import { AGENCIA_LOCATION_OPTIONS } from '../../data/agencies';
 import type { TipoUnidad } from '../../types';
 import { SelectorTipo } from '../ui/SelectorTipo';
+import { ProveedorSelector } from '../ui/ProveedorSelector';
+import type { Proveedor } from '../../services/proveedores';
 
 interface NewTruckModalProps {
   isOpen: boolean;
@@ -18,7 +20,11 @@ interface NewTruckModalProps {
     bahias: string;
     capacidad: string;
     tipo: TipoUnidad;
-  }) => void;
+    // Solo rentados: proveedor del catálogo (su código va en el ID correlativo).
+    proveedorCodigo?: string;
+  }) => boolean | void | Promise<boolean | void>;
+  // ¿Puede agregar proveedores nuevos al catálogo? (permiso de Camiones)
+  puedeAgregarProveedor?: boolean;
 }
 
 export const NewTruckModal: React.FC<NewTruckModalProps> = ({
@@ -26,6 +32,7 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
   onClose,
   defaultAgencia,
   onSubmit,
+  puedeAgregarProveedor = false,
 }) => {
   const [placa, setPlaca] = useState('');
   const [agencia, setAgencia] = useState(defaultAgencia || AGENCIA_LOCATION_OPTIONS[0]);
@@ -35,34 +42,55 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
   const [capacidad, setCapacidad] = useState('');
   const [tipo, setTipo] = useState<TipoUnidad | null>(null);
   const [faltaTipo, setFaltaTipo] = useState(false);
+  const [proveedorCat, setProveedorCat] = useState<Proveedor | null>(null);
+  const [faltaProveedor, setFaltaProveedor] = useState(false);
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setAgencia(defaultAgencia || AGENCIA_LOCATION_OPTIONS[0]);
       setTipo(null);
       setFaltaTipo(false);
+      setProveedorCat(null);
+      setFaltaProveedor(false);
+      setGuardando(false);
     }
   }, [isOpen, defaultAgencia]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (guardando) return;
     if (!placa.trim()) return;
     if (!agencia) return;
     if (!tipo) {
       setFaltaTipo(true);
       return;
     }
-    onSubmit({
-      placa: placa.trim().toUpperCase(),
-      agencia,
-      proveedor: proveedor.trim(),
-      ton: ton.trim(),
-      bahias: bahias.trim(),
-      capacidad: capacidad.trim() || '0',
-      tipo,
-    });
+    if (tipo === 'Rentado' && !proveedorCat) {
+      setFaltaProveedor(true);
+      return;
+    }
+    setGuardando(true);
+    let ok: boolean | void = true;
+    try {
+      ok = await onSubmit({
+        placa: placa.trim().toUpperCase(),
+        agencia,
+        proveedor: tipo === 'Rentado' ? proveedorCat!.nombre : proveedor.trim(),
+        ton: ton.trim(),
+        bahias: bahias.trim(),
+        capacidad: capacidad.trim() || '0',
+        tipo,
+        ...(tipo === 'Rentado' ? { proveedorCodigo: proveedorCat!.codigo } : {}),
+      });
+    } finally {
+      setGuardando(false);
+    }
+    // Si no se pudo guardar (p. ej. no se generó el ID), se conservan los datos.
+    if (ok === false) return;
+    setProveedorCat(null);
     setPlaca('');
     setProveedor('');
     setTon('');
@@ -125,16 +153,29 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
             titulo="Tipo de camión *"
           />
 
+          {tipo === 'Rentado' ? (
+            <ProveedorSelector
+              agencia={agencia}
+              valor={proveedorCat}
+              onChange={(p) => {
+                setProveedorCat(p);
+                if (p) setFaltaProveedor(false);
+              }}
+              puedeAgregar={puedeAgregarProveedor}
+              error={faltaProveedor}
+            />
+          ) : (
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Proveedor{tipo === 'Rentado' ? ' (empresa que renta)' : ''}</label>
+            <label className="block font-semibold text-slate-700 mb-1">Proveedor</label>
             <input
               type="text"
               value={proveedor}
               onChange={(e) => setProveedor(e.target.value)}
-              placeholder="Ej: Unidad Propia / Transportes XYZ"
+              placeholder="Ej: Unidad Propia"
               className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             />
           </div>
+          )}
 
           <div className="grid grid-cols-3 gap-3">
             <div>
@@ -176,8 +217,8 @@ export const NewTruckModal: React.FC<NewTruckModalProps> = ({
             <Button variant="secondary" size="lg" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" variant="primary" size="lg" icon={ACTION_ICONS.nuevo}>
-              Guardar camión
+            <Button type="submit" variant="primary" size="lg" icon={ACTION_ICONS.nuevo} disabled={guardando}>
+              {guardando ? 'Guardando…' : 'Guardar camión'}
             </Button>
           </div>
         </form>
