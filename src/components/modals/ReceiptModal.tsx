@@ -53,8 +53,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     const cleanRouteId = targetRouteId.trim().replace(/[/\\?%*:|"<>]/g, '-');
 
     const documentTitle = isConsolidated
-      ? `Acta_Consolidado_Liquidacion_Ruta_${cleanRouteId}_${cleanDate}`
-      : `Acta_Liquidacion_Ruta_${cleanRouteId}_${cleanDate}`;
+      ? `Pase_Salida_Consolidado_Ruta_${cleanRouteId}_${cleanDate}`
+      : `Pase_Salida_Ruta_${cleanRouteId}_${cleanDate}`;
 
     const originalTitle = document.title;
     document.title = documentTitle;
@@ -144,8 +144,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         <div className="p-4 bg-slate-900 text-white flex items-center justify-between no-print">
           <h3 className="font-bold text-xs">
             {isConsolidated
-              ? 'Acta Oficial Consolidada de Liquidación de Ruta'
-              : 'Acta Oficial de Liquidación de Ruta'}
+              ? 'Pase de Salida - Finalización Liquidación (Consolidado)'
+              : 'Pase de Salida - Finalización Liquidación'}
           </h3>
           <div className="flex items-center space-x-2">
             <Button variant="primary" size="md" icon={Printer} onClick={handlePrint}>
@@ -200,10 +200,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   <div className="border-b-2 border-slate-900 pb-3 mb-4 flex justify-between items-start">
                     <div>
                       <h2 className="text-base font-extrabold text-slate-900 uppercase">
-                        Acta Oficial Consolidada de Liquidación de Ruta
+                        Pase de Salida - Finalización Liquidación
                       </h2>
                       <p className="text-[11px] text-slate-500">
-                        DISCARGA CONTROLER - Suma Total de los {siblings.length} Viajes Liquidados
+                        DISCARGA CONTROLER - Consolidado de los {siblings.length} viajes liquidados
                       </p>
                     </div>
                     <div className="text-right">
@@ -337,6 +337,25 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                       <span className="text-slate-400 text-[10px]">Firma Auditor / Liquidador</span>
                     </div>
                   </div>
+                  {/* Firma y sello del Equipo de Liquidación CBC */}
+                  <div className="mt-6 border-2 border-dashed border-slate-400 rounded-lg p-3 break-inside-avoid" style={{ pageBreakInside: 'avoid' }}>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 text-center mb-2">
+                      Equipo de Liquidación CBC · Firma y Sello
+                    </p>
+                    <div className="grid grid-cols-2 gap-4 items-end text-center text-[10px]">
+                      <div>
+                        <div className="h-16"></div>
+                        <div className="border-t border-slate-400 w-11/12 mx-auto mb-1"></div>
+                        <span className="text-slate-500">Nombre y firma</span>
+                      </div>
+                      <div>
+                        <div className="h-20 w-full border border-slate-300 rounded-md flex items-center justify-center text-slate-300 font-semibold">
+                          SELLO
+                        </div>
+                        <span className="text-slate-500 block mt-1">Sello CBC</span>
+                      </div>
+                    </div>
+                  </div>
                 </>
               );
             })()
@@ -370,7 +389,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   <div className="border-b-2 border-slate-900 pb-3 mb-4 flex justify-between items-start">
                     <div>
                       <h2 className="text-base font-extrabold text-slate-900 uppercase">
-                        Acta Oficial de Liquidación de Ruta
+                        Pase de Salida - Finalización Liquidación
                       </h2>
                       <p className="text-[11px] text-slate-500">DISCARGA CONTROLER - Cierre de Distribución</p>
                     </div>
@@ -624,6 +643,25 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                       <div className="border-t border-slate-400 w-3/4 mx-auto mb-1"></div>
                       <strong className="text-slate-800 block">{liq.auditor || 'Auditor de Agencia'}</strong>
                       <span className="text-slate-400 text-[10px]">Firma Auditor / Liquidador</span>
+                    </div>
+                  </div>
+                  {/* Firma y sello del Equipo de Liquidación CBC */}
+                  <div className="mt-6 border-2 border-dashed border-slate-400 rounded-lg p-3 break-inside-avoid" style={{ pageBreakInside: 'avoid' }}>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 text-center mb-2">
+                      Equipo de Liquidación CBC · Firma y Sello
+                    </p>
+                    <div className="grid grid-cols-2 gap-4 items-end text-center text-[10px]">
+                      <div>
+                        <div className="h-16"></div>
+                        <div className="border-t border-slate-400 w-11/12 mx-auto mb-1"></div>
+                        <span className="text-slate-500">Nombre y firma</span>
+                      </div>
+                      <div>
+                        <div className="h-20 w-full border border-slate-300 rounded-md flex items-center justify-center text-slate-300 font-semibold">
+                          SELLO
+                        </div>
+                        <span className="text-slate-500 block mt-1">Sello CBC</span>
+                      </div>
                     </div>
                   </div>
                 </>
