@@ -1137,6 +1137,11 @@ export default function App() {
   const canBulkUploadTrucks =
     !!currentUser &&
     (currentUser.isAdmin || (canView('trucks') && currentUser.permissions.canBulkUploadTrucks !== false));
+  // Rol LIQUIDADOR (permiso "liquidar"): solo quien lo tenga liquida rutas.
+  // Cuentas anteriores sin el permiso guardado: permitido hasta que se quite.
+  const puedeLiquidar = !!currentUser && (currentUser.isAdmin || currentUser.permissions.liquidar !== false);
+  const avisoSinRolLiquidador = () =>
+    showToast('Tu usuario no tiene el rol Liquidador. Pide a un administrador que te lo asigne en Usuarios.', 'error');
   const canBulkUploadStaff =
     !!currentUser &&
     (currentUser.isAdmin || (canView('staff') && currentUser.permissions.canBulkUploadStaff !== false));
@@ -4866,6 +4871,10 @@ export default function App() {
               if (r) setAssignTarget(r);
             }}
             onOpenLiquidateModal={(id, fecha) => {
+              if (!puedeLiquidar) {
+                avisoSinRolLiquidador();
+                return;
+              }
               const r = routes.find((item) => routeMatchesKey(item, id, fecha));
               if (r) setLiquidateTarget(r);
             }}
@@ -4921,7 +4930,13 @@ export default function App() {
             onViewConsolidatedReceipt={(parentRouteId, ref) =>
               handleViewConsolidatedReceipt(parentRouteId, ref)
             }
-            onOpenFinalizeCajaAbierta={(routeObj) => setFinalizeCajaAbiertaTarget(routeObj)}
+            onOpenFinalizeCajaAbierta={(routeObj) => {
+              if (!puedeLiquidar) {
+                avisoSinRolLiquidador();
+                return;
+              }
+              setFinalizeCajaAbiertaTarget(routeObj);
+            }}
             onOpenAbonosCaja={(routeObj) => setAbonosCajaTarget(routeObj)}
             onShowToast={showToast}
             onDeleteRoutes={esAdminDeAlguna ? (keys) => setDeleteRoutesTargetIds(keys) : undefined}
