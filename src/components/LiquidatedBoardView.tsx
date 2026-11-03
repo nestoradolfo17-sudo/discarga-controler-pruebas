@@ -551,7 +551,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Balance Cajas Físicas</th>
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Motivo Devolución</th>
               <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Auditor</th>
-              <th scope="col" className="px-5 py-4 text-right min-w-[140px] sticky top-0 z-20 bg-slate-50">Actas Oficiales</th>
+              <th scope="col" className="px-5 py-4 text-right min-w-[140px] sticky top-0 z-20 bg-slate-50">Pase de Salida</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-normal">
@@ -947,9 +947,9 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                           size="sm"
                           icon={ACTION_ICONS.acta}
                           onClick={() => onViewConsolidatedReceipt(parentId, r)}
-                          title="Ver Acta Oficial Consolidada de todos los viajes"
+                          title="Ver Pase de Salida consolidado de todos los viajes"
                         >
-                          Consolidada
+                          Consolidado
                         </Button>
                       )}
                       <Button
@@ -957,9 +957,9 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                         size="sm"
                         icon={ACTION_ICONS.acta}
                         onClick={() => onViewSettlementReceipt(r.id, r)}
-                        title="Ver e imprimir acta oficial de liquidación"
+                        title="Ver e imprimir el Pase de Salida - Finalización Liquidación"
                       >
-                        Acta
+                        Pase de salida
                       </Button>
                     </div>
                   </td>
