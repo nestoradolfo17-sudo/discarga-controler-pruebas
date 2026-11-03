@@ -111,9 +111,9 @@ export function getRowActions(
       if (aPiso) more.push(aPiso);
       break;
     case 'Liquidada':
-      primary = { key: 'acta', label: 'Acta', hint: 'Comprobante de liquidación', icon: ACTION_ICONS.acta, tone: 'neutral', run: h.onViewReceipt };
+      primary = { key: 'acta', label: 'Pase de salida', hint: 'Finalización de liquidación', icon: ACTION_ICONS.acta, tone: 'neutral', run: h.onViewReceipt };
       if (h.onViewConsolidated) {
-        more.push({ key: 'consolidada', label: 'Acta consolidada', hint: 'Resumen de viajes divididos', icon: ACTION_ICONS.acta, tone: 'purple', run: h.onViewConsolidated });
+        more.push({ key: 'consolidada', label: 'Pase de salida consolidado', hint: 'Resumen de viajes divididos', icon: ACTION_ICONS.acta, tone: 'purple', run: h.onViewConsolidated });
       }
       break;
   }
