@@ -456,6 +456,10 @@ export interface TablePermissions {
   // Usuario de SOLO CONSULTA (demo, capacitación, supervisión): ve todo lo de
   // sus pantallas, pero no guarda cambios (la base también se los rechaza).
   soloLectura?: boolean;
+  // Rol LIQUIDADOR: puede liquidar rutas y registrar la Liquidación Final de
+  // una Caja Abierta. Ausente (cuentas anteriores) = permitido hasta que el
+  // administrador lo quite.
+  liquidar?: boolean;
 }
 
 export interface AppUser {
