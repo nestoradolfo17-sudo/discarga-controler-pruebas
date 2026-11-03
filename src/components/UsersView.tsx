@@ -88,6 +88,8 @@ const PERMISSION_LABELS: { key: keyof TablePermissions; label: string; grandfath
   { key: 'canCreateUsers', label: 'Crear usuarios' },
   { key: 'zr', label: 'ZR' },
   // Solo consulta: ve sus pantallas pero no guarda cambios (para DEMO / capacitación).
+  // Rol Liquidador: solo quien lo tenga puede liquidar rutas.
+  { key: 'liquidar', label: 'Liquidador', grandfathered: true },
   { key: 'soloLectura', label: 'Solo consulta' },
 ];
 
