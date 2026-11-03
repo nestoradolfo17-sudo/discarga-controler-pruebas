@@ -30,7 +30,8 @@
 insert into public.app_seguridad_config (clave, valor) values
   ('bloquear_permisos_pantalla', 'no'),
   ('bloquear_segmento_estatus', 'no'),
-  ('bloquear_borrado_rutas', 'no')
+  ('bloquear_borrado_rutas', 'no'),
+  ('bloquear_liquidar_sin_rol', 'no')
 on conflict (clave) do nothing;
 
 create or replace function public.dc_config_si(p_clave text)
@@ -297,7 +298,8 @@ begin
     return old;
   end if;
   -- Con permiso de eliminar o administrador (general o de la agencia).
-  if public.can_delete_data() or public.is_agency_admin(v_ag) then
+  if exists (select 1 from public.app_users u where u.id = auth.uid() and u.activo and (u.is_admin or u.can_delete))
+     or public.is_agency_admin(v_ag) then
     return old;
   end if;
   -- Trabajo automático de la app:
@@ -330,6 +332,44 @@ end $$;
 drop trigger if exists trg_vigilar_borrado_ruta on public.app_routes;
 create trigger trg_vigilar_borrado_ruta before delete on public.app_routes
   for each row execute function public.dc_vigilar_borrado_ruta();
+
+-- ════════════════════════════════════════════════════════════════════════
+-- 3b) Liquidar rutas: solo con el rol LIQUIDADOR (permiso "liquidar")
+-- ════════════════════════════════════════════════════════════════════════
+-- Aplica al pasar una ruta a "Liquidada" y al registrar la Liquidación Final
+-- de una Caja Abierta. Administradores: siempre. Usuarios antiguos sin el
+-- permiso guardado: se consideran liquidadores hasta que el administrador lo
+-- quite en Usuarios (para no frenar a nadie de golpe).
+create or replace function public.dc_vigilar_liquidador()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  liquida  boolean;
+  finaliza boolean;
+begin
+  if auth.uid() is null or old.data is not distinct from new.data then
+    return new;
+  end if;
+  liquida  := coalesce(old.data ->> 'estado', '') <> 'Liquidada' and coalesce(new.data ->> 'estado', '') = 'Liquidada';
+  finaliza := coalesce(old.data -> 'liquidacion' ->> 'cajaAbiertaResuelta', 'false') <> 'true'
+              and coalesce(new.data -> 'liquidacion' ->> 'cajaAbiertaResuelta', 'false') = 'true';
+  if not (liquida or finaliza) or public.dc_tiene_permiso('liquidar', true) then
+    return new;
+  end if;
+  if public.dc_config_si('bloquear_liquidar_sin_rol') then
+    raise exception 'SIN_ROL_LIQUIDADOR: Solo un usuario con el rol Liquidador puede liquidar rutas.';
+  end if;
+  perform public.dc_alerta('ALERTA_LIQUIDADOR', tg_table_name, new.id, jsonb_build_object(
+    'ruta', new.data ->> 'id', 'fecha', new.data ->> 'fecha', 'agencia', new.data ->> 'agencia',
+    'accion', case when liquida then 'Liquidar' else 'Liquidación final de Caja Abierta' end));
+  return new;
+end $$;
+
+drop trigger if exists trg_vigilar_liquidador on public.app_routes;
+create trigger trg_vigilar_liquidador before update on public.app_routes
+  for each row execute function public.dc_vigilar_liquidador();
+drop trigger if exists trg_vigilar_liquidador on public.app_historical_routes;
+create trigger trg_vigilar_liquidador before update on public.app_historical_routes
+  for each row execute function public.dc_vigilar_liquidador();
 
 -- ════════════════════════════════════════════════════════════════════════
 -- 4) Usuarios de SOLO CONSULTA: la base rechaza sus cambios
@@ -398,11 +438,14 @@ union all
 select 'Borrado de rutas vigilado',
        case when exists (select 1 from pg_trigger where tgname = 'trg_vigilar_borrado_ruta') then 'SÍ' else 'NO' end
 union all
+select 'Liquidar solo con rol Liquidador',
+       case when (select count(*) from pg_trigger where tgname = 'trg_vigilar_liquidador') = 2 then 'SÍ' else 'NO' end
+union all
 select 'Usuarios de solo consulta protegidos',
        case when exists (select 1 from pg_policies where policyname = 'Solo consulta: no edita') then 'SÍ' else 'NO' end
 union all
 select 'Modo actual', case when (select count(*) from public.app_seguridad_config
-                                  where clave in ('bloquear_permisos_pantalla','bloquear_segmento_estatus','bloquear_borrado_rutas')
+                                  where clave in ('bloquear_permisos_pantalla','bloquear_segmento_estatus','bloquear_borrado_rutas','bloquear_liquidar_sin_rol')
                                     and valor = 'si') = 0
                            then 'Solo alerta (no bloquea)' else 'Bloqueo activo en algún punto' end;
 
@@ -412,12 +455,13 @@ select 'Modo actual', case when (select count(*) from public.app_seguridad_confi
 -- Ver alertas:
 --   select fecha at time zone 'America/Guatemala' as fecha, accion, usuario, tabla, registro, detalle
 --   from public.app_audit_log
---   where accion in ('ALERTA_PERMISO','ALERTA_AUTORIZACION','ALERTA_BORRADO')
+--   where accion in ('ALERTA_PERMISO','ALERTA_AUTORIZACION','ALERTA_BORRADO','ALERTA_LIQUIDADOR')
 --   order by fecha desc limit 200;
 -- Activar cada bloqueo (uno por uno):
 --   update public.app_seguridad_config set valor = 'si', actualizado = now() where clave = 'bloquear_segmento_estatus';
 --   update public.app_seguridad_config set valor = 'si', actualizado = now() where clave = 'bloquear_borrado_rutas';
 --   update public.app_seguridad_config set valor = 'si', actualizado = now() where clave = 'bloquear_permisos_pantalla';
+--   update public.app_seguridad_config set valor = 'si', actualizado = now() where clave = 'bloquear_liquidar_sin_rol';
 -- Volver a solo alerta: el mismo comando con valor = 'no'.
 -- Marcar un usuario como SOLO CONSULTA (también se puede desde Usuarios):
 --   update public.app_users set permissions = permissions || '{"soloLectura": true}' where username = 'demo';
