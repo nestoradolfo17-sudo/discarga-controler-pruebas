@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Repeat, Plus, Download, Search, Pencil, Trash2, AlertTriangle, RefreshCw, Zap, ShieldCheck, Check, X, Clock, Printer } from 'lucide-react';
+import { Repeat, Plus, Upload, Download, Search, Pencil, Trash2, AlertTriangle, RefreshCw, Zap, ShieldCheck, Check, X, Clock, Printer } from 'lucide-react';
 import { EstadoRecarga, Prestamo, Recarga, Route, Staff, TipoRecarga, Truck } from '../types';
 import { cubreFecha, prestamoCerrado, formatoCorrelativoPrestamo, estadoPrestamo } from '../utils/prestamos';
 import { RecargaModal, TIPOS_RECARGA } from './modals/RecargaModal';
+import { CargaMasivaRecargasModal } from './modals/CargaMasivaRecargasModal';
 import { leerRecargas, guardarRecarga, guardarRecargas, eliminarRecarga, suscribirRecargas, nuevoIdRecarga, formatoCorrelativo, crearSituacionRecargas, estadoRecarga } from '../services/recargas';
 import { imprimirBoletaRecarga } from '../utils/boletaRecarga';
 import { getGuatemalaDateForInput } from '../utils/date';
@@ -94,6 +95,8 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, trucks
   const situacion = useMemo(() => crearSituacionRecargas(rutas), [rutas]);
   const estadoDe = useCallback((r: Recarga): EstadoRecarga => estadoRecarga(r, situacion), [situacion]);
   const [recargas, setRecargas] = useState<Recarga[]>([]);
+  // Carga masiva por Excel (solo administrador general).
+  const [cargaMasivaAbierta, setCargaMasivaAbierta] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [tablaFalta, setTablaFalta] = useState(false);
   const [errorLectura, setErrorLectura] = useState('');
@@ -516,6 +519,18 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, trucks
           >
             <RefreshCw className={`w-4 h-4 ${cargando ? 'animate-spin' : ''}`} /> Actualizar
           </button>
+          {isAdmin && (
+            <button
+              id="btnCargaMasivaRecargas"
+              type="button"
+              onClick={() => setCargaMasivaAbierta(true)}
+              disabled={tablaFalta}
+              title="Cargar recargas desde el Excel del Reporte de Recargas (solo administradores)"
+              className="min-h-[44px] px-4 rounded-xl border border-violet-300 bg-violet-50 hover:bg-violet-100 text-violet-800 text-sm font-bold flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Upload className="w-4 h-4" /> Carga masiva
+            </button>
+          )}
           <button
             id="btnNuevaRecarga"
             type="button"
@@ -969,6 +984,34 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, trucks
         avisoReautorizar={!!modal.recarga && !adminDe(modal.recarga.agencia) && estadoDe(modal.recarga) !== 'Pendiente' && estadoDe(modal.recarga) !== 'En ruta'}
         onGuardar={(d) => void handleGuardar(d)}
       />
+      {isAdmin && (
+        <CargaMasivaRecargasModal
+          isOpen={cargaMasivaAbierta}
+          onClose={() => setCargaMasivaAbierta(false)}
+          agencias={agencias}
+          agenciaSugerida={agenciaGeneral}
+          staff={staff}
+          trucks={trucks || []}
+          usuario={usuario}
+          idsExistentes={new Set(recargas.map((r) => r.id))}
+          onImportar={async (list) => {
+            // Por lotes, para no mandar solicitudes gigantes.
+            const guardadas: Recarga[] = [];
+            for (let i = 0; i < list.length; i += 200) {
+              const { error: err, guardadas: g } = await guardarRecargas(list.slice(i, i + 200));
+              if (err) {
+                if (guardadas.length) aplicar(guardadas);
+                onShowToast(`Se cargaron ${guardadas.length} de ${list.length} recargas. Error: ${err}`, 'error');
+                return false;
+              }
+              guardadas.push(...g);
+            }
+            aplicar(guardadas);
+            onShowToast(`Carga masiva lista: ${guardadas.length} recarga(s) registradas.`, 'success');
+            return true;
+          }}
+        />
+      )}
     </div>
   );
 };
