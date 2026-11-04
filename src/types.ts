@@ -321,6 +321,9 @@ export interface RouteDispatchRecord {
   // historial de despachos para trazabilidad aunque la ruta se vuelva a
   // despachar y su lista de clientesRuta se reduzca solo a estos pendientes.
   clientesPendientes?: ClientePendiente[];
+  // Ruta Abierta: pase de salida emitido con la justificación escrita por quien
+  // liquidó (solo con justificación se puede emitir).
+  paseSalida?: { justificacion: string; fecha: string; por: string };
 }
 
 export interface Route {
