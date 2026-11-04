@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Route, Staff } from '../../types';
+import { Route, Staff, RouteDispatchRecord } from '../../types';
 import { formatDateToGuatemala, formatDateTimeToGuatemala } from '../../utils/date';
 import { getRouteAssignmentType } from '../../utils/excel';
 import { X, Printer } from 'lucide-react';
@@ -15,6 +15,117 @@ interface ReceiptModalProps {
   staff: Staff[];
 }
 
+// Recuadro de firma y sello del Equipo de Liquidación CBC.
+const SelloCBC: React.FC = () => (
+  <div className="mt-6 border-2 border-dashed border-slate-400 rounded-lg p-3 break-inside-avoid" style={{ pageBreakInside: 'avoid' }}>
+    <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 text-center mb-2">Equipo de Liquidación CBC · Firma y Sello</p>
+    <div className="grid grid-cols-2 gap-4 items-end text-center text-[10px]">
+      <div>
+        <div className="h-16"></div>
+        <div className="border-t border-slate-400 w-11/12 mx-auto mb-1"></div>
+        <span className="text-slate-500">Nombre y firma</span>
+      </div>
+      <div>
+        <div className="h-20 w-full border border-slate-300 rounded-md flex items-center justify-center text-slate-300 font-semibold">SELLO</div>
+        <span className="text-slate-500 block mt-1">Sello CBC</span>
+      </div>
+    </div>
+  </div>
+);
+
+// Pase de salida de una RUTA ABIERTA: la ruta no se liquidó por completo y
+// sale con la justificación que escribió quien registró el retorno.
+const PaseRutaAbierta: React.FC<{ route: Route; d: RouteDispatchRecord }> = ({ route, d }) => {
+  const f3 = (n: number) => fmtNum(Number(n) || 0, 3);
+  return (
+    <>
+      <div className="border-b-2 border-slate-900 pb-3 mb-4 flex justify-between items-start">
+        <div>
+          <h2 className="text-base font-extrabold text-slate-900 uppercase">Pase de Salida - Ruta Abierta</h2>
+          <p className="text-[11px] text-slate-500">DISCARGA CONTROLER - Salida con ruta pendiente de completar</p>
+        </div>
+        <div className="text-right">
+          <span className="text-xs font-mono font-bold bg-amber-500 text-white px-2 py-1 rounded">Ruta {route.id}</span>
+          <p className="text-[10px] text-slate-400 mt-1">{d.paseSalida?.fecha || d.fechaRetorno}</p>
+        </div>
+      </div>
+
+      <div className="p-2.5 rounded-lg border-2 border-amber-400 bg-amber-50 text-center">
+        <span className="text-sm font-extrabold uppercase tracking-wider text-amber-800">Ruta abierta · Retorno #{d.intento}</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[11px]">
+        <div><span className="text-slate-500">Agencia:</span> <strong>{route.agencia}</strong></div>
+        <div><span className="text-slate-500">Fecha de la ruta:</span> <strong>{formatDateToGuatemala(route.fecha)}</strong></div>
+        <div><span className="text-slate-500">Camión:</span> <strong>{d.camionPlaca}</strong></div>
+        <div><span className="text-slate-500">Tipo de viaje:</span> <strong>{d.tipoAsignacion || '-'}</strong></div>
+        <div className="col-span-2"><span className="text-slate-500">Piloto:</span> <strong>{d.conductor}</strong></div>
+        <div className="col-span-2"><span className="text-slate-500">Auxiliares:</span> <strong>{d.auxiliares.length ? d.auxiliares.join(', ') : 'Sin auxiliares'}</strong></div>
+      </div>
+
+      <table className="w-full text-[11px] border border-slate-300">
+        <thead className="bg-slate-100">
+          <tr>
+            <th className="px-2 py-1.5 text-left">Concepto</th>
+            <th className="px-2 py-1.5 text-right">Entregado</th>
+            <th className="px-2 py-1.5 text-right">Pendiente</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="border-t border-slate-200">
+            <td className="px-2 py-1.5">Cajas físicas</td>
+            <td className="px-2 py-1.5 text-right font-mono font-bold">{f3(d.cajasEntregadas)}</td>
+            <td className="px-2 py-1.5 text-right font-mono font-bold text-amber-700">{f3(d.cajasDevueltas)}</td>
+          </tr>
+          <tr className="border-t border-slate-200">
+            <td className="px-2 py-1.5">Paradas / guías</td>
+            <td className="px-2 py-1.5 text-right font-mono font-bold">{fmtNum(d.guiasExitosas || 0)}</td>
+            <td className="px-2 py-1.5 text-right font-mono font-bold text-amber-700">{fmtNum(d.guiasRechazadas || 0)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div className="p-3 rounded-lg border-2 border-slate-800 bg-white break-inside-avoid" style={{ pageBreakInside: 'avoid' }}>
+        <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-700">Justificación de la salida</p>
+        <p className="text-[12px] text-slate-900 font-semibold mt-1 whitespace-pre-wrap">{d.paseSalida?.justificacion}</p>
+        <p className="text-[10px] text-slate-500 mt-1">Registrada por {d.paseSalida?.por || d.auditor} · {d.paseSalida?.fecha}</p>
+      </div>
+
+      {(d.motivoDevolucion || (d.clientesPendientes && d.clientesPendientes.length > 0)) && (
+        <div className="text-[11px] space-y-1">
+          {d.motivoDevolucion && (
+            <p><span className="text-slate-500">Motivo:</span> <strong>{d.motivoDevolucion}</strong></p>
+          )}
+          {d.clientesPendientes && d.clientesPendientes.length > 0 && (
+            <div>
+              <p className="text-slate-500">Clientes pendientes:</p>
+              <ul className="list-disc pl-5">
+                {d.clientesPendientes.map((cp) => (
+                  <li key={cp.codigo}>{cp.codigo} {cp.nombre} — {cp.motivo}{typeof cp.cajas === 'number' ? ` (${f3(cp.cajas)} cajas)` : ''}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="pt-8 grid grid-cols-2 gap-8 text-center text-[11px] border-t border-slate-200 mt-6">
+        <div>
+          <div className="border-t border-slate-400 w-3/4 mx-auto mb-1"></div>
+          <strong className="text-slate-800 block">{d.conductor || 'Piloto Titular'}</strong>
+          <span className="text-slate-400 text-[10px]">Firma Piloto Titular</span>
+        </div>
+        <div>
+          <div className="border-t border-slate-400 w-3/4 mx-auto mb-1"></div>
+          <strong className="text-slate-800 block">{d.auditor || 'Auditor de Agencia'}</strong>
+          <span className="text-slate-400 text-[10px]">Firma Auditor / Liquidador</span>
+        </div>
+      </div>
+      <SelloCBC />
+    </>
+  );
+};
+
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   isOpen,
   onClose,
@@ -27,6 +138,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   if (!isOpen || !route) return null;
 
   const isConsolidated = consolidatedSiblings && consolidatedSiblings.length > 0;
+  // Ruta Abierta con pase de salida emitido (último retorno con justificación).
+  const ultimoRetorno = route.historialDespachos?.[route.historialDespachos.length - 1];
+  const paseAbierta = !isConsolidated && route.estado === 'Abierta' && ultimoRetorno?.paseSalida ? ultimoRetorno : null;
 
   const handlePrint = () => {
     const printableContent = printContentRef.current;
@@ -52,7 +166,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     const cleanDate = (formatDateToGuatemala(rawFechaLiq) || formatDateTimeToGuatemala(new Date()).slice(0, 10)).replace(/\//g, '-');
     const cleanRouteId = targetRouteId.trim().replace(/[/\\?%*:|"<>]/g, '-');
 
-    const documentTitle = isConsolidated
+    const documentTitle = paseAbierta
+      ? `Pase_Salida_Ruta_Abierta_${cleanRouteId}_${cleanDate}`
+      : isConsolidated
       ? `Pase_Salida_Consolidado_Ruta_${cleanRouteId}_${cleanDate}`
       : `Pase_Salida_Ruta_${cleanRouteId}_${cleanDate}`;
 
@@ -208,7 +324,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="p-4 bg-slate-900 text-white flex items-center justify-between no-print">
           <h3 className="font-bold text-xs">
-            {isConsolidated
+            {paseAbierta
+              ? 'Pase de Salida - Ruta Abierta'
+              : isConsolidated
               ? 'Pase de Salida - Finalización Liquidación (Consolidado)'
               : 'Pase de Salida - Finalización Liquidación'}
           </h3>
@@ -230,7 +348,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           id="printableSettlement"
           className="p-6 text-xs text-slate-800 space-y-4 overflow-y-auto"
         >
-          {isConsolidated ? (
+          {paseAbierta ? (
+            <PaseRutaAbierta route={route} d={paseAbierta} />
+          ) : isConsolidated ? (
             // Consolidated Receipt
             (() => {
               const siblings = consolidatedSiblings!;
