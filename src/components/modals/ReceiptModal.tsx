@@ -60,7 +60,30 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     document.title = documentTitle;
 
     try {
-      const printWindow = window.open('', '_blank', 'width=850,height=900');
+      // Ventana de impresión; si el navegador bloquea ventanas emergentes, se usa
+      // un marco oculto: así SIEMPRE salen las dos copias (original y copia).
+      let marco: HTMLIFrameElement | null = null;
+      let printWindow: Window | null = null;
+      try {
+        printWindow = window.open('', '_blank', 'width=850,height=900');
+      } catch {
+        printWindow = null;
+      }
+      if (!printWindow) {
+        marco = document.createElement('iframe');
+        marco.setAttribute('aria-hidden', 'true');
+        marco.style.cssText = 'position:fixed;right:0;bottom:0;width:816px;height:1056px;border:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(marco);
+        printWindow = marco.contentWindow;
+      }
+      const cerrar = () => {
+        try {
+          if (marco) marco.remove();
+          else printWindow?.close();
+        } catch {
+          /* ya cerrada */
+        }
+      };
       if (printWindow) {
         // Seguridad: la ventana de impresión comparte la sesión de la app, así
         // que NO se carga ningún programa externo (antes se usaba el CDN de
@@ -82,38 +105,80 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <title>${documentTitle}</title>
             ${estilosApp}
             <style>
-              @page { size: letter portrait; margin: 12mm 15mm; }
-              @media print { @page { size: letter portrait; margin: 12mm 15mm; } }
+              /* Dos boletas por hoja carta (original y copia) con línea de corte al medio. */
+              @page { size: letter portrait; margin: 8mm 10mm; }
+              @media print { @page { size: letter portrait; margin: 8mm 10mm; } }
+              html, body { margin: 0; padding: 0; }
               body {
                 font-family: 'Inter', sans-serif;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
                 background-color: #ffffff;
                 color: #0f172a;
-                padding: 10px;
               }
+              .hoja { width: 195.9mm; height: 263mm; display: flex; flex-direction: column; overflow: hidden; margin: 0 auto; }
+              .copia { position: relative; flex: 1 1 0; overflow: hidden; }
+              .copia .contenido { position: absolute; top: 16px; left: 0; transform-origin: top left; }
+              .etiqueta-copia {
+                position: absolute; top: 0; right: 0; z-index: 2;
+                font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+                color: #2C3790; border: 1px solid #2C3790; border-radius: 3px; padding: 1px 5px; background: #fff;
+              }
+              .troquel {
+                flex: 0 0 8mm; display: flex; align-items: center; gap: 6px;
+                color: #64748b; font-size: 8px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+              }
+              .troquel::before, .troquel::after { content: ''; flex: 1; border-top: 1.5px dashed #64748b; }
             </style>
           </head>
-          <body class="p-4 bg-white text-xs">
-            <div class="max-w-2xl mx-auto space-y-4">
-              ${printableContent.innerHTML}
+          <body class="bg-white text-xs">
+            <div class="hoja">
+              <div class="copia"><span class="etiqueta-copia">Original</span><div class="contenido space-y-4">${printableContent.innerHTML}</div></div>
+              <div class="troquel">&#9986; Cortar aquí</div>
+              <div class="copia"><span class="etiqueta-copia">Copia</span><div class="contenido space-y-4">${printableContent.innerHTML}</div></div>
             </div>
-
           </body>
           </html>
         `);
         printWindow.document.close();
         // Se imprime desde aquí (sin código dentro de la ventana), cuando ya
         // cargaron los estilos.
+        // Ajusta cada boleta para que quepa completa en su media hoja: se
+        // ensancha un poco y se reduce en proporción (sin cortar nada).
+        const ajustarMitades = () => {
+          try {
+            printWindow!.document.querySelectorAll<HTMLElement>('.copia').forEach((copia) => {
+              const cont = copia.querySelector<HTMLElement>('.contenido');
+              if (!cont) return;
+              const W = copia.clientWidth;
+              const H = copia.clientHeight - 16; // debajo de la etiqueta Original / Copia
+              if (!W || !H) return;
+              let escala = 1;
+              cont.style.width = `${W}px`;
+              for (let i = 0; i < 4; i++) {
+                const h = cont.scrollHeight;
+                if (h * escala <= H) break;
+                escala = Math.min(escala, H / h);
+                // Más ancho = menos alto; sin pasar de 1.8 veces el ancho real.
+                cont.style.width = `${Math.min(W / escala, W * 1.8)}px`;
+                escala = Math.min(W / cont.offsetWidth, H / cont.scrollHeight);
+              }
+              cont.style.transform = `scale(${Math.min(1, escala * 0.98)})`;
+            });
+          } catch {
+            /* si no se puede medir, se imprime tal cual */
+          }
+        };
         let impreso = false;
         const lanzar = () => {
           if (impreso) return;
           impreso = true;
           setTimeout(() => {
             try {
-              printWindow.focus();
-              printWindow.print();
-              setTimeout(() => printWindow.close(), 750);
+              ajustarMitades();
+              printWindow!.focus();
+              printWindow!.print();
+              setTimeout(cerrar, marco ? 2000 : 750);
             } catch {
               /* la ventana se cerró antes */
             }
