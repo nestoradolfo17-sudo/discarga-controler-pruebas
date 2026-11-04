@@ -3315,6 +3315,7 @@ export default function App() {
       motivoDetalle?: string;
       auditor: string;
       isRutaAbierta?: boolean;
+      paseSalidaJustificacion?: string;
       // Nuevo estado "Caja Abierta": la ruta se liquida igual que un cierre
       // definitivo, pero queda marcada como pendiente de validar la caja/boleta.
       isCajaAbierta?: boolean;
@@ -3458,6 +3459,15 @@ export default function App() {
         tipoAsignacion: currentTripTipo,
         comentario: data.comentario,
         clientesPendientes: data.clientesPendientes,
+        ...(data.paseSalidaJustificacion
+          ? {
+              paseSalida: {
+                justificacion: data.paseSalidaJustificacion,
+                fecha: formatDateTimeToGuatemala(new Date()),
+                por: data.auditor || currentUser?.nombre || currentUser?.username || '',
+              },
+            }
+          : {}),
       };
 
       // Corrección: si se marcaron clientes puntuales como pendientes, la ruta
@@ -3503,6 +3513,8 @@ export default function App() {
         `Ruta ${targetRoute.id} registrada como RUTA ABIERTA (Retorno #${intentoNum}). Piloto, auxiliares y unidad quedaron libres. La ruta se mantiene en el tablero para reasignarse.`,
         'info'
       );
+      // Con justificación: se abre el pase de salida de Ruta Abierta.
+      if (data.paseSalidaJustificacion) handleViewSettlementReceipt(routeId, updatedRoute);
       return;
     }
 
