@@ -108,6 +108,10 @@ export function getRowActions(
       // (verde). Liquidar definitivamente queda en "Más acciones".
       primary = { key: 'reasignar', label: 'Reasignar', hint: 'Recarga, revisita o nueva tripulación', icon: ACTION_ICONS.reasignar, tone: 'reasignar', run: h.onAssign };
       more.push({ key: 'liquidar', label: 'Liquidar', hint: 'Liquidar definitivamente', icon: ACTION_ICONS.liquidar, tone: 'success', run: h.onLiquidate });
+      // Pase de salida de Ruta Abierta: solo si se emitió con justificación.
+      if (route.historialDespachos?.[route.historialDespachos.length - 1]?.paseSalida) {
+        more.push({ key: 'paseAbierta', label: 'Pase de salida (ruta abierta)', hint: 'Con la justificación registrada', icon: ACTION_ICONS.acta, tone: 'warning', run: h.onViewReceipt });
+      }
       if (aPiso) more.push(aPiso);
       break;
     case 'Liquidada':
