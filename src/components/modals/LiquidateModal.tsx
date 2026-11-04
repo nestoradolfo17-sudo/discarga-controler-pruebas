@@ -56,6 +56,9 @@ interface LiquidateModalProps {
       clientesPendientes?: ClientePendiente[];
       // Ruta partida: pasar las cajas devueltas a los viajes pendientes del grupo.
       transferirDevueltas?: boolean;
+      // Ruta Abierta: justificación para emitir el pase de salida (opcional;
+      // sin ella no se emite pase).
+      paseSalidaJustificacion?: string;
     }
   ) => void;
 }
@@ -92,6 +95,10 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   // Ventana emergente "¿Estás seguro?" antes del OK final.
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [comentario, setComentario] = useState('');
+  // Ruta Abierta: emitir pase de salida (solo con justificación escrita).
+  const [emitirPase, setEmitirPase] = useState(false);
+  const [justificacionPase, setJustificacionPase] = useState('');
+  const [paseError, setPaseError] = useState('');
   // Clientes marcados puntualmente como pendientes en Ruta Abierta / Caja
   // Abierta (código -> motivo elegido, vacío mientras no se elija). Solo tiene
   // sentido cuando la ruta trae clientesRuta cargado (ver Route.clientesRuta) —
@@ -120,6 +127,9 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       setMontoDiferencia('');
       setConfirmOpen(false);
       setComentario('');
+      setEmitirPase(false);
+      setJustificacionPase('');
+      setPaseError('');
       setClientesMarcados(new Map());
       setClientesFiltro('');
       setClientesPendientesError('');
@@ -260,6 +270,11 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
         : undefined;
 
     const isRutaAbierta = tipoResolucion === 'abierta';
+    if (isRutaAbierta && emitirPase && justificacionPase.trim().length < 10) {
+      setPaseError('Escribe la justificación de la salida (al menos 10 caracteres) o desmarca "Emitir pase de salida".');
+      return;
+    }
+    setPaseError('');
 
     // Cierre Definitivo con diferencia: es obligatorio indicar la razón, ya sea
     // marcando los clientes no entregados (cada uno con su motivo) o, si no se
@@ -307,6 +322,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       comentario: comentario.trim() || undefined,
       clientesPendientes,
       transferirDevueltas: transfiere || undefined,
+      paseSalidaJustificacion: isRutaAbierta && emitirPase ? justificacionPase.trim() : undefined,
     });
   };
 
@@ -706,6 +722,47 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                 <div>
                   <strong>Aviso Operativo:</strong> Al confirmar como <strong>Ruta Abierta</strong>, el piloto ({infoDriver}) y la unidad ({infoTruck}) quedarán libres y disponibles en bodega. La ruta permanecerá en el tablero con la opción <em>"Reasignar Unidad"</em> para un nuevo despacho.
                 </div>
+              </div>
+            )}
+
+            {/* Ruta Abierta: pase de salida solo con justificación escrita. */}
+            {tipoResolucion === 'abierta' && (
+              <div className="p-3 bg-white border-2 border-amber-300 rounded-lg space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer min-h-[40px]">
+                  <input
+                    type="checkbox"
+                    checked={emitirPase}
+                    onChange={(e) => {
+                      setEmitirPase(e.target.checked);
+                      setPaseError('');
+                    }}
+                    className="w-5 h-5 cursor-pointer accent-amber-600"
+                  />
+                  <span className="text-xs font-bold text-amber-900">Emitir pase de salida (Ruta Abierta)</span>
+                </label>
+                {emitirPase && (
+                  <div>
+                    <label htmlFor="justificacionPase" className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      Justificación de la salida *
+                    </label>
+                    <textarea
+                      id="justificacionPase"
+                      value={justificacionPase}
+                      onChange={(e) => {
+                        setJustificacionPase(e.target.value);
+                        if (paseError) setPaseError('');
+                      }}
+                      rows={2}
+                      maxLength={300}
+                      placeholder="Ej.: El cliente pidió entrega mañana; la unidad sale con el resto de la carga a bodega."
+                      className={`w-full min-h-[44px] p-2 border rounded-lg text-xs outline-none resize-none focus:ring-2 focus:ring-amber-400 ${
+                        paseError ? 'border-rose-400' : 'border-slate-300'
+                      }`}
+                    />
+                    <p className="text-[10px] text-slate-500">Aparece en el pase de salida impreso. Sin justificación no se emite el pase.</p>
+                  </div>
+                )}
+                {paseError && <p className="text-[11px] text-rose-700 font-semibold">{paseError}</p>}
               </div>
             )}
           </div>
