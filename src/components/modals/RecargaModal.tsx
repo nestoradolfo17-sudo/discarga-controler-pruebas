@@ -81,6 +81,8 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
   const [conductor, setConductor] = useState('');
   const [auxiliares, setAuxiliares] = useState<string[]>([]);
   const [comentario, setComentario] = useState('');
+  // Total de cajas de la ruta/viaje (se imprime en la boleta).
+  const [cajasTxt, setCajasTxt] = useState('');
   const [solicitadoPor, setSolicitadoPor] = useState('');
   const [picker, setPicker] = useState<'piloto' | 'aux' | null>(null);
   const [intentado, setIntentado] = useState(false);
@@ -96,6 +98,7 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
     setConductor(inicial?.conductor || '');
     setAuxiliares(inicial?.auxiliares || []);
     setComentario(inicial?.comentario || '');
+    setCajasTxt(typeof inicial?.cajas === 'number' ? String(inicial.cajas) : '');
     setSolicitadoPor(inicial ? inicial.solicitadoPor || inicial.creadoPor || '' : solicitantePorDefecto);
     setPicker(null);
     setIntentado(false);
@@ -135,6 +138,10 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
     const f = fechaRutaISO(r);
     if (f) setFecha(f);
     if (r.agencia) setAgencia(r.agencia);
+    {
+      const cj = Number(String(r.cajasFisicas ?? '').replace(/,/g, ''));
+      if (cj > 0) setCajasTxt(String(Math.round(cj * 1000) / 1000));
+    }
     if (a && (a.conductor || a.auxiliar1)) {
       setConductor(a.conductor || '');
       setAuxiliares(([a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].filter(Boolean) as string[]).slice(0, MAX_AUX));
@@ -240,6 +247,12 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
       auxiliares,
       auxiliarIds: auxiliares.map((n) => staffId(n) || null),
       camionPlaca: sinRuta ? inicial?.camionPlaca : asig?.camionPlaca || inicial?.camionPlaca,
+      cajas: (() => {
+        const n = Number(cajasTxt.replace(',', '.'));
+        if (cajasTxt.trim() !== '' && isFinite(n) && n >= 0) return Math.round(n * 1000) / 1000;
+        const cj = Number(String(rutaEncontrada?.cajasFisicas ?? '').replace(/,/g, ''));
+        return cj > 0 ? Math.round(cj * 1000) / 1000 : undefined;
+      })(),
       comentario: comentario.trim() || undefined,
       // Automático: el usuario que registra (en una edición se conserva el original).
       solicitadoPor: (solicitadoPor || solicitantePorDefecto).trim(),
@@ -529,6 +542,22 @@ export const RecargaModal: React.FC<RecargaModalProps> = ({
               {solicitadoPor || solicitantePorDefecto || '-'}
             </div>
             <p className="mt-1 text-[10.5px] text-slate-400">Automático: usuario que registra la recarga. Firma en la boleta junto con la tripulación.</p>
+          </div>
+
+          <div>
+            <label htmlFor="recCajas" className={label}>Total de cajas</label>
+            <input
+              id="recCajas"
+              type="number"
+              inputMode="decimal"
+              step="0.001"
+              min="0"
+              value={cajasTxt}
+              onChange={(e) => setCajasTxt(e.target.value)}
+              placeholder={rutaEncontrada?.cajasFisicas ? String(rutaEncontrada.cajasFisicas) : 'Ej. 350'}
+              className={`${input} font-mono`}
+            />
+            <p className="mt-1 text-[10.5px] text-slate-400">Se llena solo con las cajas de la ruta elegida; se puede corregir. Sale en la boleta.</p>
           </div>
 
           <div>
