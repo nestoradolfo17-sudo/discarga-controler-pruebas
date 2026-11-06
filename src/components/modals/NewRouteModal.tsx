@@ -6,6 +6,9 @@ import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { SEGMENTO_OPTIONS } from '../../data/segmentos';
 
+// Motivo de una ruta manual de entrega.
+export const MOTIVOS_RUTA_MANUAL = ['Entrega de producto', 'Recolección de envases'];
+
 interface NewRouteModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -35,12 +38,15 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
   const [equipoFrio, setEquipoFrio] = useState(0);
   const [capacidad, setCapacidad] = useState('');
   const [distancia, setDistancia] = useState<number | string>('');
+  // Motivo de la ruta manual (por defecto, entrega normal).
+  const [motivoRuta, setMotivoRuta] = useState<string>(MOTIVOS_RUTA_MANUAL[0]);
 
   useEffect(() => {
     if (isOpen) {
       setFecha(getGuatemalaDateForInput(new Date()));
       setSegmento('');
       setErrorSegmento(false);
+      setMotivoRuta(MOTIVOS_RUTA_MANUAL[0]);
     }
   }, [isOpen]);
 
@@ -70,6 +76,8 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
       total: '10:45',
       cajas12Oz: 0,
       tipoRuta: 'Entrega',
+      // Se guarda en el mismo campo de motivo que usan las rutas de traslado.
+      razonTraslado: motivoRuta,
     });
   };
 
@@ -128,6 +136,26 @@ export const NewRouteModal: React.FC<NewRouteModalProps> = ({
               ))}
             </div>
             {errorSegmento && <p className="mt-1 text-[11px] font-semibold text-rose-600">Selecciona el mercado / segmento de la ruta.</p>}
+          </div>
+
+          <div>
+            <p className="font-semibold text-slate-700 mb-1.5">Motivo de la ruta *</p>
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Motivo de la ruta">
+              {MOTIVOS_RUTA_MANUAL.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={motivoRuta === m}
+                  onClick={() => setMotivoRuta(m)}
+                  className={`min-h-[40px] px-3 rounded-lg border-2 font-semibold transition-all cursor-pointer ${
+                    motivoRuta === m ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
