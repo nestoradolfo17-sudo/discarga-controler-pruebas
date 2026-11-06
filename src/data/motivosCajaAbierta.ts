@@ -27,4 +27,7 @@ export const CAJA_ABIERTA_OPTIONS: CajaAbiertaOption[] = [
   { reason: 'Pendiente Envase / Cajilla', icon: '🍾' },
   { reason: 'Falta de Albarán / Contraseña', icon: '🔐' },
   { reason: 'Refacturación', icon: '🔁' },
+  { reason: 'Por dinero faltante', icon: '💸' },
+  { reason: 'Dinero en buzón', icon: '📮' },
+  { reason: 'Zona Roja', icon: '🟥' },
 ];
