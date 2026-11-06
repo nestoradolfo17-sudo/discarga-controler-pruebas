@@ -74,6 +74,7 @@ function copia(r: Recarga, etiqueta: string, logo: string): string {
       ${fila('Agencia', esc(r.agencia) + (r.segmento ? ` · ${esc(r.segmento)}` : ''))}
       ${fila('Tipo', `<b>${esc(r.tipo)}</b> (${VIAJES[r.tipo] || 1} recarga${(VIAJES[r.tipo] || 1) > 1 ? 's' : ''})`)}
       ${fila('Camión', esc(r.camionPlaca || '-'))}
+      ${fila('Total de cajas', typeof r.cajas === 'number' ? `<b>${esc(r.cajas.toLocaleString('en-US', { maximumFractionDigits: 3 }))}</b>` : '-')}
       ${fila('Piloto', r.conductor ? `<b>${esc(r.conductor)}</b>` : 'Sin piloto')}
       ${fila('Auxiliares', aux.length ? aux.map(esc).join('<br/>') : '-')}
       ${fila('Solicitado por', `<b>${esc(r.solicitadoPor || r.creadoPor || '-')}</b>`)}
