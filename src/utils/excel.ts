@@ -1469,7 +1469,7 @@ export function parseTrucksFromSheet(ws: XLSXTypes.WorkSheet, defaultAgencia?: s
  * Piloto asignado y Segmento de las rutas visibles en el Tablero (mismo orden
  * y filtros que se ven en pantalla). Solo lectura: no modifica ninguna ruta.
  */
-export async function exportRutasPrioridadesToExcel(routesIn: Route[], trucks: Truck[] = [], fechaArchivo?: string): Promise<boolean> {
+export async function exportRutasPrioridadesToExcel(routesIn: Route[], trucks: Truck[] = [], fechaArchivo?: string, staff: Staff[] = []): Promise<boolean> {
   if (!routesIn || routesIn.length === 0) return false;
   // Orden: por número de ruta de menor a mayor (números como números: 2 antes que 10).
   const routes = [...routesIn].sort((a, b) =>
@@ -1517,7 +1517,17 @@ export async function exportRutasPrioridadesToExcel(routesIn: Route[], trucks: T
     const f = r.asignacion?.fechaDespacho || r.asignacion?.fechaAsignacion || r.fechaAsignacion || r.fechaOriginalRuta || r.fecha || '';
     return f ? formatDateToGuatemala(f) || String(f).slice(0, 10) : '';
   };
-  const header = ['No. Ruta', 'Fecha de Despacho', 'Tipo de Viaje', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Camión de Apoyo', 'Segmento', 'Cajas', 'Distancia (km)', 'Ruta a Piso', 'Horario de Carga', 'No. de Prioridad de Carga'];
+  // Teléfono del piloto asignado (del catálogo de Personal).
+  const telefonoPiloto = (r: Route) => {
+    const a = r.asignacion;
+    if (!a?.conductor) return '';
+    const p =
+      (a.conductorId && staff.find((s) => s.id === a.conductorId)) ||
+      staff.find((s) => s.nombre === a.conductor && (!r.agencia || !s.agencia || s.agencia === r.agencia)) ||
+      staff.find((s) => s.nombre === a.conductor);
+    return p?.telefono ? String(p.telefono).trim() : '';
+  };
+  const header = ['No. Ruta', 'Fecha de Despacho', 'Tipo de Viaje', 'ID Camión', 'Camión Asignado', 'Piloto Asignado', 'Teléfono Piloto', 'Camión de Apoyo', 'Segmento', 'Cajas', 'Distancia (km)', 'Ruta a Piso', 'Horario de Carga', 'No. de Prioridad de Carga'];
   const rows: (string | number)[][] = routes.map((r) => {
     const piso = esPiso(r);
     return [
@@ -1527,6 +1537,7 @@ export async function exportRutasPrioridadesToExcel(routesIn: Route[], trucks: T
       idCamionDe(r),
       r.asignacion?.camionPlaca || (piso ? 'RUTA A PISO' : ''),
       r.asignacion?.conductor || (piso ? 'RUTA A PISO' : ''),
+      telefonoPiloto(r),
       apoyoDe(r),
       r.segmento || '',
       cajasDe(r),
@@ -1536,19 +1547,19 @@ export async function exportRutasPrioridadesToExcel(routesIn: Route[], trucks: T
       '',
     ];
   });
-  const totalCajas = Math.round(rows.reduce((a, x) => a + (typeof x[8] === 'number' ? x[8] : 0), 0) * 1000) / 1000;
-  const totalDist = Math.round(rows.reduce((a, x) => a + (typeof x[9] === 'number' ? x[9] : 0), 0) * 100) / 100;
-  const conApoyo = rows.filter((x) => x[6]).length;
+  const totalCajas = Math.round(rows.reduce((a, x) => a + (typeof x[9] === 'number' ? x[9] : 0), 0) * 1000) / 1000;
+  const totalDist = Math.round(rows.reduce((a, x) => a + (typeof x[10] === 'number' ? x[10] : 0), 0) * 100) / 100;
+  const conApoyo = rows.filter((x) => x[7]).length;
   const recargas = rows.filter((x) => x[2] === 'RECARGA').length;
-  const pie: (string | number)[] = [`TOTAL: ${rows.length} rutas`, '', '', '', '', `${rows.length - recargas} primer viaje / ${recargas} recarga`, conApoyo ? `${conApoyo} ruta(s) con apoyo` : '', '', totalCajas, totalDist, '', '', ''];
+  const pie: (string | number)[] = [`TOTAL: ${rows.length} rutas`, '', '', '', '', `${rows.length - recargas} primer viaje / ${recargas} recarga`, '', conApoyo ? `${conApoyo} ruta(s) con apoyo` : '', '', totalCajas, totalDist, '', '', ''];
   // Excel con formato profesional: colores de DISCARGA, logo, tabla con filtros,
   // encabezado fijo y fila de totales (ver utils/xlsxPro.ts).
   const todayStr = getGuatemalaDateForInput(new Date());
   const fechaTxt = fechaArchivo || todayStr.split('-').reverse().join('/');
   const agencias = Array.from(new Set(routes.map((r) => r.agencia).filter(Boolean))) as string[];
   const ahora = new Intl.DateTimeFormat('es-GT', { timeZone: 'America/Guatemala', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
-  const anchos = [12, 13, 14, 11, 14, 30, 26, 16, 12, 13, 13, 14, 14];
-  const tipos: (TipoColumna | undefined)[] = [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 'dec3', 'dec2'];
+  const anchos = [12, 13, 14, 11, 14, 30, 15, 26, 16, 12, 13, 13, 14, 14];
+  const tipos: (TipoColumna | undefined)[] = [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 'dec3', 'dec2'];
   const logoPng = await leerLogoPng(logoDiscargaUrl);
   descargarExcelPro({
     archivo: `Rutas_Prioridades_${fechaArchivo ? fechaArchivo.split('/').reverse().join('-') : todayStr}.xlsx`,
@@ -1559,7 +1570,7 @@ export async function exportRutasPrioridadesToExcel(routesIn: Route[], trucks: T
       `Fecha: ${fechaTxt}   ·   Agencia: ${agencias.length ? agencias.join(', ') : '—'}   ·   ${rows.length} ruta(s)`,
       `${rows.length - recargas} primer viaje / ${recargas} recarga   ·   Cajas: ${totalCajas.toLocaleString('en-US', { maximumFractionDigits: 3 })}   ·   Distancia: ${totalDist.toLocaleString('en-US', { maximumFractionDigits: 2 })} km   ·   Generado: ${ahora}`,
     ],
-    columnas: header.map((h, i) => ({ titulo: h, ancho: anchos[i] || 14, tipo: tipos[i] || 'texto', centrar: i <= 4 || i >= 10 })),
+    columnas: header.map((h, i) => ({ titulo: h, ancho: anchos[i] || 14, tipo: tipos[i] || 'texto', centrar: i <= 4 || i === 6 || i >= 11 })),
     filas: rows,
     total: pie,
     logoPng,
@@ -1567,7 +1578,7 @@ export async function exportRutasPrioridadesToExcel(routesIn: Route[], trucks: T
       if (c === 0) return 'clave';
       if (c === 2 && v === 'RECARGA') return 'recarga';
       if (v === 'RUTA A PISO') return 'piso';
-      if (c === 6 && v) return 'apoyo';
+      if (c === 7 && v) return 'apoyo';
       return undefined;
     },
   });
