@@ -157,9 +157,13 @@ function coincideBusqueda(r: Route, q: string): boolean {
   );
 }
 
-function coincideSegmento(r: { segmento?: string }, filtro: string): boolean {
+// Filtro de segmento con uno o más segmentos: la ruta entra si coincide con
+// cualquiera de los elegidos (lista vacía = todos).
+function coincideSegmento(r: { segmento?: string }, filtro: string | string[]): boolean {
+  const lista = Array.isArray(filtro) ? filtro : [filtro];
+  if (lista.length === 0) return true;
   const sg = String(r.segmento || '').trim().toUpperCase();
-  return filtro === '__SIN__' ? !sg : sg === filtro.trim().toUpperCase();
+  return lista.some((f) => (f === '__SIN__' ? !sg : sg === f.trim().toUpperCase()));
 }
 
 const LOCAL_DATA_KEYS = [STORAGE_KEY_ROUTES, STORAGE_KEY_TRUCKS, STORAGE_KEY_STAFF, STORAGE_KEY_HISTORY, STORAGE_KEY_USERS];
@@ -1268,7 +1272,10 @@ export default function App() {
   // Filtro de fecha del Tablero ('' = todas las fechas).
   const [boardFecha, setBoardFecha] = useState<string>('');
   // Filtro de SEGMENTO del Tablero ('' = todos; '__SIN__' = rutas sin segmento).
-  const [boardSegmento, setBoardSegmento] = useState<string>('');
+  // Uno o varios segmentos (lista vacía = todos).
+  const [boardSegmento, setBoardSegmento] = useState<string[]>([]);
+  // Menú del filtro de segmentos: dónde se abrió y su posición en pantalla.
+  const [segmentoMenu, setSegmentoMenu] = useState<{ donde: string; top: number; left: number } | null>(null);
   // Cambio de segmento (con autorización de administrador).
   const [segmentTarget, setSegmentTarget] = useState<Route | null>(null);
   // Camión de apoyo: ruta en tránsito a la que se le agregan camiones de apoyo.
@@ -1712,7 +1719,7 @@ export default function App() {
 
       if (boardFecha && formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) !== boardFecha) return false;
 
-      if (boardSegmento && !coincideSegmento(r, boardSegmento)) return false;
+      if (boardSegmento.length > 0 && !coincideSegmento(r, boardSegmento)) return false;
 
       return coincideBusqueda(r, q);
     });
@@ -2153,8 +2160,8 @@ export default function App() {
   // (agencia, fecha, segmento y buscador).
   const boardStats = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    if (!boardFecha && !boardSegmento && !q) return stats;
-    const enSeg = (r: Route) => (!boardSegmento || coincideSegmento(r, boardSegmento)) && coincideBusqueda(r, q);
+    if (!boardFecha && boardSegmento.length === 0 && !q) return stats;
+    const enSeg = (r: Route) => coincideSegmento(r, boardSegmento) && coincideBusqueda(r, q);
     if (!boardFecha) {
       return buildStats(dashboardRoutes.filter(enSeg), dashboardLiquidatedRoutes.filter(enSeg));
     }
@@ -4573,26 +4580,89 @@ export default function App() {
     return loadingScreen('Cargando datos compartidos...');
   }
 
-  // Selector de segmento del Tablero (cambia la tabla y los indicadores).
-  const boardSegmentSelect = (
-    <select
-      id="boardSegmentoFiltro"
-      value={boardSegmento}
-      onChange={(e) => setBoardSegmento(e.target.value)}
-      aria-label="Segmento de las rutas del tablero"
-      title="Ver solo las rutas de un segmento"
-      className={`shrink-0 min-h-[40px] px-2 rounded-xl border text-xs font-bold cursor-pointer ${
-        boardSegmento ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-700 border-slate-300'
-      }`}
-    >
-      <option value="">Todos los segmentos</option>
-      {boardSegmentOptions.map((sg) => (
-        <option key={sg} value={sg}>
-          {sg}
-        </option>
-      ))}
-      <option value="__SIN__">Sin segmento</option>
-    </select>
+  // Selector de segmento del Tablero: uno o varios segmentos (cambia la
+  // tabla, los indicadores y los reportes de Inicio y Fin de Día).
+  const etiquetaSegmento = (sg: string) => (sg === '__SIN__' ? 'Sin segmento' : sg);
+  const alternarSegmento = (sg: string) =>
+    setBoardSegmento((prev) => (prev.includes(sg) ? prev.filter((x) => x !== sg) : [...prev, sg]));
+  const segmentSelect = (donde: string) => (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        id={donde === 'toolbar' ? 'boardSegmentoFiltro' : `boardSegmentoFiltro-${donde}`}
+        onClick={(e) => {
+          if (segmentoMenu?.donde === donde) {
+            setSegmentoMenu(null);
+            return;
+          }
+          const rc = e.currentTarget.getBoundingClientRect();
+          setSegmentoMenu({ donde, top: rc.bottom + 4, left: Math.max(8, Math.min(rc.left, window.innerWidth - 272)) });
+        }}
+        aria-haspopup="true"
+        aria-expanded={segmentoMenu?.donde === donde}
+        title="Ver solo las rutas de uno o varios segmentos"
+        className={`min-h-[40px] px-3 rounded-xl border text-xs font-bold cursor-pointer flex items-center gap-1.5 max-w-[240px] ${
+          boardSegmento.length ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-700 border-slate-300'
+        }`}
+      >
+        <span className="truncate">
+          {boardSegmento.length === 0
+            ? 'Todos los segmentos'
+            : boardSegmento.length === 1
+            ? etiquetaSegmento(boardSegmento[0])
+            : `${boardSegmento.length} segmentos`}
+        </span>
+        <span aria-hidden>▾</span>
+      </button>
+      {segmentoMenu?.donde === donde && (
+        <>
+          <div className="fixed inset-0 z-[70]" onClick={() => setSegmentoMenu(null)} aria-hidden />
+          <div
+            role="group"
+            aria-label="Segmentos del tablero"
+            style={{ top: segmentoMenu.top, left: segmentoMenu.left }}
+            className="fixed z-[71] w-64 max-h-80 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl p-1.5"
+          >
+            <button
+              type="button"
+              onClick={() => setBoardSegmento([])}
+              className={`w-full text-left min-h-[40px] px-2.5 rounded-lg text-xs font-bold cursor-pointer ${
+                boardSegmento.length === 0 ? 'bg-purple-50 text-purple-800' : 'text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {boardSegmento.length === 0 ? '✓ ' : ''}Todos los segmentos
+            </button>
+            <div className="my-1 border-t border-slate-100" />
+            {[...boardSegmentOptions, '__SIN__'].map((sg) => {
+              const marcado = boardSegmento.includes(sg);
+              return (
+                <label
+                  key={sg}
+                  className="flex items-center gap-2 min-h-[40px] px-2.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={marcado}
+                    onChange={() => alternarSegmento(sg)}
+                    className="w-4 h-4 cursor-pointer accent-purple-600"
+                  />
+                  {etiquetaSegmento(sg)}
+                </label>
+              );
+            })}
+            <div className="mt-1 pt-1 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSegmentoMenu(null)}
+                className="min-h-[36px] px-3 rounded-lg bg-slate-900 text-white text-xs font-bold cursor-pointer"
+              >
+                Listo
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 
   // Selector de fecha del Tablero (cambia la tabla y los indicadores).
@@ -4732,7 +4802,7 @@ export default function App() {
               activeTab === 'board' ? (
               <div className="flex items-center gap-1.5 min-w-0">
                 {boardDateSelect}
-                {boardSegmentSelect}
+                {segmentSelect('toolbar')}
               <StatsCards
                 compact
           pendientes={boardStats.pendientes}
@@ -4824,7 +4894,7 @@ export default function App() {
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                 {boardDateSelect}
-                {boardSegmentSelect}
+                {segmentSelect('pantalla')}
                 <StatsCards
                   compact
                   pendientes={boardStats.pendientes}
@@ -5295,8 +5365,11 @@ export default function App() {
       <DailySummaryModal
         isOpen={isDailySummaryModalOpen}
         onClose={() => setIsDailySummaryModalOpen(false)}
-        routes={routes.filter((r) => canViewAgency(r.agencia))}
-        allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia))}
+        // Si en el Tablero se filtraron uno o varios segmentos, el reporte de
+        // Inicio y Fin de Día se arma solo con esas rutas.
+        routes={routes.filter((r) => canViewAgency(r.agencia) && coincideSegmento(r, boardSegmento))}
+        allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia) && coincideSegmento(r, boardSegmento))}
+        segmentosFiltro={boardSegmento.map((sg) => (sg === '__SIN__' ? 'Sin segmento' : sg))}
         // Camiones y personal de todas las agencias permitidas: el reporte los
         // filtra con su propio selector de agencia (que abre con el general).
         staff={staffOp.filter((s) => !s.agencia || canViewAgency(s.agencia))}
