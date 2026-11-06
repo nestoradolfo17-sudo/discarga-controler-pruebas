@@ -10,5 +10,6 @@ export const MOTIVOS_TRASLADO: string[] = [
   'Traslados de Insumos',
   'Traslado de Herramientas',
   'Traslado de Tarimas',
+  'Recolección de Envases',
   MOTIVO_TRASLADO_OTRAS,
 ];
