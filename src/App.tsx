@@ -3290,6 +3290,7 @@ export default function App() {
       auxiliares,
       auxiliarIds: auxiliares.map((n) => staffIdByName(r.agencia, n) || null),
       camionPlaca: a.camionPlaca,
+      cajas: toNum(r.cajasFisicas) > 0 ? Math.round(toNum(r.cajasFisicas) * 1000) / 1000 : undefined,
       solicitadoPor: currentUser?.nombre || currentUser?.username || 'Liquidación',
       creadoPor: currentUser?.nombre || currentUser?.username || 'Liquidación',
     }, liquidada);
@@ -4408,7 +4409,7 @@ export default function App() {
       vistos.add(k);
       return true;
     });
-    const ok = await exportRutasPrioridadesToExcel(lista, trucks, boardFecha || undefined);
+    const ok = await exportRutasPrioridadesToExcel(lista, trucks, boardFecha || undefined, staff);
     showToast(ok ? 'Excel de Rutas Prioridades descargado' : 'No hay rutas en el tablero para exportar', ok ? 'success' : 'error');
   };
 
