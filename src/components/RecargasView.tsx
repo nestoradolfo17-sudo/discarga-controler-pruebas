@@ -209,6 +209,21 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, trucks
 
   const rangoInvalido = !!desde && !!hasta && desde > hasta;
 
+  // Total de cajas para la boleta: el guardado en la recarga o, si no lo
+  // tiene (recargas anteriores o de carga masiva), el de su ruta.
+  const isoDe = (f: unknown) => {
+    const m = String(f ?? '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : String(f ?? '').slice(0, 10);
+  };
+  const conCajas = (r: Recarga): Recarga => {
+    if (typeof r.cajas === 'number' || !r.rutaId) return r;
+    const ruta =
+      rutas.find((x) => String(x.id) === String(r.rutaId) && x.agencia === r.agencia && isoDe(x.fecha) === r.fecha) ||
+      rutas.find((x) => String(x.id) === String(r.rutaId) && x.agencia === r.agencia);
+    const cj = Number(String(ruta?.cajasFisicas ?? '').replace(/,/g, ''));
+    return cj > 0 ? { ...r, cajas: Math.round(cj * 1000) / 1000 } : r;
+  };
+
   const aplicar = (list: Recarga[]) =>
     setRecargas((prev) => {
       const byId = new Map(list.map((r) => [r.id, r]));
@@ -258,7 +273,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, trucks
         ? `Recarga ${etq(r)} actualizada. Volvió a Por autorizar: necesita nueva autorización.`
         : `Recarga ${etq(r)} actualizada.`,
       isDemoMode ? 'info' : 'success',
-      { label: 'Imprimir boleta', onClick: () => imprimirBoletaRecarga(r) }
+      { label: 'Imprimir boleta', onClick: () => imprimirBoletaRecarga(conCajas(r)) }
     );
   };
 
@@ -868,7 +883,7 @@ export const RecargasView: React.FC<RecargasViewProps> = ({ rutas, staff, trucks
                             )}
                             <button
                               type="button"
-                              onClick={() => imprimirBoletaRecarga(r)}
+                              onClick={() => imprimirBoletaRecarga(conCajas(r))}
                               aria-label={`Imprimir boleta ${etq(r)}`}
                               title="Imprimir boleta"
                               className="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 flex items-center justify-center cursor-pointer"
