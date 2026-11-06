@@ -58,6 +58,9 @@ interface DailySummaryModalProps {
   // Abre el Acta de Cierre y Liquidación Total del Día (listado de liquidadas/no
   // liquidadas con espacio de firma), disponible desde la vista Fin de Día.
   onOpenClosingActa?: () => void;
+  // Segmentos filtrados en el Tablero (vacío = todos). Las rutas ya llegan
+  // filtradas; aquí solo se muestran en el encabezado y en el PDF.
+  segmentosFiltro?: string[];
 }
 
 // Estructura normalizada de cada fila del resumen diario (tanto para inicio como para fin de día)
@@ -357,6 +360,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   agencies,
   fechaHoy,
   initialMode = 'inicio',
+  segmentosFiltro = [],
   onOpenClosingActa,
 }) => {
   const [mode, setMode] = useState<DailySummaryMode>(initialMode);
@@ -1013,7 +1017,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     const segs = cierrePorSegmento;
     return {
       titulo: 'Fin de Día',
-      periodo: `Fecha: ${fechaReporte}`,
+      periodo: `Fecha: ${fechaReporte}${segmentosFiltro.length ? ` · Segmentos: ${segmentosFiltro.join(', ')}` : ''}`,
       agencia: filterAgency === 'TODAS' ? 'Todas' : filterAgency,
       kpis: [
         {
@@ -1096,7 +1100,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     const T = segmentStats.total;
     return {
       titulo: 'Inicio de Día',
-      periodo: `Fecha: ${fechaReporte}`,
+      periodo: `Fecha: ${fechaReporte}${segmentosFiltro.length ? ` · Segmentos: ${segmentosFiltro.join(', ')}` : ''}`,
       agencia: filterAgency === 'TODAS' ? 'Todas' : filterAgency,
       kpis: [
         { label: 'Rutas planificadas', valor: n0(inicioTotalRutas), sub: `${n0(inicioPendientesCount)} por asignar · ${n0(inicioTransitoCount)} en tránsito`, tono: 'info' },
@@ -1256,6 +1260,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700 print:bg-slate-100 print:text-slate-800 print:border-slate-300">
                   {fechaReporte}
                 </span>
+                {segmentosFiltro.length > 0 && (
+                  <span
+                    className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-600 text-white border border-purple-500 print:bg-purple-100 print:text-purple-900 print:border-purple-300"
+                    title="Segmentos filtrados en el Tablero"
+                  >
+                    Segmentos: {segmentosFiltro.join(', ')}
+                  </span>
+                )}
                 <span className="hidden print:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
                   Agencia: {filterAgency}
                 </span>
