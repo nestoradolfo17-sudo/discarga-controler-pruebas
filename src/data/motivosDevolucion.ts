@@ -22,14 +22,15 @@ export const MOTIVO_DEVOLUCION_OPTIONS: MotivoDevolucionOption[] = [
   { reason: 'Pendiente Envase / Cajilla', icon: '🍾', style: 'default' },
   { reason: 'Falta de Albarán / Contraseña', icon: '🔐', style: 'default' },
   { reason: 'Refacturación', icon: '🔁', style: 'default' },
+  // Disponibles en todas las modalidades (antes solo en Ruta Abierta).
+  { reason: 'Paso Bloqueado', icon: '🚧', style: 'warning' },
+  { reason: 'No Hizo Pedido', icon: '🙅', style: 'default' },
 ];
 
 // Motivos adicionales disponibles SOLO en la modalidad "Ruta Abierta" del
 // formulario de Liquidación (no aparecen en el cierre definitivo).
 export const MOTIVOS_RUTA_ABIERTA: MotivoDevolucionOption[] = [
   { reason: 'Pedido mal Digitado', icon: '⌨️', style: 'default' },
-  { reason: 'No Hizo Pedido', icon: '🙅', style: 'default' },
-  { reason: 'Paso Bloqueado', icon: '🚧', style: 'warning' },
 ];
 
 // Motivo especial de Revisita: se mantiene separado del catálogo genérico
