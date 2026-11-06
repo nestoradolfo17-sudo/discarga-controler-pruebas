@@ -55,9 +55,9 @@ export type MotivoDevolucionReason =
   | 'Cliente Rechaza Pedido'
   // Solo para Ruta Abierta (ver MOTIVOS_RUTA_ABIERTA en data/motivosDevolucion).
   | 'Pedido mal Digitado'
+  // Disponibles en todas las modalidades de liquidación.
   | 'No Hizo Pedido'
   | 'Paso Bloqueado'
-  // Disponibles en todas las modalidades de liquidación.
   | 'Pendiente Envase / Cajilla'
   | 'Falta de Albarán / Contraseña'
   | 'Refacturación';
@@ -82,7 +82,10 @@ export type CajaAbiertaReason =
   | 'Paso Bloqueado'
   | 'Pendiente Envase / Cajilla'
   | 'Falta de Albarán / Contraseña'
-  | 'Refacturación';
+  | 'Refacturación'
+  | 'Por dinero faltante'
+  | 'Dinero en buzón'
+  | 'Zona Roja';
 
 // Un cliente/punto de venta dentro de una ruta, tal como viene en el archivo
 // "Clientes N" que envía el cliente (operador logístico) junto con el resumen de
@@ -531,6 +534,8 @@ export interface Recarga {
   auxiliares: string[];
   auxiliarIds?: (string | null)[];
   camionPlaca?: string;
+  // Total de cajas de la ruta/viaje de la recarga (se imprime en la boleta).
+  cajas?: number;
   comentario?: string;
   origen: 'manual' | 'asignacion';
   // Persona que solicita la recarga (firma en la boleta).
