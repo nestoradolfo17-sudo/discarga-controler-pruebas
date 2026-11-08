@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { Route, Staff } from '../types';
 import { exportHistoricalToExcel, getRouteAssignmentType } from '../utils/excel';
 import { parseFlexibleDate, formatDateToGuatemala, formatDateTimeToGuatemala } from '../utils/date';
@@ -8,6 +8,10 @@ import { ACTION_ICONS } from './ui/actionIcons';
 import { ClientesRutaList } from './ClientesRutaList';
 import { getRouteKey, isSameSplitGroup } from '../utils/routeKey';
 import { toNum, fmtNum } from '../utils/number';
+
+// Velocidad: la tabla muestra las rutas por bloques (el resto con "Mostrar más").
+// Los indicadores, totales y el Excel siguen usando TODA la lista filtrada.
+const FILAS_POR_BLOQUE = 50;
 
 // Indicadores del módulo de Rutas Liquidadas. Se calculan con los filtros
 // aplicados (búsqueda, agencia, fechas) y se muestran arriba, en la barra de
@@ -136,8 +140,10 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
 
   // Lista con los filtros de búsqueda, agencia y fecha (sin el de estado):
   // de aquí salen los conteos de cada estado.
+  // La búsqueda se aplica un instante después de escribir, sin trabar el teclado.
+  const busqueda = useDeferredValue(searchTerm);
   const baseList = useMemo(() => {
-    const q = searchTerm.toLowerCase().trim();
+    const q = busqueda.toLowerCase().trim();
     const fromTime = dateFrom ? new Date(dateFrom + 'T00:00:00').getTime() : null;
     const toTime = dateTo ? new Date(dateTo + 'T23:59:59').getTime() : null;
 
@@ -188,7 +194,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
 
       return true;
     });
-  }, [liquidatedRoutes, searchTerm, selectedAgency, dateFrom, dateTo]);
+  }, [liquidatedRoutes, busqueda, selectedAgency, dateFrom, dateTo]);
 
   const conteoEstados = useMemo(() => {
     const c: Record<EstadoLiqFiltro, number> = { TODOS: baseList.length, liquidada: 0, caja_pendiente: 0, caja_validada: 0, con_devolucion: 0 };
@@ -206,8 +212,43 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
     return def ? baseList.filter((r) => def.cumple(r)) : baseList;
   }, [baseList, estadoFiltro]);
 
-  // Selección para eliminar (solo administradores): se conserva solo lo que sigue visible.
-  const visibleKeys = useMemo(() => Array.from(new Set(filteredList.map((r) => getRouteKey(r)))), [filteredList]);
+  // Filas que se dibujan (por bloques). Al cambiar un filtro se vuelve al primer bloque.
+  const [filasMostradas, setFilasMostradas] = useState(FILAS_POR_BLOQUE);
+  useEffect(() => {
+    setFilasMostradas(FILAS_POR_BLOQUE);
+  }, [busqueda, selectedAgency, dateFrom, dateTo, estadoFiltro]);
+  const shownList = useMemo(() => filteredList.slice(0, filasMostradas), [filteredList, filasMostradas]);
+  const faltanPorMostrar = filteredList.length - shownList.length;
+
+  // Índices para no recorrer todo el personal / todas las rutas en cada fila.
+  const staffPorNombre = useMemo(() => {
+    const m = new Map<string, Staff>();
+    staff.forEach((s) => {
+      if (s.nombre && !m.has(s.nombre)) m.set(s.nombre, s);
+    });
+    return m;
+  }, [staff]);
+  const rutasPorGrupo = useMemo(() => {
+    const m = new Map<string, Route[]>();
+    const add = (k: string, r: Route) => {
+      const l = m.get(k);
+      if (l) {
+        if (l[l.length - 1] !== r) l.push(r);
+      } else m.set(k, [r]);
+    };
+    allRoutes.forEach((r) => {
+      if (r.parentRouteId) add(r.parentRouteId, r);
+      if (r.isSplitRoute) {
+        const id = String(r.id);
+        for (let i = id.indexOf('.'); i > 0; i = id.indexOf('.', i + 1)) add(id.slice(0, i), r);
+      }
+    });
+    return m;
+  }, [allRoutes]);
+
+  // Selección para eliminar (solo administradores): se conserva solo lo que sigue visible
+  // (las filas dibujadas en pantalla).
+  const visibleKeys = useMemo(() => Array.from(new Set(shownList.map((r) => getRouteKey(r)))), [shownList]);
   const selectedVisible = useMemo(() => visibleKeys.filter((k) => selectedKeys.has(k)), [visibleKeys, selectedKeys]);
   const allVisibleSelected = visibleKeys.length > 0 && selectedVisible.length === visibleKeys.length;
   const toggleKey = (k: string) =>
@@ -555,10 +596,10 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-normal">
-            {filteredList.map((r) => {
+            {shownList.map((r) => {
               const asig = r.asignacion || r.ultimoDespacho || {};
               const liq = r.liquidacion || {};
-              const driverObj = staff.find((s) => s.nombre === asig.conductor);
+              const driverObj = asig.conductor ? staffPorNombre.get(asig.conductor) : undefined;
               const helpers = [asig.auxiliar1, asig.auxiliar2, asig.auxiliar3, asig.auxiliar4].filter(Boolean);
 
               const cajasSalida = toNum(r.cajasFisicas) || 0;
@@ -569,7 +610,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
               const parentId = r.parentRouteId;
               let allSiblingsSettled = false;
               if (parentId) {
-                const siblings = allRoutes.filter((sr) => isSameSplitGroup(sr, parentId, r));
+                const siblings = (rutasPorGrupo.get(parentId) || []).filter((sr) => isSameSplitGroup(sr, parentId, r));
                 if (siblings.length > 1) {
                   allSiblingsSettled = siblings.every((s) => s.estado === 'Liquidada');
                 }
@@ -977,6 +1018,31 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
             })}
           </tbody>
         </table>
+
+        {faltanPorMostrar > 0 && (
+          <div className="p-3 flex flex-wrap items-center justify-center gap-2 border-t border-slate-100 bg-slate-50/60 text-xs">
+            <span className="text-slate-500">
+              Mostrando {fmtNum(shownList.length)} de {fmtNum(filteredList.length)} rutas
+            </span>
+            <button
+              type="button"
+              onClick={() => setFilasMostradas((n) => n + FILAS_POR_BLOQUE * 2)}
+              className="min-h-[40px] px-4 rounded-lg border border-slate-300 bg-white font-semibold text-slate-700 cursor-pointer hover:bg-slate-100"
+            >
+              Mostrar {fmtNum(Math.min(FILAS_POR_BLOQUE * 2, faltanPorMostrar))} más
+            </button>
+            {faltanPorMostrar > FILAS_POR_BLOQUE * 2 && (
+              <button
+                type="button"
+                onClick={() => setFilasMostradas(filteredList.length)}
+                className="min-h-[40px] px-4 rounded-lg border border-slate-200 bg-white text-slate-500 cursor-pointer hover:bg-slate-100"
+                title="Puede tardar unos segundos si son muchas rutas"
+              >
+                Mostrar todas
+              </button>
+            )}
+          </div>
+        )}
 
         {filteredList.length === 0 && (
           <div className="p-12 text-center text-slate-400 text-xs">
