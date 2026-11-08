@@ -1,4 +1,6 @@
-import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense, useTransition } from 'react';
+import * as ReactTodo from 'react';
+import type { ReactNode } from 'react';
 import {
   Route,
   Truck,
@@ -92,6 +94,12 @@ import { NewTruckModal } from './components/modals/NewTruckModal';
 import { AsignarIdRentadoModal } from './components/modals/AsignarIdRentadoModal';
 import { siguienteIdRentado, type Proveedor } from './services/proveedores';
 import { NewStaffModal } from './components/modals/NewStaffModal';
+// <Activity> (React 19.2+) deja una pantalla oculta sin desmontarla. Si la versión
+// de React no lo trae, se comporta como antes (se muestra solo la pestaña activa).
+const Activity: (p: { mode: 'visible' | 'hidden'; children: ReactNode }) => ReactNode =
+  (ReactTodo as unknown as { Activity?: (p: { mode: 'visible' | 'hidden'; children: ReactNode }) => ReactNode }).Activity ||
+  ((p) => (p.mode === 'visible' ? p.children : null));
+
 // Optimización (análisis, punto 13): el Resumen Diario (y su generador de PDF)
 // es la pantalla más pesada; se descarga solo la primera vez que se abre.
 const DailySummaryModal = lazy(() =>
@@ -1174,6 +1182,17 @@ export default function App() {
   }, [currentUser]);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('board');
+  // Velocidad al cambiar de pestaña: el menú marca la pestaña al instante y la
+  // pantalla nueva se dibuja "en segundo plano" (sin congelar los clics).
+  const [tabPedida, setTabPedida] = useState<ActiveTab>('board');
+  const [cambiandoTab, startTabTransition] = useTransition();
+  const cambiarTab = useCallback((t: ActiveTab) => {
+    setTabPedida(t);
+    startTabTransition(() => setActiveTab(t));
+  }, []);
+  useEffect(() => {
+    setTabPedida(activeTab);
+  }, [activeTab]);
   // Menú lateral oculto/visible (se recuerda en este navegador).
   const [railCollapsed, setRailCollapsed] = useState<boolean>(() => {
     try {
@@ -1228,6 +1247,12 @@ export default function App() {
   }, [activeTab]);
   // Indicadores del módulo de Rutas Liquidadas (los calcula esa vista según sus filtros).
   const [liqKpis, setLiqKpis] = useState<LiquidatedKpis | null>(null);
+  // Dashboard y Rutas Liquidadas se quedan "dormidas" (ocultas, no se desmontan)
+  // después de abrirlas una vez: al volver aparecen al instante, con sus filtros.
+  const tabsVivas = useRef<{ de: string; tabs: Set<ActiveTab> }>({ de: '', tabs: new Set() });
+  if (tabsVivas.current.de !== (currentUser?.id || '')) tabsVivas.current = { de: currentUser?.id || '', tabs: new Set() };
+  if (activeTab === 'dashboard' || activeTab === 'liquidated') tabsVivas.current.tabs.add(activeTab);
+  const mantenerTab = (t: 'dashboard' | 'liquidated') => activeTab === t || (tabsVivas.current.tabs.has(t) && canView(t));
 
   // Si el usuario en sesión no tiene permiso para ver la pestaña activa (por ejemplo,
   // justo después de iniciar sesión o si el administrador le quitó un permiso),
@@ -4737,8 +4762,8 @@ export default function App() {
           <TabNav
             mode="rail"
             onToggleRail={toggleRail}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
+          activeTab={tabPedida}
+          onTabChange={cambiarTab}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
@@ -4764,8 +4789,8 @@ export default function App() {
         <div className="md:hidden shrink-0">
           <TabNav
             mode="bar"
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
+          activeTab={tabPedida}
+          onTabChange={cambiarTab}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
@@ -4817,7 +4842,7 @@ export default function App() {
           fechaHoy={boardStats.fechaHoy}
           cajasFisicasHoy={boardStats.cajasFisicasHoy}
           cajasEntregadasHoy={boardStats.cajasEntregadasHoy}
-          onSelectTab={setActiveTab}
+          onSelectTab={cambiarTab}
         />
               </div>
               ) : activeTab === 'liquidated' && liqKpis ? (
@@ -4828,8 +4853,8 @@ export default function App() {
                 <StatPills pills={truckPills} />
               ) : null
             }
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
+          activeTab={tabPedida}
+          onTabChange={cambiarTab}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onExportExcel={
@@ -4860,7 +4885,14 @@ export default function App() {
         />
         </div>
 
-        {activeTab === 'dashboard' && (
+        {cambiandoTab && (
+          <div className="fixed top-0 left-0 right-0 h-1 z-[60] bg-sky-100 overflow-hidden pointer-events-none" role="progressbar" aria-label="Cargando pantalla">
+            <div className="h-full w-1/3 bg-[#5AACE4] animate-pulse" />
+          </div>
+        )}
+
+        {mantenerTab('dashboard') && (
+          <Activity mode={activeTab === 'dashboard' ? 'visible' : 'hidden'}>
           <DashboardView
             routes={dashboardRoutes}
             activeRoutesByAgency={activeRoutesVisibleAllAgencies}
@@ -4876,6 +4908,7 @@ export default function App() {
             situacionRecargas={situacionRecargas}
             usuario={currentUser.nombre || currentUser.username}
           />
+          </Activity>
         )}
 
         {activeTab === 'board' && (
@@ -4999,7 +5032,8 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'liquidated' && (
+        {mantenerTab('liquidated') && (
+          <Activity mode={activeTab === 'liquidated' ? 'visible' : 'hidden'}>
           <LiquidatedBoardView
             onKpisChange={setLiqKpis}
             historyLimitedDays={historyLimited ? HISTORY_INITIAL_DAYS : undefined}
@@ -5024,6 +5058,7 @@ export default function App() {
             onShowToast={showToast}
             onDeleteRoutes={esAdminDeAlguna ? (keys) => setDeleteRoutesTargetIds(keys) : undefined}
           />
+          </Activity>
         )}
 
         {activeTab === 'trucks' && (
