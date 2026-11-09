@@ -5405,6 +5405,9 @@ export default function App() {
         routes={routes.filter((r) => canViewAgency(r.agencia) && coincideSegmento(r, boardSegmento))}
         allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia) && coincideSegmento(r, boardSegmento))}
         segmentosFiltro={boardSegmento.map((sg) => (sg === '__SIN__' ? 'Sin segmento' : sg))}
+        // Si en el Tablero se filtró una fecha, el reporte usa esa fecha con la
+        // misma regla del Tablero (solo rutas de ese día, sin rezagadas).
+        fechaFiltroTablero={boardFecha}
         // Camiones y personal de todas las agencias permitidas: el reporte los
         // filtra con su propio selector de agencia (que abre con el general).
         staff={staffOp.filter((s) => !s.agencia || canViewAgency(s.agencia))}
