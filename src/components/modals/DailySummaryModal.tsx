@@ -61,6 +61,11 @@ interface DailySummaryModalProps {
   // Segmentos filtrados en el Tablero (vacío = todos). Las rutas ya llegan
   // filtradas; aquí solo se muestran en el encabezado y en el PDF.
   segmentosFiltro?: string[];
+  // Fecha filtrada en el Tablero (vacío = "Todas las fechas"). Si el reporte se
+  // ve con esa fecha, se arma igual que el Tablero: solo rutas con esa fecha de
+  // ruta (sin sumar las de días anteriores que siguen activas) y las liquidadas
+  // ese día.
+  fechaFiltroTablero?: string;
 }
 
 // Estructura normalizada de cada fila del resumen diario (tanto para inicio como para fin de día)
@@ -361,6 +366,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   fechaHoy,
   initialMode = 'inicio',
   segmentosFiltro = [],
+  fechaFiltroTablero = '',
   onOpenClosingActa,
 }) => {
   const [mode, setMode] = useState<DailySummaryMode>(initialMode);
@@ -390,6 +396,9 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   const fechaJornada = fechaRealHoy;
   const [fechaReporte, setFechaReporte] = useState<string>(fechaHoy || fechaRealHoy);
   const esJornadaActual = fechaReporte === fechaJornada;
+  // ¿El reporte está con la fecha filtrada en el Tablero? Entonces es estricto.
+  const fechaDelTablero = !!fechaFiltroTablero && fechaReporte === fechaFiltroTablero;
+  const sumaRezagadas = esJornadaActual && !fechaDelTablero;
 
   useEffect(() => {
     if (isOpen) {
@@ -406,13 +415,13 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   // - Rutas LIQUIDADAS: solo las liquidadas (o programadas) en la fecha elegida.
   const liquidadaEnFecha = useMemo(() => {
     const fechasValidas = new Set<string>([fechaReporte]);
-    if (esJornadaActual) fechasValidas.add(fechaRealHoy);
+    if (sumaRezagadas) fechasValidas.add(fechaRealHoy);
     const enFecha = (...vals: unknown[]) => vals.some((v) => {
       const d = fmtDay(v);
       return d !== null && fechasValidas.has(d);
     });
     return (r: Route) => enFecha(r.liquidacion?.fechaLiquidacion, r.fechaLiquidacion, r.fecha, r.fechaOriginalRuta);
-  }, [fechaReporte, esJornadaActual, fechaRealHoy]);
+  }, [fechaReporte, sumaRezagadas, fechaRealHoy]);
 
   // Rutas ACTIVAS del tablero que corresponden a la fecha del reporte:
   // - Hoy: las de hoy + las de días anteriores que siguen activas (rezagadas).
@@ -426,10 +435,10 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     const sel = dn(fechaReporte);
     return (r: Route) => {
       const base = dn(r.fechaOriginalRuta || r.fecha);
-      if (base === null || sel === null) return esJornadaActual;
-      return esJornadaActual ? base <= sel : base === sel;
+      if (base === null || sel === null) return sumaRezagadas;
+      return sumaRezagadas ? base <= sel : base === sel;
     };
-  }, [fechaReporte, esJornadaActual]);
+  }, [fechaReporte, sumaRezagadas]);
 
   const allCurrentRoutes = useMemo(() => {
 
@@ -1017,7 +1026,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     const segs = cierrePorSegmento;
     return {
       titulo: 'Fin de Día',
-      periodo: `Fecha: ${fechaReporte}${segmentosFiltro.length ? ` · Segmentos: ${segmentosFiltro.join(', ')}` : ''}`,
+      periodo: `Fecha: ${fechaReporte}${fechaDelTablero ? ' (filtro del Tablero)' : ''}${segmentosFiltro.length ? ` · Segmentos: ${segmentosFiltro.join(', ')}` : ''}`,
       agencia: filterAgency === 'TODAS' ? 'Todas' : filterAgency,
       kpis: [
         {
@@ -1100,7 +1109,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     const T = segmentStats.total;
     return {
       titulo: 'Inicio de Día',
-      periodo: `Fecha: ${fechaReporte}${segmentosFiltro.length ? ` · Segmentos: ${segmentosFiltro.join(', ')}` : ''}`,
+      periodo: `Fecha: ${fechaReporte}${fechaDelTablero ? ' (filtro del Tablero)' : ''}${segmentosFiltro.length ? ` · Segmentos: ${segmentosFiltro.join(', ')}` : ''}`,
       agencia: filterAgency === 'TODAS' ? 'Todas' : filterAgency,
       kpis: [
         { label: 'Rutas planificadas', valor: n0(inicioTotalRutas), sub: `${n0(inicioPendientesCount)} por asignar · ${n0(inicioTransitoCount)} en tránsito`, tono: 'info' },
@@ -1260,6 +1269,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700 print:bg-slate-100 print:text-slate-800 print:border-slate-300">
                   {fechaReporte}
                 </span>
+                {fechaDelTablero && (
+                  <span
+                    className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white border border-indigo-500 print:bg-indigo-100 print:text-indigo-900 print:border-indigo-300"
+                    title="Fecha filtrada en el Tablero"
+                  >
+                    Fecha del Tablero
+                  </span>
+                )}
                 {segmentosFiltro.length > 0 && (
                   <span
                     className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-600 text-white border border-purple-500 print:bg-purple-100 print:text-purple-900 print:border-purple-300"
@@ -1277,7 +1294,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   ? 'DISCARGA CONTROLER • Control de salida: No. Ruta, Fecha planificada, Fecha despachada, Indicador de retraso (24 h / 72 h / +72 h), Cajas físicas, Paradas, Agencia y Segmento'
                   : 'DISCARGA CONTROLER • Cómo quedaron las rutas del día: indicadores clave, balance, pendientes para mañana y devoluciones'}
               </p>
-              {!esJornadaActual && (
+              {(!esJornadaActual || fechaDelTablero) && (
                 <p id="avisoFechaReporte" className="mt-1 text-[11px] font-semibold text-amber-300 print:hidden">
                   Reporte del {fechaReporte}: rutas del tablero con esa fecha de ruta y liquidadas ese día.
                   Si faltan liquidadas de hace más de 45 días, carga el historial completo desde el Dashboard.
