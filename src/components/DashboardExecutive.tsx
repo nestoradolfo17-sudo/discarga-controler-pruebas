@@ -509,6 +509,72 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   const segTotRutas = porSegmento.reduce((a, s) => a + s.rutas, 0);
   const segTotCj = porSegmento.reduce((a, s) => a + s.cj, 0);
 
+  // ---------- Participación por agencia (rutas y CJ) ----------
+  // Qué % de las rutas y de las cajas del periodo es de cada agencia, de mayor a
+  // menor (por CJ). Se muestra cuando se ven todas las agencias.
+  const participacion = useMemo(
+    () => [...porAgencia].sort((a, b) => b.cj - a.cj || b.rutas - a.rutas),
+    [porAgencia]
+  );
+  const partTotRutas = participacion.reduce((a, x) => a + x.rutas, 0);
+  const partTotCj = participacion.reduce((a, x) => a + x.cj, 0);
+  const verParticipacion = selectedAgency === 'TODAS' && participacion.length > 0;
+
+  // ---------- Rutas parciales (entregadas en parte, con cajas por entregar) ----------
+  // 1) Ruta Abierta / Revisita: regresó con clientes pendientes. Lo entregado está
+  //    en su historial de despachos; lo pendiente son las cajas que le quedan.
+  // 2) Ruta partida en viajes: unos viajes ya liquidados y otros no.
+  // Solo se cuentan las que aún tienen cajas por entregar.
+  const parciales = useMemo(() => {
+    type Fila = { key: string; id: string; ag: string; seg: string; tipo: string; estado: string; viajes: number; total: number; ent: number; pend: number };
+    // Cada viaje ya liquidado (incluye los retornos de una Ruta Abierta, que la
+    // app registra como viajes liquidados) y cada fila activa del tablero se
+    // agrupan por ruta: misma ruta (o ruta madre si se partió), agencia y fecha.
+    const grupos = new Map<string, { split: boolean; liq: Route[]; act: Route[] }>();
+    dayRoutes.forEach((r) => {
+      const padre = r.parentRouteId || (r.isSplitRoute ? String(r.id).split('.')[0] : '');
+      const gk = `${padre || r.id}|${r.agencia || ''}|${routeDayKey(r) || ''}`;
+      const g = grupos.get(gk) || { split: false, liq: [], act: [] };
+      if (padre) g.split = true;
+      (esLiquidada(r) ? g.liq : g.act).push(r);
+      grupos.set(gk, g);
+    });
+    const out: Fila[] = [];
+    grupos.forEach((g, gk) => {
+      if (!g.liq.length || !g.act.length) return;
+      // Sin partir: solo cuenta si lo activo es lo que quedó pendiente de una
+      // entrega parcial (Ruta Abierta / Revisita), no una Recarga nueva.
+      const act = g.split
+        ? g.act
+        : g.act.filter((r) => r.estado === 'Abierta' || r.esReasignacion || r.tipoAsignacion === 'Revisita' || (r.historialDespachos || []).length > 0);
+      const ent = g.liq.reduce((a, r) => a + Number(r.liquidacion?.cajasEntregadas || 0), 0);
+      const pend = act.reduce((a, r) => a + toNum(r.cajasFisicas), 0);
+      if (ent <= 0 || pend <= 0) return;
+      const dev = g.liq.reduce((a, r) => a + Number(r.liquidacion?.cajasDevueltas || 0), 0);
+      const r0 = act[0];
+      out.push({
+        key: gk,
+        id: gk.split('|')[0],
+        ag: r0.agencia || 'Sin agencia',
+        seg: r0.segmento || '-',
+        tipo: g.split ? 'Partida en viajes' : 'Ruta abierta / revisita',
+        estado: g.split
+          ? `${g.liq.length} de ${g.liq.length + act.length} viajes liquidados`
+          : `${r0.estado === 'Abierta' ? 'Por reasignar' : r0.estado} · ${g.liq.length} retorno(s)`,
+        viajes: g.liq.length + act.length,
+        // Total = lo entregado + lo que falta (lo devuelto en un retorno vuelve a
+        // salir como pendiente, por eso no se suma aparte salvo en rutas partidas).
+        total: g.split ? ent + pend + dev : Math.max(toNum(r0.cajasOriginales), ent + pend),
+        ent,
+        pend,
+      });
+    });
+    return out.sort((a, b) => b.pend - a.pend);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayRoutes]);
+  const parcEnt = parciales.reduce((a, x) => a + x.ent, 0);
+  const parcPend = parciales.reduce((a, x) => a + x.pend, 0);
+
   // ---------- Devoluciones del periodo ----------
   const motivos = useMemo(() => {
     const m = new Map<string, { rutas: number; cajas: number; detalle: DetalleMotivo[] }>();
@@ -651,6 +717,25 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           columnas: [{ t: 'Segmento' }, { t: 'Rutas', num: true }, { t: '% rutas', num: true }, { t: 'CJ', num: true }, { t: '% CJ', num: true }],
           filas: porSegmento.map((s) => [s.seg, n0(s.rutas), pct(s.rutas, segTotRutas), n1(s.cj), pct(s.cj, segTotCj)]),
           total: porSegmento.length ? ['Total', n0(segTotRutas), '100%', n1(segTotCj), '100%'] : undefined,
+        },
+        ...(verParticipacion
+          ? [
+              {
+                titulo: 'Participación por agencia · Rutas y CJ',
+                sub: `${periodLabel} · % sobre el total, de mayor a menor`,
+                columnas: [{ t: 'Agencia' }, { t: 'Rutas', num: true }, { t: '% rutas', num: true }, { t: 'CJ', num: true }, { t: '% CJ', num: true }],
+                filas: participacion.map((a) => [a.ag, n0(a.rutas), pct(a.rutas, partTotRutas), n1(a.cj), pct(a.cj, partTotCj)]),
+                total: ['Total', n0(partTotRutas), '100%', n1(partTotCj), '100%'],
+              },
+            ]
+          : []),
+        {
+          titulo: 'Rutas parciales · entregadas en parte',
+          sub: `${periodLabel} · ${n0(parciales.length)} ruta(s) · ${n1(parcEnt)} CJ entregadas · ${n1(parcPend)} CJ pendientes de entregar`,
+          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Segmento' }, { t: 'Tipo' }, { t: 'Estado' }, { t: 'CJ total', num: true }, { t: 'CJ entregadas', num: true }, { t: 'CJ pendientes', num: true }, { t: '% avance', num: true }],
+          filas: parciales.map((x) => [x.id, x.ag, x.seg, x.tipo, x.estado, n1(x.total), n1(x.ent), n1(x.pend), pct(x.ent, x.ent + x.pend)]),
+          total: parciales.length ? ['Total', '', '', '', '', n1(parciales.reduce((a, x) => a + x.total, 0)), n1(parcEnt), n1(parcPend), pct(parcEnt, parcEnt + parcPend)] : undefined,
+          vacio: 'Sin rutas parciales pendientes en el periodo.',
         },
         ...(!unDia
           ? [
@@ -1017,6 +1102,131 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
                   </tr>
                 </tfoot>
               )}
+            </table>
+          </div>
+        </Card>
+      </div>
+
+      {/* 4b. Participación por agencia + rutas parciales */}
+      <div className={`grid grid-cols-1 gap-4 ${verParticipacion ? 'xl:grid-cols-5' : ''}`}>
+        {verParticipacion && (
+          <Card
+            title="Participación por agencia · Rutas y CJ"
+            sub={`${periodLabel} · % del total, de mayor a menor`}
+            icon={<Building2 className="w-4 h-4 text-slate-500" />}
+            className="xl:col-span-2"
+          >
+            <div className="overflow-x-auto -mx-1">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                    <th className="text-left py-2 px-1">Agencia</th>
+                    <th className="text-right py-2 px-1">Rutas</th>
+                    <th className="text-right py-2 px-1">% rutas</th>
+                    <th className="text-right py-2 px-1">CJ</th>
+                    <th className="text-left py-2 px-1 w-36">% CJ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {participacion.map((a) => (
+                    <tr key={a.ag} className="hover:bg-slate-50">
+                      <td className="py-2 px-1 font-semibold text-slate-800 whitespace-nowrap">{a.ag}</td>
+                      <td className="py-2 px-1 text-right tabular-nums">{n0(a.rutas)}</td>
+                      <td className="py-2 px-1 text-right tabular-nums text-slate-500">{pctTxt(a.rutas, partTotRutas)}</td>
+                      <td className="py-2 px-1 text-right tabular-nums font-semibold">{n0(a.cj)}</td>
+                      <td className="py-2 px-1">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
+                            <div className="h-full rounded-full" style={{ width: `${partTotCj > 0 ? (a.cj / partTotCj) * 100 : 0}%`, backgroundColor: C_INFO }} />
+                          </div>
+                          <span className="w-11 text-right font-bold tabular-nums" style={{ color: C_INFO }}>{pctTxt(a.cj, partTotCj)}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-300 font-black text-slate-900">
+                    <td className="py-2 px-1">Total</td>
+                    <td className="py-2 px-1 text-right tabular-nums">{n0(partTotRutas)}</td>
+                    <td className="py-2 px-1 text-right tabular-nums">100%</td>
+                    <td className="py-2 px-1 text-right tabular-nums">{n0(partTotCj)}</td>
+                    <td className="py-2 px-1 text-right tabular-nums">100%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Card>
+        )}
+        <Card
+          title="Rutas parciales · entregadas en parte"
+          sub={`${periodLabel} · rutas abiertas / revisitas y rutas partidas con cajas aún por entregar`}
+          icon={<PackageCheck className="w-4 h-4 text-slate-500" />}
+          className={verParticipacion ? 'xl:col-span-3' : ''}
+        >
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="rounded-xl border border-slate-200 p-3">
+              <div className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500">Rutas parciales</div>
+              <div className="text-2xl font-black text-slate-900 tabular-nums">{n0(parciales.length)}</div>
+            </div>
+            <div className="rounded-xl border p-3" style={{ borderColor: C_GOOD, backgroundColor: '#0ca30c12' }}>
+              <div className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C_GOOD }}>CJ entregadas</div>
+              <div className="text-2xl font-black tabular-nums" style={{ color: C_GOOD }}>{n0(parcEnt)}</div>
+              <div className="text-[10.5px] text-slate-500">{pctTxt(parcEnt, parcEnt + parcPend)} del total parcial</div>
+            </div>
+            <div className="rounded-xl border p-3" style={{ borderColor: C_WARN, backgroundColor: '#fab21914' }}>
+              <div className="text-[10.5px] font-bold uppercase tracking-wide text-amber-700">CJ pendientes de entregar</div>
+              <div className="text-2xl font-black tabular-nums text-amber-700">{n0(parcPend)}</div>
+              <div className="text-[10.5px] text-slate-500">{pctTxt(parcPend, parcEnt + parcPend)} del total parcial</div>
+            </div>
+          </div>
+          <div className="overflow-x-auto -mx-1 max-h-[360px] overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-white">
+                <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                  <th className="text-left py-2 px-1">Ruta</th>
+                  <th className="text-left py-2 px-1">Agencia</th>
+                  <th className="text-left py-2 px-1">Tipo</th>
+                  <th className="text-right py-2 px-1">CJ total</th>
+                  <th className="text-right py-2 px-1">Entregadas</th>
+                  <th className="text-right py-2 px-1">Pendientes</th>
+                  <th className="text-left py-2 px-1 w-32">Avance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {parciales.map((x) => {
+                  const av = x.ent + x.pend > 0 ? x.ent / (x.ent + x.pend) : 0;
+                  return (
+                    <tr key={x.key} className="hover:bg-slate-50">
+                      <td className="py-2 px-1 font-mono font-bold text-slate-800">{x.id}</td>
+                      <td className="py-2 px-1 whitespace-nowrap">
+                        <div className="font-semibold text-slate-800">{x.ag}</div>
+                        <div className="text-[10.5px] text-slate-500">{x.seg}</div>
+                      </td>
+                      <td className="py-2 px-1">
+                        <div className="text-slate-700">{x.tipo}</div>
+                        <div className="text-[10.5px] text-slate-500">{x.estado}</div>
+                      </td>
+                      <td className="py-2 px-1 text-right tabular-nums">{n0(x.total)}</td>
+                      <td className="py-2 px-1 text-right tabular-nums font-semibold" style={{ color: C_GOOD }}>{n0(x.ent)}</td>
+                      <td className="py-2 px-1 text-right tabular-nums font-bold text-amber-700">{n0(x.pend)}</td>
+                      <td className="py-2 px-1">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
+                            <div className="h-full rounded-full" style={{ width: `${av * 100}%`, backgroundColor: C_GOOD }} />
+                          </div>
+                          <span className="w-9 text-right font-bold tabular-nums">{Math.round(av * 100)}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {parciales.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-6 text-center text-slate-400">Sin rutas parciales pendientes en el periodo.</td>
+                  </tr>
+                )}
+              </tbody>
             </table>
           </div>
         </Card>
