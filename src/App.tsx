@@ -1285,7 +1285,16 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, activeTab]);
 
-  const [selectedAgency, setSelectedAgency] = useState<string>('TODAS');
+  // Filtro de agencia de la barra superior: una, varias o ninguna (= todas).
+  // "selectedAgency" se conserva para las pantallas que trabajan con UNA
+  // agencia: es esa agencia si hay una sola elegida; con varias es 'TODAS' y
+  // los datos ya llegan filtrados con enAgenciaSel.
+  const [agenciasSel, setAgenciasSel] = useState<string[]>([]);
+  const selectedAgency = agenciasSel.length === 1 ? agenciasSel[0] : 'TODAS';
+  const setSelectedAgency = (ag: string) => setAgenciasSel(!ag || ag === 'TODAS' ? [] : [ag]);
+  const enAgenciaSel = (ag?: string | null) => agenciasSel.length === 0 || (!!ag && agenciasSel.includes(ag));
+  // Cómo se nombra el filtro en encabezados y PDF cuando no es una sola agencia.
+  const etiquetaAgencias = agenciasSel.length > 1 ? agenciasSel.join(', ') : 'Todas';
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -1542,10 +1551,10 @@ export default function App() {
   // Si la agencia elegida en el filtro superior ya no tiene rutas activas (o el
   // usuario perdió el permiso), se vuelve a "Todas las Agencias".
   useEffect(() => {
-    if (selectedAgency !== 'TODAS' && !boardAgencies.includes(selectedAgency)) {
-      setSelectedAgency('TODAS');
+    if (agenciasSel.some((ag) => !boardAgencies.includes(ag))) {
+      setAgenciasSel((prev) => prev.filter((ag) => boardAgencies.includes(ag)));
     }
-  }, [boardAgencies, selectedAgency]);
+  }, [boardAgencies, agenciasSel]);
 
   // Unified collection of all liquidated routes (including each completed trip: Primer Viaje and Revisita)
   const allLiquidatedRoutes = useMemo(() => {
@@ -1739,7 +1748,7 @@ export default function App() {
 
       if (!canViewAgency(r.agencia)) return false;
 
-      const matchesAgency = selectedAgency === 'TODAS' || r.agencia === selectedAgency;
+      const matchesAgency = enAgenciaSel(r.agencia);
       if (!matchesAgency) return false;
 
       if (boardFecha && formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) !== boardFecha) return false;
@@ -1749,7 +1758,7 @@ export default function App() {
       return coincideBusqueda(r, q);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routes, selectedAgency, searchQuery, currentUser, boardFecha, boardSegmento]);
+  }, [routes, agenciasSel, searchQuery, currentUser, boardFecha, boardSegmento]);
 
   // Rutas del día (todos los estados) visibles para el usuario, respetando la
   // agencia seleccionada en la barra superior y su permiso de acceso por agencia.
@@ -1757,16 +1766,17 @@ export default function App() {
   const dashboardRoutes = useMemo(
     () =>
       routes.filter(
-        (r) => (selectedAgency === 'TODAS' || r.agencia === selectedAgency) && canViewAgency(r.agencia)
+        (r) => enAgenciaSel(r.agencia) && canViewAgency(r.agencia)
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [routes, selectedAgency, currentUser]
+    [routes, agenciasSel, currentUser]
   );
 
   // Rutas liquidadas visibles para el usuario, respetando la agencia seleccionada.
   const dashboardLiquidatedRoutes = useMemo(
-    () => allLiquidatedRoutes.filter((r) => selectedAgency === 'TODAS' || r.agencia === selectedAgency),
-    [allLiquidatedRoutes, selectedAgency]
+    () => allLiquidatedRoutes.filter((r) => enAgenciaSel(r.agencia)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allLiquidatedRoutes, agenciasSel]
   );
 
   // Camiones y Personal visibles según la agencia seleccionada en la barra superior.
@@ -1895,35 +1905,35 @@ export default function App() {
     () =>
       trucksOp.filter(
         (t) =>
-          (selectedAgency === 'TODAS' || t.agencia === selectedAgency) &&
+          enAgenciaSel(t.agencia) &&
           (!t.agencia || canViewAgency(t.agencia))
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [trucksOp, selectedAgency, currentUser]
+    [trucksOp, agenciasSel, currentUser]
   );
   const visibleStaff = useMemo(
     () =>
       staffOp.filter(
         (s) =>
-          (selectedAgency === 'TODAS' || s.agencia === selectedAgency) &&
+          enAgenciaSel(s.agencia) &&
           (!s.agencia || canViewAgency(s.agencia))
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [staffOp, selectedAgency, currentUser]
+    [staffOp, agenciasSel, currentUser]
   );
   // Listas de las pantallas Camiones / Personal: su agencia real, más los que
   // hoy están prestados A una agencia del filtro (con su etiqueta de préstamo).
   const coincideAgenciaLista = (ag?: string) =>
-    !!ag && (selectedAgency === 'TODAS' || ag === selectedAgency) && canViewAgency(ag);
+    !!ag && enAgenciaSel(ag) && canViewAgency(ag);
   const listaTrucks = useMemo(
-    () => trucksInfo.filter((t) => !t.agencia ? selectedAgency === 'TODAS' : coincideAgenciaLista(t.agencia) || coincideAgenciaLista(t.prestamoInfo?.destino)),
+    () => trucksInfo.filter((t) => !t.agencia ? agenciasSel.length === 0 : coincideAgenciaLista(t.agencia) || coincideAgenciaLista(t.prestamoInfo?.destino)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [trucksInfo, selectedAgency, currentUser]
+    [trucksInfo, agenciasSel, currentUser]
   );
   const listaStaff = useMemo(
-    () => staffInfo.filter((x) => !x.agencia ? selectedAgency === 'TODAS' : coincideAgenciaLista(x.agencia) || coincideAgenciaLista(x.prestamoInfo?.destino)),
+    () => staffInfo.filter((x) => !x.agencia ? agenciasSel.length === 0 : coincideAgenciaLista(x.agencia) || coincideAgenciaLista(x.prestamoInfo?.destino)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [staffInfo, selectedAgency, currentUser]
+    [staffInfo, agenciasSel, currentUser]
   );
 
   // Módulo de Recargas: rutas (activas y liquidadas) y personal de las agencias
@@ -4503,8 +4513,8 @@ export default function App() {
   // Si el usuario tiene "TODAS" seleccionado (sin agencia específica), se usa
   // la primera agencia conocida como respaldo.
   const effectiveAgencyForCreation = useMemo(() => {
-    return selectedAgency !== 'TODAS' ? selectedAgency : (agencies[0] || 'Mercado Abierto');
-  }, [selectedAgency, agencies]);
+    return selectedAgency !== 'TODAS' ? selectedAgency : (agenciasSel[0] || agencies[0] || 'Mercado Abierto');
+  }, [selectedAgency, agenciasSel, agencies]);
 
   // Correlativo automático para Rutas de Entrega: formato M0000XXXXX (5 dígitos de correlativo)
   const nextEntregaRouteId = useMemo(() => {
@@ -4729,6 +4739,8 @@ export default function App() {
         agencies={boardAgencies}
         selectedAgency={selectedAgency}
         onSelectAgency={setSelectedAgency}
+        selectedAgencies={agenciasSel}
+        onChangeAgencies={setAgenciasSel}
         currentUsername={currentUser.nombre || currentUser.username}
         isAdmin={currentUser.isAdmin}
         adminAgencias={adminAgenciasSesion}
@@ -4901,10 +4913,11 @@ export default function App() {
             staff={visibleStaff}
             stats={stats}
             selectedAgency={selectedAgency}
+            etiquetaTodas={etiquetaAgencias}
             historyLimitedDays={historyLimited ? HISTORY_INITIAL_DAYS : undefined}
             onLoadFullHistory={loadFullHistory}
             isLoadingFullHistory={isLoadingFullHistory}
-            puedeVerAgencia={canViewAgency}
+            puedeVerAgencia={(ag: string) => canViewAgency(ag) && enAgenciaSel(ag)}
             situacionRecargas={situacionRecargas}
             usuario={currentUser.nombre || currentUser.username}
           />
@@ -4922,7 +4935,7 @@ export default function App() {
           {boardFullscreen && (
             <div className="shrink-0 flex flex-wrap items-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm px-2.5 py-2">
               <span className="font-bold text-sm text-slate-800 px-1 whitespace-nowrap">
-                Asignación{selectedAgency !== 'TODAS' ? ` · ${selectedAgency}` : ''}
+                Asignación{agenciasSel.length ? ` · ${agenciasSel.join(', ')}` : ''}
               </span>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
@@ -5148,7 +5161,7 @@ export default function App() {
             rutas={rutasParaRecargas}
             staff={staffParaRecargas}
             trucks={trucksLive}
-            agencias={importAgencyOptions}
+            agencias={agenciasSel.length > 1 ? importAgencyOptions.filter((ag) => enAgenciaSel(ag)) : importAgencyOptions}
             agenciaGeneral={selectedAgency}
             usuario={currentUser.nombre || currentUser.username}
             isAdmin={currentUser.isAdmin}
@@ -5181,7 +5194,7 @@ export default function App() {
             staff={staffLive}
             trucks={trucksLive}
             rutas={rutasParaRecargas}
-            agencias={importAgencyOptions}
+            agencias={agenciasSel.length > 1 ? importAgencyOptions.filter((ag) => enAgenciaSel(ag)) : importAgencyOptions}
             agenciasTodas={AGENCIA_LOCATION_OPTIONS}
             agenciaGeneral={selectedAgency}
             usuario={currentUser.nombre || currentUser.username}
@@ -5402,18 +5415,19 @@ export default function App() {
         onClose={() => setIsDailySummaryModalOpen(false)}
         // Si en el Tablero se filtraron uno o varios segmentos, el reporte de
         // Inicio y Fin de Día se arma solo con esas rutas.
-        routes={routes.filter((r) => canViewAgency(r.agencia) && coincideSegmento(r, boardSegmento))}
-        allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia) && coincideSegmento(r, boardSegmento))}
+        routes={routes.filter((r) => canViewAgency(r.agencia) && enAgenciaSel(r.agencia) && coincideSegmento(r, boardSegmento))}
+        allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia) && enAgenciaSel(r.agencia) && coincideSegmento(r, boardSegmento))}
         segmentosFiltro={boardSegmento.map((sg) => (sg === '__SIN__' ? 'Sin segmento' : sg))}
         // Si en el Tablero se filtró una fecha, el reporte usa esa fecha con la
         // misma regla del Tablero (solo rutas de ese día, sin rezagadas).
         fechaFiltroTablero={boardFecha}
         // Camiones y personal de todas las agencias permitidas: el reporte los
         // filtra con su propio selector de agencia (que abre con el general).
-        staff={staffOp.filter((s) => !s.agencia || canViewAgency(s.agencia))}
-        trucks={trucksOp.filter((t) => !t.agencia || canViewAgency(t.agencia))}
+        staff={staffOp.filter((s) => !s.agencia || (canViewAgency(s.agencia) && enAgenciaSel(s.agencia)))}
+        trucks={trucksOp.filter((t) => !t.agencia || (canViewAgency(t.agencia) && enAgenciaSel(t.agencia)))}
         selectedAgency={selectedAgency}
-        agencies={agencies}
+        agencies={agenciasSel.length > 1 ? agencies.filter((ag) => enAgenciaSel(ag)) : agencies}
+        etiquetaTodas={etiquetaAgencias}
         // Abre con la fecha elegida en el filtro del Tablero (o con hoy).
         fechaHoy={boardFecha || formatDateToGuatemala(new Date())}
         initialMode={dailySummaryMode}
@@ -5428,10 +5442,10 @@ export default function App() {
       <ClosingActaModal
         isOpen={isClosingActaModalOpen}
         onClose={() => setIsClosingActaModalOpen(false)}
-        routes={routes.filter((r) => canViewAgency(r.agencia))}
-        allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia))}
+        routes={routes.filter((r) => canViewAgency(r.agencia) && enAgenciaSel(r.agencia))}
+        allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia) && enAgenciaSel(r.agencia))}
         selectedAgency={selectedAgency}
-        agencies={agencies}
+        agencies={agenciasSel.length > 1 ? agencies.filter((ag) => enAgenciaSel(ag)) : agencies}
         // Acta de Cierre con la fecha del filtro del Tablero (o hoy).
         fechaHoy={boardFecha || formatDateToGuatemala(new Date())}
         fechaEstricta
@@ -5455,10 +5469,10 @@ export default function App() {
         routes={rutasFinAsignacion}
         onSetTruckReason={handleSetTruckReason}
         onSetStaffReason={handleSetStaffReason}
-        summaryRoutes={routes.filter((r) => canViewAgency(r.agencia))}
+        summaryRoutes={routes.filter((r) => canViewAgency(r.agencia) && enAgenciaSel(r.agencia))}
         // Resumen de Fin de Asignación con la fecha del filtro del Tablero (o hoy).
         fechaOperacion={boardFecha || formatDateToGuatemala(new Date())}
-        agencies={boardAgencies}
+        agencies={agenciasSel.length > 1 ? boardAgencies.filter((ag) => enAgenciaSel(ag)) : boardAgencies}
         selectedAgency={selectedAgency}
       />
 
