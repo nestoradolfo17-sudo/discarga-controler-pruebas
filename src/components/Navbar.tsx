@@ -14,6 +14,9 @@ interface NavbarProps {
   agencies: string[];
   selectedAgency: string;
   onSelectAgency: (agency: string) => void;
+  // Filtro de VARIAS agencias (vacío = todas). Si viene, reemplaza la lista simple.
+  selectedAgencies?: string[];
+  onChangeAgencies?: (agencies: string[]) => void;
   currentUsername?: string;
   isAdmin?: boolean;
   // Agencias de las que es administrador (administrador de agencias).
@@ -30,6 +33,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   agencies,
   selectedAgency,
   onSelectAgency,
+  selectedAgencies,
+  onChangeAgencies,
   currentUsername,
   isAdmin,
   adminAgencias = [],
@@ -58,6 +63,29 @@ export const Navbar: React.FC<NavbarProps> = ({
     };
   }, [menuOpen]);
 
+  // Selector de una o varias agencias.
+  const [agOpen, setAgOpen] = useState(false);
+  const agRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!agOpen) return;
+    const close = (e: MouseEvent | TouchEvent) => {
+      if (agRef.current && !agRef.current.contains(e.target as Node)) setAgOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setAgOpen(false);
+    document.addEventListener('mousedown', close);
+    document.addEventListener('touchstart', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('touchstart', close);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [agOpen]);
+  const multi = !!onChangeAgencies;
+  const sel = selectedAgencies || [];
+  const agLabel = sel.length === 0 ? 'Todas las agencias' : sel.length === 1 ? sel[0] : `${sel.length} agencias`;
+  const toggleAg = (ag: string) => onChangeAgencies?.(sel.includes(ag) ? sel.filter((x) => x !== ag) : [...sel, ag]);
+
   const menuItem =
     'w-full min-h-[48px] px-4 flex items-center gap-3 text-sm font-semibold text-left cursor-pointer outline-none focus-visible:bg-slate-100';
 
@@ -77,6 +105,51 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Agencia: visible en TODOS los tamaños (antes desaparecía en tablet vertical). */}
+            {multi ? (
+              <div className="relative shrink-0" ref={agRef}>
+                <button
+                  type="button"
+                  id="agencySelect"
+                  onClick={() => setAgOpen((v) => !v)}
+                  aria-haspopup="listbox"
+                  aria-expanded={agOpen}
+                  aria-label={`Agencia: ${agLabel}`}
+                  title={sel.length > 1 ? sel.join(', ') : 'Elige una o varias agencias'}
+                  className={`flex items-center gap-1.5 rounded-xl pl-2.5 pr-2 border min-h-[44px] text-sm font-semibold cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-400 max-w-[46vw] sm:max-w-[240px] ${
+                    sel.length > 1 ? 'bg-blue-600/30 border-blue-400/50' : 'bg-white/5 border-white/10'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
+                  <span className="truncate">{agLabel}</span>
+                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
+                </button>
+                {agOpen && (
+                  <div
+                    role="listbox"
+                    aria-multiselectable="true"
+                    aria-label="Agencias"
+                    className="absolute left-0 mt-2 w-64 max-h-[70vh] overflow-y-auto bg-white text-slate-800 rounded-xl shadow-2xl border border-slate-200 py-1 z-50"
+                  >
+                    <label className="flex items-center gap-2.5 px-3 min-h-[44px] text-sm font-bold cursor-pointer hover:bg-slate-50 border-b border-slate-100">
+                      <input type="checkbox" className="w-4 h-4 accent-blue-600" checked={sel.length === 0} onChange={() => onChangeAgencies?.([])} />
+                      Todas las agencias
+                    </label>
+                    {agencies.map((ag) => (
+                      <label key={ag} className="flex items-center gap-2.5 px-3 min-h-[40px] text-sm font-semibold cursor-pointer hover:bg-slate-50">
+                        <input type="checkbox" className="w-4 h-4 accent-blue-600" checked={sel.includes(ag)} onChange={() => toggleAg(ag)} />
+                        {ag}
+                      </label>
+                    ))}
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-slate-100 sticky bottom-0 bg-white">
+                      <span className="text-[11px] text-slate-500">{sel.length === 0 ? 'Sin filtro' : `${sel.length} elegida(s)`}</span>
+                      <button type="button" onClick={() => setAgOpen(false)} className="min-h-[36px] px-3 rounded-lg bg-slate-900 text-white text-xs font-bold cursor-pointer">
+                        Listo
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
             <label className="flex items-center bg-white/5 rounded-xl pl-2.5 pr-1 border border-white/10 min-h-[44px] shrink-0">
               <Building2 className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
               <span className="sr-only">Agencia</span>
@@ -95,6 +168,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ))}
               </select>
             </label>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
