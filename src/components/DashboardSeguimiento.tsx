@@ -19,6 +19,8 @@ interface Props {
   routes: Route[]; // rutas del tablero (respeta agencia y permisos)
   liquidatedRoutes: Route[]; // liquidadas (respeta agencia y permisos)
   selectedAgency: string;
+  // Nombre del filtro cuando no es una sola agencia ("Todas" o "Xela, Escuintla").
+  etiquetaTodas?: string;
   historyLimitedDays?: number;
   onLoadFullHistory?: () => void;
   isLoadingFullHistory?: boolean;
@@ -87,6 +89,7 @@ export const DashboardSeguimiento: React.FC<Props> = ({
   routes,
   liquidatedRoutes,
   selectedAgency,
+  etiquetaTodas = 'Todas',
   historyLimitedDays,
   onLoadFullHistory,
   isLoadingFullHistory,
@@ -233,7 +236,7 @@ export const DashboardSeguimiento: React.FC<Props> = ({
     const wb = XLSX.utils.book_new();
     const resumen = [
       { Indicador: 'Fecha del reporte', Valor: formatDateTimeToGuatemala(new Date()) },
-      { Indicador: 'Agencia', Valor: agencia !== 'TODAS' ? agencia : selectedAgency !== 'TODAS' ? selectedAgency : 'Todas' },
+      { Indicador: 'Agencia', Valor: agencia !== 'TODAS' ? agencia : selectedAgency !== 'TODAS' ? selectedAgency : etiquetaTodas },
       { Indicador: 'Cajas abiertas', Valor: kpi.cajas },
       { Indicador: 'Saldo pendiente cajas abiertas (Q)', Valor: Number(kpi.saldo.toFixed(2)) },
       { Indicador: 'Días promedio caja abierta', Valor: Number(kpi.cajasProm.toFixed(1)) },
@@ -314,7 +317,7 @@ export const DashboardSeguimiento: React.FC<Props> = ({
 
   // ---------- Reporte PDF (los mismos datos de la pantalla, con formato) ----------
   const armarReporte = (): ReportePdf => {
-    const ag = agencia !== 'TODAS' ? agencia : selectedAgency !== 'TODAS' ? selectedAgency : 'Todas';
+    const ag = agencia !== 'TODAS' ? agencia : selectedAgency !== 'TODAS' ? selectedAgency : etiquetaTodas;
     const diasTxt = (d: number) => (d === 0 ? 'Hoy' : `${d} día${d === 1 ? '' : 's'}`);
     const filtros = [rangoFiltro ? `Antigüedad: ${infoRango(rangoFiltro).label}` : '', busca.trim() ? `Búsqueda: "${busca.trim()}"` : ''].filter(Boolean).join(' · ');
     return {
@@ -378,7 +381,7 @@ export const DashboardSeguimiento: React.FC<Props> = ({
           <h2 className="text-lg font-bold text-slate-800">Seguimiento de Cajas y Rutas Abiertas</h2>
           <p className="text-xs text-slate-400">
             Lo que sigue pendiente de cerrar y cuánto tiempo lleva así
-            {selectedAgency !== 'TODAS' ? ` · Agencia: ${selectedAgency}` : ''}
+            {selectedAgency !== 'TODAS' ? ` · Agencia: ${selectedAgency}` : etiquetaTodas !== 'Todas' ? ` · Agencias: ${etiquetaTodas}` : ''}
           </p>
         </div>
         <input
