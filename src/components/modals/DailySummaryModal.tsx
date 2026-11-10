@@ -66,6 +66,9 @@ interface DailySummaryModalProps {
   // ruta (sin sumar las de días anteriores que siguen activas) y las liquidadas
   // ese día.
   fechaFiltroTablero?: string;
+  // Nombre del filtro cuando están varias agencias elegidas en la barra
+  // superior ("Xela, Escuintla"); las rutas ya llegan filtradas.
+  etiquetaTodas?: string;
 }
 
 // Estructura normalizada de cada fila del resumen diario (tanto para inicio como para fin de día)
@@ -367,6 +370,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   initialMode = 'inicio',
   segmentosFiltro = [],
   fechaFiltroTablero = '',
+  etiquetaTodas = 'Todas',
   onOpenClosingActa,
 }) => {
   const [mode, setMode] = useState<DailySummaryMode>(initialMode);
@@ -385,6 +389,8 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   const [inicioFilter, setInicioFilter] = useState<InicioFilter>('todas');
   const [finFilter, setFinFilter] = useState<FinFilter>('todas');
   const [filterAgency, setFilterAgency] = useState<string>(selectedAgency || 'TODAS');
+  // Nombre de la agencia (o agencias) del reporte para encabezados y PDF.
+  const agenciaTxt = filterAgency === 'TODAS' ? etiquetaTodas : filterAgency;
   const [searchTerm, setSearchTerm] = useState('');
   const [downloadFeedback, setDownloadFeedback] = useState<string | null>(null);
 
@@ -1027,7 +1033,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     return {
       titulo: 'Fin de Día',
       periodo: `Fecha: ${fechaReporte}${fechaDelTablero ? ' (filtro del Tablero)' : ''}${segmentosFiltro.length ? ` · Segmentos: ${segmentosFiltro.join(', ')}` : ''}`,
-      agencia: filterAgency === 'TODAS' ? 'Todas' : filterAgency,
+      agencia: agenciaTxt,
       kpis: [
         {
           label: 'Rutas liquidadas',
@@ -1110,7 +1116,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     return {
       titulo: 'Inicio de Día',
       periodo: `Fecha: ${fechaReporte}${fechaDelTablero ? ' (filtro del Tablero)' : ''}${segmentosFiltro.length ? ` · Segmentos: ${segmentosFiltro.join(', ')}` : ''}`,
-      agencia: filterAgency === 'TODAS' ? 'Todas' : filterAgency,
+      agencia: agenciaTxt,
       kpis: [
         { label: 'Rutas planificadas', valor: n0(inicioTotalRutas), sub: `${n0(inicioPendientesCount)} por asignar · ${n0(inicioTransitoCount)} en tránsito`, tono: 'info' },
         { label: 'Cajas físicas del día', valor: n1(inicioTotalCajasPlan), sub: `${n0(inicioTotalParadasPlan)} paradas planificadas`, tono: 'info' },
@@ -1164,7 +1170,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     // Inicio y Fin de Día: PDF con formato profesional (logo y colores de DISCARGA).
     {
       setDownloadFeedback('Generando PDF...');
-      const agencyLabel = filterAgency === 'TODAS' ? 'Todas_Agencias' : filterAgency.replace(/\s+/g, '_');
+      const agencyLabel = filterAgency === 'TODAS' ? (etiquetaTodas === 'Todas' ? 'Todas_Agencias' : etiquetaTodas.replace(/,\s*/g, '-').replace(/\s+/g, '_')) : filterAgency.replace(/\s+/g, '_');
       descargarReportePdf(mode === 'fin' ? armarPdfCierre() : armarPdfInicio(), { archivo: `${mode === 'fin' ? 'Fin' : 'Inicio'}_de_Dia_DISCARGA_${agencyLabel}_${fechaReporte.replace(/\//g, '-')}.pdf` })
         .then(() => {
           setDownloadFeedback('✓ PDF guardado');
@@ -1181,7 +1187,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
   const handlePrint = () => {
     const originalTitle = document.title;
     const cleanFecha = fechaReporte.replace(/\//g, '-');
-    const agencyLabel = filterAgency === 'TODAS' ? 'Todas_Agencias' : filterAgency.replace(/\s+/g, '_');
+    const agencyLabel = filterAgency === 'TODAS' ? (etiquetaTodas === 'Todas' ? 'Todas_Agencias' : etiquetaTodas.replace(/,\s*/g, '-').replace(/\s+/g, '_')) : filterAgency.replace(/\s+/g, '_');
     const titlePrefix = mode === 'inicio' ? 'Reporte_Inicio_de_Dia_DISCARGA' : 'Reporte_Fin_de_Dia_DISCARGA';
 
     document.title = `${titlePrefix}_${agencyLabel}_${cleanFecha}`;
@@ -1286,7 +1292,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   </span>
                 )}
                 <span className="hidden print:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
-                  Agencia: {filterAgency}
+                  Agencia: {agenciaTxt}
                 </span>
               </div>
               <p className="text-xs text-slate-400 print:text-slate-600 print:text-[11px] mt-0.5">
@@ -1732,7 +1738,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                   onChange={(e) => setFilterAgency(e.target.value)}
                   className="text-xs font-semibold text-slate-700 bg-transparent border-0 outline-none cursor-pointer"
                 >
-                  <option value="TODAS">-- Todas las Agencias --</option>
+                  <option value="TODAS">{etiquetaTodas === 'Todas' ? '-- Todas las Agencias --' : `-- ${etiquetaTodas} --`}</option>
                   {agencies.map((ag) => (
                     <option key={ag} value={ag}>
                       {ag}
@@ -1812,7 +1818,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           {/* pendientes para mañana y devoluciones)                         */}
           {/* ============================================================== */}
           {mode === 'fin' && showSection('resumen') && (
-            <CierreDiaResumen metrics={filteredMetrics} fecha={fechaReporte} agencia={filterAgency === 'TODAS' ? 'Todas' : filterAgency} />
+            <CierreDiaResumen metrics={filteredMetrics} fecha={fechaReporte} agencia={agenciaTxt} />
           )}
 
           {/* Inicio de Día: rutas, cajas (CJ) y paradas según el estado de la ruta. */}
@@ -2000,7 +2006,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                           Cierre del día · Liquidación por segmento y motivo
                         </h3>
                         <p className="text-[11px] text-slate-300 print:text-slate-600 font-medium">
-                          {fechaReporte} · Agencia: {filterAgency === 'TODAS' ? 'Todas' : filterAgency} · Una ruta con varios motivos aparece en cada uno; sus cajas devueltas se reparten entre ellos.
+                          {fechaReporte} · Agencia: {agenciaTxt} · Una ruta con varios motivos aparece en cada uno; sus cajas devueltas se reparten entre ellos.
                         </p>
                       </div>
                     </div>
@@ -3476,7 +3482,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               <span>Sistema de Asignación, Segmentación y Liquidación Operativa</span>
             </div>
             <div>
-              <span>Agencia: <strong className="text-slate-800">{filterAgency}</strong> • Fecha: <strong className="text-slate-800">{fechaReporte}</strong></span>
+              <span>Agencia: <strong className="text-slate-800">{agenciaTxt}</strong> • Fecha: <strong className="text-slate-800">{fechaReporte}</strong></span>
             </div>
           </div>
         </div>
@@ -3493,7 +3499,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               </strong>
             </span>
             <span>•</span>
-            <span>Agencia: <strong className="text-slate-800">{filterAgency}</strong></span>
+            <span>Agencia: <strong className="text-slate-800">{agenciaTxt}</strong></span>
           </div>
 
           {/* Pie: sin repetir Imprimir/PDF (ya están arriba). */}
