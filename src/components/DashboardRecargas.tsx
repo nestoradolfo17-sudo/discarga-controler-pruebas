@@ -31,6 +31,8 @@ type Periodo = 'hoy' | '7d' | 'mes' | 'rango';
 interface Props {
   staff: Staff[];
   selectedAgency: string;
+  // Nombre del filtro cuando no es una sola agencia ("Todas" o "Xela, Escuintla").
+  etiquetaTodas?: string;
   puedeVerAgencia?: (agencia: string) => boolean;
   // ¿El viaje de cada recarga automática ya se liquidó? (las "En ruta" aún no se autorizan)
   situacionRecargas?: (id: string) => SituacionViaje;
@@ -107,7 +109,7 @@ const ColumnasEstado: React.FC<{ data: { key: string; label: string; aut: number
   );
 };
 
-export const DashboardRecargas: React.FC<Props> = ({ staff, selectedAgency, puedeVerAgencia, situacionRecargas, registrarReporte }) => {
+export const DashboardRecargas: React.FC<Props> = ({ staff, selectedAgency, etiquetaTodas = 'Todas', puedeVerAgencia, situacionRecargas, registrarReporte }) => {
   const [recargasLeidas, setRecargas] = useState<Recarga[]>([]);
   // Las de viajes aún sin liquidar se ven "En ruta" (no cuentan como por autorizar).
   const recargas = useMemo(
@@ -281,7 +283,7 @@ export const DashboardRecargas: React.FC<Props> = ({ staff, selectedAgency, pued
     return {
       titulo: 'Dashboard de Recargas',
       periodo: periodoLabel,
-      agencia: selectedAgency === 'TODAS' ? 'Todas' : selectedAgency,
+      agencia: selectedAgency === 'TODAS' ? etiquetaTodas : selectedAgency,
       kpis: [
         { label: 'Recargas registradas', valor: n0(k.total), sub: `${n0(k.viajes)} viajes · ${n0(k.auto)} automáticas`, tono: 'info' },
         { label: 'Autorizadas', valor: n0(k.aut), sub: `${n0(k.viajesAut)} viajes para pago`, tono: 'ok' },
@@ -338,7 +340,7 @@ export const DashboardRecargas: React.FC<Props> = ({ staff, selectedAgency, pued
         <div>
           <h2 className="text-lg font-bold text-slate-800">Dashboard de Recargas</h2>
           <p className="text-xs text-slate-500">
-            {periodoLabel} · Agencia: <span className="font-semibold text-slate-700">{selectedAgency === 'TODAS' ? 'Todas' : selectedAgency}</span> · {n0(k.total)} recargas registradas
+            {periodoLabel} · Agencia: <span className="font-semibold text-slate-700">{selectedAgency === 'TODAS' ? etiquetaTodas : selectedAgency}</span> · {n0(k.total)} recargas registradas
           </p>
         </div>
         <span className="text-[11px] text-slate-400">Se actualiza solo cuando registran o autorizan recargas</span>
