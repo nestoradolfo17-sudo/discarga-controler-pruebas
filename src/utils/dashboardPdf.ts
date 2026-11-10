@@ -163,11 +163,16 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
   }
 
   // ---------- Tablas ----------
+  // ¿La hoja actual está en blanco (recién creada)? Sirve para no dejar hojas vacías.
+  let hojaLimpia = false;
+  const nuevaHoja = () => {
+    doc.addPage();
+    y = 48;
+    hojaLimpia = true;
+  };
   const tituloSeccion = (t: string, sub?: string) => {
-    if (y > H - 90) {
-      doc.addPage();
-      y = 48;
-    }
+    if (y > H - 90) nuevaHoja();
+    hojaLimpia = false;
     doc.setFillColor(...RGB.cielo);
     doc.rect(M, y - 9, 3.5, 13, 'F');
     doc.setFont('helvetica', 'bold');
@@ -225,40 +230,83 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
     y += 34;
   }
 
+  // Reglas de hojas para que las tablas se lean claras:
+  //  - Tabla LARGA (más de FILAS_LARGA filas): empieza en una hoja nueva, lleva
+  //    columna "#" con el número de fila, repite el encabezado en cada hoja y
+  //    en cada hoja siguiente se escribe "(continuación)" con su título.
+  //  - Después de una tabla larga, la siguiente también empieza en hoja nueva
+  //    (una tabla larga por hoja, sin mezclar).
+  //  - Tabla corta: no se parte entre dos hojas; si no cabe completa en lo que
+  //    queda de la hoja, pasa entera a la siguiente.
+  const FILAS_LARGA = 18;
+  const ALTO_FILA = 17;
+  const TOPE = 66; // margen superior de las tablas en hojas 2+ (deja lugar al título de continuación)
+  let anteriorLarga = false;
   rep.tablas.forEach((t) => {
     if (!t.filas.length && !t.vacio) return;
-    tituloSeccion(t.titulo, t.sub);
+    const larga = t.filas.length > FILAS_LARGA;
+    const altoEstimado = 34 + 24 + t.filas.length * ALTO_FILA + (t.total ? ALTO_FILA + 4 : 0);
+    const cabe = y + altoEstimado <= H - 44;
+    if (!hojaLimpia && (larga || anteriorLarga || !cabe)) nuevaHoja();
+    const sub = [t.sub, t.filas.length > 1 ? `${t.filas.length} registros` : ''].filter(Boolean).join('  ·  ');
+    tituloSeccion(t.titulo, sub);
     if (!t.filas.length) {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(9);
       doc.setTextColor(...RGB.gris);
       doc.text(limpio(t.vacio), M + 9, y + 8);
       y += 26;
+      anteriorLarga = false;
       return;
     }
-    const columnStyles: Record<number, { halign?: 'right' | 'left'; cellWidth?: number }> = {};
-    t.columnas.forEach((c, i) => {
-      columnStyles[i] = { halign: c.num ? 'right' : 'left', ...(c.ancho ? { cellWidth: c.ancho } : {}) };
+    // Tablas anchas: letra un poco menor para que no se amontonen las columnas.
+    const anchas = t.columnas.length + (larga ? 1 : 0) > 8;
+    const fs = anchas ? 7.6 : 8.4;
+    const conNumero = larga;
+    const columnas: ColumnaPdf[] = conNumero ? [{ t: '#', num: true, ancho: 26 }, ...t.columnas] : t.columnas;
+    const columnStyles: Record<number, { halign?: 'right' | 'left' | 'center'; cellWidth?: number; textColor?: [number, number, number] }> = {};
+    columnas.forEach((col, i) => {
+      columnStyles[i] = { halign: col.num ? 'right' : 'left', ...(col.ancho ? { cellWidth: col.ancho } : {}) };
     });
+    if (conNumero) columnStyles[0] = { halign: 'center', cellWidth: 26, textColor: RGB.gris };
+    const tituloT = limpio(t.titulo);
     autoTable(doc, {
       startY: y,
-      margin: { left: M, right: M, top: 48, bottom: 40 },
-      head: [t.columnas.map((c) => limpio(c.t))],
-      body: t.filas.map((f) => f.map((v) => limpio(v))),
-      foot: t.total ? [t.total.map((v) => limpio(v))] : undefined,
+      margin: { left: M, right: M, top: TOPE, bottom: 40 },
+      head: [columnas.map((col) => limpio(col.t))],
+      body: t.filas.map((f, i) => (conNumero ? [String(i + 1), ...f.map((v) => limpio(v))] : f.map((v) => limpio(v)))),
+      foot: t.total ? [(conNumero ? ['', ...t.total] : t.total).map((v) => limpio(v))] : undefined,
+      showHead: 'everyPage',
       showFoot: 'lastPage',
+      rowPageBreak: 'avoid',
       theme: 'grid',
-      styles: { font: 'helvetica', fontSize: 8.2, cellPadding: 4, textColor: RGB.texto, lineColor: RGB.borde, lineWidth: 0.5, overflow: 'linebreak' },
-      headStyles: { fillColor: RGB.marino, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.2, halign: 'center', valign: 'middle' },
+      styles: { font: 'helvetica', fontSize: fs, cellPadding: anchas ? 3.4 : 4, textColor: RGB.texto, lineColor: RGB.borde, lineWidth: 0.5, overflow: 'linebreak', valign: 'middle' },
+      headStyles: { fillColor: RGB.marino, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: fs, halign: 'center', valign: 'middle' },
       footStyles: { fillColor: RGB.totalFondo, textColor: RGB.marino, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: RGB.celeste },
       columnStyles,
       didParseCell: (d) => {
-        if (d.section === 'foot') d.cell.styles.halign = t.columnas[d.column.index]?.num ? 'right' : 'left';
+        if (d.section === 'foot') d.cell.styles.halign = columnas[d.column.index]?.num ? 'right' : 'left';
+      },
+      didDrawPage: (d) => {
+        // Hojas siguientes de la misma tabla: su título con "(continuación)".
+        if (d.pageNumber <= 1) return;
+        doc.setFillColor(...RGB.cielo);
+        doc.rect(M, 40, 3.5, 13, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(...RGB.marino);
+        doc.text(`${tituloT} (continuación)`, M + 9, 50);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(...RGB.gris);
+        doc.text(`${t.filas.length} registros en total`, W - M, 50, { align: 'right' });
       },
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     y = ((doc as any).lastAutoTable?.finalY || y) + 26;
+    hojaLimpia = false;
+    anteriorLarga = larga;
   });
 
   if (rep.notas?.length) {
