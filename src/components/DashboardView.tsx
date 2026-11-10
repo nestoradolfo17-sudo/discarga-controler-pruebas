@@ -32,6 +32,8 @@ interface DashboardViewProps {
   staff: Staff[];
   stats: DashboardStats;
   selectedAgency: string;
+  // Nombre del filtro cuando no es una sola agencia ("Todas" o "Xela, Escuintla").
+  etiquetaTodas?: string;
   // Historial cargado parcialmente (para el filtro de fechas).
   historyLimitedDays?: number;
   onLoadFullHistory?: () => void;
@@ -160,7 +162,8 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   }, []);
   const [generando, setGenerando] = useState(false);
   const nombreVista = VISTAS.find(([k]) => k === view)?.[1] || 'Dashboard';
-  const agencia = props.selectedAgency === 'TODAS' ? 'Todas las agencias' : props.selectedAgency;
+  const etiquetaTodas = props.etiquetaTodas && props.etiquetaTodas !== 'Todas' ? props.etiquetaTodas : '';
+  const agencia = props.selectedAgency === 'TODAS' ? etiquetaTodas || 'Todas las agencias' : props.selectedAgency;
   const hoy = new Intl.DateTimeFormat('es-GT', { timeZone: 'America/Guatemala', day: '2-digit', month: '2-digit', year: 'numeric' })
     .format(new Date())
     .replace(/\//g, '-');
@@ -214,6 +217,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
             routes={props.routes}
             liquidatedRoutes={props.liquidatedRoutes}
             selectedAgency={props.selectedAgency}
+            etiquetaTodas={props.etiquetaTodas}
             historyLimitedDays={props.historyLimitedDays}
             onLoadFullHistory={props.onLoadFullHistory}
             isLoadingFullHistory={props.isLoadingFullHistory}
@@ -223,6 +227,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
           <DashboardRecargas
             staff={props.staff}
             selectedAgency={props.selectedAgency}
+            etiquetaTodas={props.etiquetaTodas}
             puedeVerAgencia={props.puedeVerAgencia}
             situacionRecargas={props.situacionRecargas}
             registrarReporte={registrarReporte}
@@ -235,6 +240,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
             staff={props.staff}
             stats={props.stats}
             selectedAgency={props.selectedAgency}
+            etiquetaTodas={props.etiquetaTodas}
             historyLimitedDays={props.historyLimitedDays}
             onLoadFullHistory={props.onLoadFullHistory}
             isLoadingFullHistory={props.isLoadingFullHistory}
