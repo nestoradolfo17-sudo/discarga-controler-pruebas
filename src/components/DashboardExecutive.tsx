@@ -51,6 +51,8 @@ interface Props {
   staff: Staff[];
   stats: DashboardStats;
   selectedAgency: string;
+  // Nombre del filtro cuando no es una sola agencia ("Todas" o "Xela, Escuintla").
+  etiquetaTodas?: string;
   // Si solo se cargaron los últimos N días del historial (ver App.tsx).
   historyLimitedDays?: number;
   onLoadFullHistory?: () => void;
@@ -326,7 +328,7 @@ const DetalleMotivoPanel: React.FC<{ motivo: string; cajas: number; detalle: Det
   );
 };
 
-export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, trucks, staff, stats: statsHoy, selectedAgency, historyLimitedDays, onLoadFullHistory, isLoadingFullHistory, registrarReporte }) => {
+export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, trucks, staff, stats: statsHoy, selectedAgency, etiquetaTodas = 'Todas', historyLimitedDays, onLoadFullHistory, isLoadingFullHistory, registrarReporte }) => {
   const now = Date.now();
 
   // ---------- Filtro de fechas: Hoy · Ayer · Últimos 7 días · Rango (varios días) · Mes ----------
@@ -689,7 +691,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
     return {
       titulo: 'Dashboard de Despacho',
       periodo: periodLabel,
-      agencia: selectedAgency === 'TODAS' ? 'Todas' : selectedAgency,
+      agencia: selectedAgency === 'TODAS' ? etiquetaTodas : selectedAgency,
       kpis: [
         { label: 'Rutas planificadas', valor: n0(totalPlan), sub: `${n0(despachadas)} despachadas`, tono: 'info' },
         { label: isHoy ? 'Cumplimiento del día' : 'Cumplimiento', valor: `${Math.round(cumplimiento * 100)}%`, sub: `${n0(stats.liquidadas)} de ${n0(totalPlan)} rutas liquidadas`, tono: tono(cumplStatus.c) },
@@ -794,7 +796,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
         <div>
           <h2 className="text-lg font-bold text-slate-800">Dashboard de Despacho</h2>
           <p className="text-xs text-slate-500">
-            {periodLabel} · Agencia: <span className="font-semibold text-slate-700">{selectedAgency === 'TODAS' ? 'Todas' : selectedAgency}</span> · {n0(totalPlan)} rutas planificadas
+            {periodLabel} · Agencia: <span className="font-semibold text-slate-700">{selectedAgency === 'TODAS' ? etiquetaTodas : selectedAgency}</span> · {n0(totalPlan)} rutas planificadas
           </p>
         </div>
         <span className="text-[11px] text-slate-400">Se actualiza solo con cada cambio del tablero</span>
