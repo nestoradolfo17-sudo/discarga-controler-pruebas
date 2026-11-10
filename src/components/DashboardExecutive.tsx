@@ -687,7 +687,6 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
       porRuta.set(k, x);
     });
     const topDev = [...porRuta.values()].sort((a, b) => b.dev - a.dev).slice(0, 15);
-    const diaTxt = (h: number) => (h >= 48 ? `${Math.floor(h / 24)} d ${Math.floor(h % 24)} h` : `${Math.floor(h)} h`);
     return {
       titulo: 'Dashboard de Despacho',
       periodo: periodLabel,
@@ -699,17 +698,16 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
         { label: 'Cajas (CJ)', valor: n0(stats.cajasFisicasHoy), sub: `${pctTxt(stats.cajasEntregadasHoy, stats.cajasFisicasHoy)} ya entregadas`, tono: 'info' },
         { label: 'En operación', valor: n0(enOperacion), sub: `${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`, tono: 'info' },
         { label: 'Por asignar', valor: n0(stats.pendientes), sub: `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, tono: 'warn' },
-        { label: 'Atrasadas +24 h', valor: n0(atrasadas.length), sub: atrasadas.length ? `${crit72} con más de 72 h (todo el tablero)` : 'Al día (todo el tablero)', tono: atrasadas.length ? 'crit' : 'ok' },
         { label: 'Flota en ruta', valor: `${Math.round(utilFlota * 100)}%`, sub: `${n0(truckEnRuta)} de ${n0(truckActivos.length)} camiones · ${n0(staffEnRuta)} de ${n0(staffActivos.length)} personas`, tono: 'info' },
       ],
       tablas: [
         {
           titulo: 'Desempeño por agencia',
           sub: periodLabel,
-          columnas: [{ t: 'Agencia' }, { t: 'Rutas', num: true }, { t: 'Liquidadas', num: true }, { t: 'Cumplimiento', num: true }, { t: 'CJ planificadas', num: true }, { t: 'CJ entregadas', num: true }, { t: 'Efectividad', num: true }, { t: 'Atrasadas +24 h', num: true }],
-          filas: porAgencia.map((a) => [a.ag, n0(a.rutas), n0(a.liq), `${Math.round(a.cumpl * 100)}%`, n1(a.cj), n1(a.ent), a.efect === null ? '—' : `${(a.efect * 100).toFixed(1)}%`, n0(a.atras)]),
+          columnas: [{ t: 'Agencia' }, { t: 'Rutas', num: true }, { t: 'Liquidadas', num: true }, { t: 'Cumplimiento', num: true }, { t: 'CJ planificadas', num: true }, { t: 'CJ entregadas', num: true }, { t: 'Efectividad', num: true }],
+          filas: porAgencia.map((a) => [a.ag, n0(a.rutas), n0(a.liq), `${Math.round(a.cumpl * 100)}%`, n1(a.cj), n1(a.ent), a.efect === null ? '—' : `${(a.efect * 100).toFixed(1)}%`]),
           total: porAgencia.length > 1
-            ? ['Total', n0(porAgencia.reduce((s, a) => s + a.rutas, 0)), n0(porAgencia.reduce((s, a) => s + a.liq, 0)), pct(porAgencia.reduce((s, a) => s + a.liq, 0), porAgencia.reduce((s, a) => s + a.rutas, 0)), n1(porAgencia.reduce((s, a) => s + a.cj, 0)), n1(porAgencia.reduce((s, a) => s + a.ent, 0)), cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—', n0(porAgencia.reduce((s, a) => s + a.atras, 0))]
+            ? ['Total', n0(porAgencia.reduce((s, a) => s + a.rutas, 0)), n0(porAgencia.reduce((s, a) => s + a.liq, 0)), pct(porAgencia.reduce((s, a) => s + a.liq, 0), porAgencia.reduce((s, a) => s + a.rutas, 0)), n1(porAgencia.reduce((s, a) => s + a.cj, 0)), n1(porAgencia.reduce((s, a) => s + a.ent, 0)), cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—']
             : undefined,
           vacio: 'Sin rutas en el periodo.',
         },
@@ -764,12 +762,6 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           filas: topDev.map((x) => [x.id, x.ag, x.seg, n0(x.viajes), n1(x.sal), n1(x.dev), pct(x.dev, x.sal), [...x.motivos.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '-', [...x.pilotos].join(', ')]),
         },
         {
-          titulo: 'Rutas con más de 24 h sin entregar ni liquidar',
-          sub: `Todo el tablero · ${n0(atrasadas.length)} ruta(s)${atrasadas.length > 40 ? ' · se muestran las 40 más antiguas' : ''}`,
-          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Estado' }, { t: 'Camión' }, { t: 'Piloto' }, { t: 'Tiempo', num: true }],
-          filas: atrasadas.slice(0, 40).map(({ r, h }) => [String(r.id), r.agencia || '-', r.estado, r.asignacion?.camionPlaca || '-', r.asignacion?.conductor || '-', diaTxt(h)]),
-        },
-        {
           titulo: 'Camiones de apoyo',
           sub: periodLabel,
           columnas: [{ t: 'Agencia' }, { t: 'Rutas con apoyo', num: true }, { t: 'Camiones de apoyo', num: true }, { t: 'CJ al apoyo', num: true }, { t: '% de rutas despachadas', num: true }],
@@ -777,7 +769,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
         },
       ],
       notas: [
-        'Se analizan las rutas cuya fecha de ruta cae en el periodo (liquidadas y pendientes). Camiones, personal y rutas atrasadas muestran el estado actual del tablero.',
+        'Se analizan las rutas cuya fecha de ruta cae en el periodo (liquidadas y pendientes). Camiones y personal muestran el estado actual del tablero.',
         ...(fueraDeHistorial ? [`Solo están cargados los últimos ${historyLimitedDays} días del historial: el periodo puede estar incompleto.`] : []),
       ],
     };
