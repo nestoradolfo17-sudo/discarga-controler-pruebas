@@ -1108,10 +1108,8 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
       bolson: 'Bolsón',
     };
     const estados: EstadoCierre[] = ['sin_despachar', 'en_ruta', 'abierta', 'piso', 'bolson', 'liquidada'];
-    const atr = filteredMetrics
-      .filter((m) => m.estaAtrasado && !m.isLiquidada)
-      .sort((a, b) => b.totalHorasDesdePlan - a.totalHorasDesdePlan || String(a.id).localeCompare(String(b.id), 'es', { numeric: true }));
-    const d = (m: RouteSummaryMetric) => Math.round(m.totalHorasDesdePlan / 24);
+    // El PDF de Inicio de Día ya no lleva rutas atrasadas (pedido del usuario);
+    // en pantalla se siguen viendo.
     const T = segmentStats.total;
     return {
       titulo: 'Inicio de Día',
@@ -1121,12 +1119,6 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         { label: 'Rutas planificadas', valor: n0(inicioTotalRutas), sub: `${n0(inicioPendientesCount)} por asignar · ${n0(inicioTransitoCount)} en tránsito`, tono: 'info' },
         { label: 'Cajas físicas del día', valor: n1(inicioTotalCajasPlan), sub: `${n0(inicioTotalParadasPlan)} paradas planificadas`, tono: 'info' },
         { label: 'Rutas en tiempo', valor: n0(inicioEnTiempoCount), sub: `${pc(inicioEnTiempoCount, inicioTotalRutas)} de las planificadas`, tono: 'ok' },
-        {
-          label: 'Rutas atrasadas',
-          valor: n0(inicioAtrasadasCount),
-          sub: inicioAtrasadasCount ? `${atr.filter((m) => d(m) <= 1).length} de 1 día · ${atr.filter((m) => d(m) >= 2 && d(m) <= 3).length} de 2-3 días · ${atr.filter((m) => d(m) > 3).length} de +3 días` : 'Ninguna ruta atrasada',
-          tono: inicioAtrasadasCount ? 'crit' : 'ok',
-        },
         { label: 'A piso / recargas', valor: `${n0(inicioPisoCount)} a piso`, sub: `${n0(inicioRecargasCount)} recargas programadas${inicioBolsonCount ? ` · ${n0(inicioBolsonCount)} en bolsón` : ''}`, tono: 'warn' },
       ],
       barra: {
@@ -1138,16 +1130,10 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         tablaPdfPorEstado(c, estados, etiquetaInicio, 'CJ y paradas planificadas de cada ruta, según su estado al inicio · cada ruta cuenta una sola vez'),
         {
           titulo: 'Rutas y cajas por segmento',
-          columnas: [{ t: 'Segmento' }, { t: 'Rutas', num: true }, { t: 'CJ planificadas', num: true }, { t: 'Paradas', num: true }, { t: 'Por asignar', num: true }, { t: 'En tránsito', num: true }, { t: 'A piso', num: true }, { t: 'Atrasadas', num: true }],
-          filas: segmentStats.rows.map((g) => [g.segmento, n0(g.rutas), n1(g.cjPlan), n0(g.paradas), n0(g.pendientes), n0(g.transito), n0(g.piso), n0(g.atrasadas)]),
-          total: segmentStats.rows.length > 1 ? ['Total', n0(T.rutas), n1(T.cjPlan), n0(T.paradas), n0(T.pendientes), n0(T.transito), n0(T.piso), n0(T.atrasadas)] : undefined,
+          columnas: [{ t: 'Segmento' }, { t: 'Rutas', num: true }, { t: 'CJ planificadas', num: true }, { t: 'Paradas', num: true }, { t: 'Por asignar', num: true }, { t: 'En tránsito', num: true }, { t: 'A piso', num: true }],
+          filas: segmentStats.rows.map((g) => [g.segmento, n0(g.rutas), n1(g.cjPlan), n0(g.paradas), n0(g.pendientes), n0(g.transito), n0(g.piso)]),
+          total: segmentStats.rows.length > 1 ? ['Total', n0(T.rutas), n1(T.cjPlan), n0(T.paradas), n0(T.pendientes), n0(T.transito), n0(T.piso)] : undefined,
           vacio: 'Sin rutas planificadas para la fecha.',
-        },
-        {
-          titulo: 'Rutas atrasadas',
-          sub: `${n0(atr.length)} ruta(s) sin liquidar con 1 día o más desde su fecha planificada${atr.length > 60 ? ' · se muestran las 60 más antiguas' : ''}`,
-          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Segmento' }, { t: 'Estado' }, { t: 'Fecha planificada' }, { t: 'Cajas', num: true }, { t: 'Antigüedad', num: true }],
-          filas: atr.slice(0, 60).map((m) => [String(m.id), m.agencia, m.segmento || '-', etiquetaInicio[estadoCierre(m)], m.fechaPlanificadaStr, n1(m.cajasFisicasPlan), textoDias(d(m))]),
         },
         {
           titulo: 'Camiones no asignados',
@@ -1162,7 +1148,7 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
           filas: unassignedStaff.map((x) => [x.codigoCorto || x.codigo || '-', x.nombre, String(x.puesto || '-'), x.agencia || '-', String(x.motivoNoAsignado || '-')]),
         },
       ],
-      notas: ['Atrasadas: rutas sin liquidar con 1 día o más desde su fecha planificada. Recargas programadas: rutas activas asignadas como 2° viaje.'],
+      notas: ['Recargas programadas: rutas activas asignadas como 2° viaje.'],
     };
   };
 
