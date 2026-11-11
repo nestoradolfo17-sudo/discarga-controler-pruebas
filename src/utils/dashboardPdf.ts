@@ -50,6 +50,8 @@ export interface ReportePdf {
   barra?: BarraPdf;
   tablas: TablaPdf[];
   notas?: string[];
+  // Resumen ejecutivo (frases cortas) que va en la primera hoja, bajo los indicadores.
+  resumen?: string[];
 }
 
 const RGB = {
@@ -130,7 +132,7 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
     const porFila = Math.min(rep.kpis.length, rep.kpis.length > 6 ? 4 : rep.kpis.length);
     const gap = 10;
     const ancho = (W - 2 * M - gap * (porFila - 1)) / porFila;
-    const alto = 72;
+    const alto = 64;
     rep.kpis.forEach((k, i) => {
       const col = i % porFila;
       const fila = Math.floor(i / porFila);
@@ -144,10 +146,10 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(...RGB.gris);
-      doc.text(limpio(k.label).toUpperCase(), x + 12, yy + 16, { maxWidth: ancho - 18 });
+      doc.text(limpio(k.label).toUpperCase(), x + 12, yy + 14, { maxWidth: ancho - 18 });
       doc.setFontSize(18);
       doc.setTextColor(...RGB.marino);
-      doc.text(limpio(k.valor), x + 12, yy + 39);
+      doc.text(limpio(k.valor), x + 12, yy + 35);
       if (k.sub) {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.5);
@@ -155,11 +157,40 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
         // Hasta 2 líneas; si no cabe, la segunda termina en "…".
         const s = doc.splitTextToSize(limpio(k.sub), ancho - 18) as string[];
         const l2 = s.length > 2 ? doc.splitTextToSize(s.slice(1).join(' '), ancho - 24)[0] + '…' : s[1];
-        doc.text(s[0], x + 12, yy + 53);
-        if (l2) doc.text(l2, x + 12, yy + 63);
+        doc.text(s[0], x + 12, yy + 47);
+        if (l2) doc.text(l2, x + 12, yy + 56);
       }
     });
     y += Math.ceil(rep.kpis.length / porFila) * (alto + gap) + 6;
+  }
+
+  // ---------- Resumen ejecutivo ----------
+  if (rep.resumen?.length) {
+    const ancho = W - 2 * M;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    const lineas = rep.resumen.map((s) => doc.splitTextToSize(limpio(s), ancho - 34) as string[]);
+    const altoCaja = 24 + lineas.reduce((a, l) => a + l.length * 11 + 2, 0);
+    doc.setFillColor(...RGB.celeste);
+    doc.setDrawColor(...RGB.borde);
+    doc.roundedRect(M, y, ancho, altoCaja, 6, 6, 'FD');
+    doc.setFillColor(...RGB.marino);
+    doc.rect(M, y + 6, 3.5, altoCaja - 12, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...RGB.marino);
+    doc.text('RESUMEN EJECUTIVO', M + 14, y + 16);
+    let yy = y + 28;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...RGB.texto);
+    lineas.forEach((l) => {
+      doc.setFillColor(...RGB.cielo);
+      doc.circle(M + 18, yy - 3, 1.8, 'F');
+      doc.text(l, M + 26, yy);
+      yy += l.length * 11 + 2;
+    });
+    y += altoCaja + 14;
   }
 
   // ---------- Tablas ----------
@@ -230,24 +261,46 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
     y += 34;
   }
 
-  // Reglas de hojas para que las tablas se lean claras:
-  //  - Tabla LARGA (más de FILAS_LARGA filas): empieza en una hoja nueva, lleva
-  //    columna "#" con el número de fila, repite el encabezado en cada hoja y
-  //    en cada hoja siguiente se escribe "(continuación)" con su título.
-  //  - Después de una tabla larga, la siguiente también empieza en hoja nueva
-  //    (una tabla larga por hoja, sin mezclar).
-  //  - Tabla corta: no se parte entre dos hojas; si no cabe completa en lo que
-  //    queda de la hoja, pasa entera a la siguiente.
+  // Reglas de hojas para un reporte limpio (sin hojas medio vacías):
+  //  - Una tabla que cabe completa en lo que queda de la hoja, va ahí.
+  //  - Si no cabe pero sí cabe completa en una hoja nueva, pasa entera a la
+  //    siguiente hoja (no se parte).
+  //  - Si es más larga que una hoja: empieza donde está cuando queda buena parte
+  //    de la hoja libre; si queda poco, empieza en hoja nueva. Repite el
+  //    encabezado en cada hoja y pone "(continuación)" con su título.
+  //  - Las tablas largas (más de FILAS_LARGA filas) llevan columna "#".
   const FILAS_LARGA = 18;
-  const ALTO_FILA = 17;
   const TOPE = 66; // margen superior de las tablas en hojas 2+ (deja lugar al título de continuación)
-  let anteriorLarga = false;
-  rep.tablas.forEach((t) => {
-    if (!t.filas.length && !t.vacio) return;
+  const PIE = 44;
+  const altoDe = (t: TablaPdf) => {
     const larga = t.filas.length > FILAS_LARGA;
-    const altoEstimado = 34 + 24 + t.filas.length * ALTO_FILA + (t.total ? ALTO_FILA + 4 : 0);
-    const cabe = y + altoEstimado <= H - 44;
-    if (!hojaLimpia && (larga || anteriorLarga || !cabe)) nuevaHoja();
+    const fsEst = t.columnas.length + (larga ? 1 : 0) > 8 ? 7.6 : 8.4;
+    const altoFila = fsEst * 1.15 + (fsEst < 8 ? 6.4 : 7) + 1;
+    return (t.sub || t.filas.length > 1 ? 41 : 30) + altoFila + 4 + Math.max(1, t.filas.length) * altoFila + (t.total ? altoFila + 2 : 0);
+  };
+  const pendientes = rep.tablas.filter((t) => t.filas.length || t.vacio);
+  const altoHoja = H - PIE - 48;
+  while (pendientes.length) {
+    let t = pendientes[0];
+    const restante = H - PIE - y;
+    if (!hojaLimpia && altoDe(t) > restante) {
+      // Antes de pasar de hoja, se aprovecha el espacio con una tabla corta
+      // que venga después y quepa completa (así no quedan hojas medio vacías).
+      // Se elige la más grande que quepa, para llenar mejor la hoja.
+      let i = -1;
+      pendientes.forEach((x, k) => {
+        if (k > 0 && altoDe(x) <= restante && (i < 0 || altoDe(x) > altoDe(pendientes[i]))) i = k;
+      });
+      if (i > 0 && restante > 90) {
+        t = pendientes.splice(i, 1)[0];
+      } else {
+        pendientes.shift();
+        if (altoDe(t) <= altoHoja || restante < altoHoja * 0.45) nuevaHoja();
+      }
+    } else {
+      pendientes.shift();
+    }
+    const larga = t.filas.length > FILAS_LARGA;
     const sub = [t.sub, t.filas.length > 1 ? `${t.filas.length} registros` : ''].filter(Boolean).join('  ·  ');
     tituloSeccion(t.titulo, sub);
     if (!t.filas.length) {
@@ -256,8 +309,7 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
       doc.setTextColor(...RGB.gris);
       doc.text(limpio(t.vacio), M + 9, y + 8);
       y += 26;
-      anteriorLarga = false;
-      return;
+      continue;
     }
     // Tablas anchas: letra un poco menor para que no se amontonen las columnas.
     const anchas = t.columnas.length + (larga ? 1 : 0) > 8;
@@ -280,7 +332,7 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
       showFoot: 'lastPage',
       rowPageBreak: 'avoid',
       theme: 'grid',
-      styles: { font: 'helvetica', fontSize: fs, cellPadding: anchas ? 3.4 : 4, textColor: RGB.texto, lineColor: RGB.borde, lineWidth: 0.5, overflow: 'linebreak', valign: 'middle' },
+      styles: { font: 'helvetica', fontSize: fs, cellPadding: anchas ? 3.2 : 3.5, textColor: RGB.texto, lineColor: RGB.borde, lineWidth: 0.5, overflow: 'linebreak', valign: 'middle' },
       headStyles: { fillColor: RGB.marino, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: fs, halign: 'center', valign: 'middle' },
       footStyles: { fillColor: RGB.totalFondo, textColor: RGB.marino, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: RGB.celeste },
@@ -306,8 +358,7 @@ export async function descargarReportePdf(rep: ReportePdf, opciones: { archivo: 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     y = ((doc as any).lastAutoTable?.finalY || y) + 26;
     hojaLimpia = false;
-    anteriorLarga = larga;
-  });
+  }
 
   if (rep.notas?.length) {
     if (y > H - 70) {
