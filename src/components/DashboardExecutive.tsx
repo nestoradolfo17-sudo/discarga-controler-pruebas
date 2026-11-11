@@ -835,9 +835,9 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           ...(salidasPorHora.length
             ? [
                 {
-                  titulo: 'Salidas por hora',
-                  sub: `${periodLabel} · rutas despachadas según su hora de salida`,
-                  columnas: [{ t: 'Hora' }, { t: 'Rutas', num: true }, { t: '% de las despachadas', num: true }],
+                  titulo: 'Hora de asignación',
+                  sub: `${periodLabel} · rutas según la hora en que se les asignó camión y tripulación`,
+                  columnas: [{ t: 'Hora' }, { t: 'Rutas asignadas', num: true }, { t: '% de las asignadas', num: true }],
                   filas: salidasPorHora.filter((h) => h.value > 0).map((h) => [h.label, n0(h.value), pct(h.value, salidasPorHora.reduce((a, x) => a + x.value, 0))]),
                 },
               ]
@@ -971,13 +971,14 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
     });
     return [...m.entries()].map(([seg, v]) => ({ seg, ...v })).sort((a, b) => b.cj - a.cj);
   }, [dayRoutes]);
-  // Hora de salida de las rutas despachadas (camión + tripulación).
+  // Hora de asignación: cuándo se le asignó camión y tripulación a cada ruta
+  // (fecha y hora que registra el sistema al asignar, "dd/mm/aaaa hh:mm").
   const salidasPorHora = useMemo(() => {
     const cuenta = new Map<number, { n: number; cj: number }>();
     dayRoutes.forEach((r) => {
       if (!(r.estado !== 'Pendiente' || !!r.liquidacion)) return;
-      const h = String(r.asignacion?.horaSalida || r.ultimoDespacho?.horaSalida || '');
-      const m = /^(\d{1,2}):/.exec(h);
+      const f = String(r.fechaAsignacion || r.asignacion?.fechaAsignacion || r.ultimoDespacho?.fechaAsignacion || '');
+      const m = /(?:^|\s|T)(\d{1,2}):\d{2}/.exec(f);
       if (!m) return;
       const hr = Number(m[1]);
       const x = cuenta.get(hr) || { n: 0, cj: 0 };
@@ -992,7 +993,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
     const out: { key: string; label: string; value: number; tip: string }[] = [];
     for (let h = desde; h <= hasta; h++) {
       const x = cuenta.get(h) || { n: 0, cj: 0 };
-      out.push({ key: String(h), label: `${String(h).padStart(2, '0')}:00`, value: x.n, tip: `${String(h).padStart(2, '0')}:00 - ${String(h).padStart(2, '0')}:59 · ${n0(x.n)} ruta(s) · ${n0(x.cj)} CJ` });
+      out.push({ key: String(h), label: `${String(h).padStart(2, '0')}:00`, value: x.n, tip: `${String(h).padStart(2, '0')}:00 - ${String(h).padStart(2, '0')}:59 · ${n0(x.n)} ruta(s) asignada(s) · ${n0(x.cj)} CJ` });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1156,14 +1157,14 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           </Card>
         </div>
 
-        {/* Salidas por hora + planificación por día */}
+        {/* Hora de asignación + planificación por día */}
         <div className={`grid grid-cols-1 gap-4 ${!unDia ? 'lg:grid-cols-2' : ''}`}>
           <Card
-            title="Salidas por hora"
-            sub={salidasPorHora.length ? `Rutas despachadas según su hora de salida${horaPico ? ` · pico ${horaPico.label} (${n0(horaPico.value)} rutas)` : ''}` : 'Aún no hay rutas despachadas con hora de salida'}
+            title="Hora de asignación"
+            sub={salidasPorHora.length ? `Rutas según la hora en que se les asignó camión y tripulación${horaPico ? ` · pico ${horaPico.label} (${n0(horaPico.value)} rutas)` : ''}` : 'Aún no hay rutas asignadas en el periodo'}
             icon={<Clock className="w-4 h-4 text-slate-500" />}
           >
-            {salidasPorHora.length ? <Columns data={salidasPorHora} color={C_INFO} /> : <p className="py-6 text-center text-xs text-slate-400">Sin salidas registradas en el periodo.</p>}
+            {salidasPorHora.length ? <Columns data={salidasPorHora} color={C_INFO} /> : <p className="py-6 text-center text-xs text-slate-400">Sin asignaciones registradas en el periodo.</p>}
           </Card>
           {!unDia && (
             <Card title={`CJ planificadas ${porSemana ? 'por semana' : 'por día'}`} sub={`${n0(stats.cajasFisicasHoy)} CJ en ${n0(totalPlan)} rutas · por fecha de ruta`} icon={<Layers className="w-4 h-4 text-slate-500" />}>
