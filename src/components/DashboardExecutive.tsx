@@ -220,39 +220,66 @@ interface DetalleMotivo {
 }
 
 // ---------- Piezas del tablero de Despacho ----------
-// Barra apilada (partes de un todo) con 2 px de separación entre tramos y
-// leyenda con valor y %. El detalle de cada tramo aparece al pasar el cursor.
-const StackBar: React.FC<{ segs: { label: string; value: number; color: string }[]; unidad?: string }> = ({ segs, unidad = '' }) => {
+// Paleta del tablero de Despacho: tonos sobrios alineados al azul DISCARGA.
+// Validada para daltonismo (ΔE ≥ 8 entre colores vecinos del anillo); como
+// amarillo y naranja tienen poco contraste, siempre van con su leyenda y número.
+export const PD = {
+  azul: '#2f5fb8',
+  marino: '#2C3790',
+  cielo: '#5AACE4',
+  cieloSuave: '#c9dcf2',
+  verde: '#1a9e76',
+  naranja: '#e5793b',
+  violeta: '#8a63cf',
+  oro: '#d9a521',
+  oroTexto: '#9a6f00',
+  rojo: '#c84448',
+  pista: '#eef2f7',
+};
+
+// Anillo (dona) con 2 px de separación entre tramos y el total al centro.
+const Dona: React.FC<{ segs: { label: string; value: number; color: string }[]; size?: number; grosor?: number; centro: React.ReactNode; unidad?: string }> = ({ segs, size = 168, grosor = 22, centro, unidad = '' }) => {
   const total = segs.reduce((a, s) => a + s.value, 0);
+  const r = (size - grosor) / 2;
+  const circ = 2 * Math.PI * r;
   const vis = segs.filter((s) => s.value > 0);
+  const gap = vis.length > 1 ? 2 : 0;
+  let acum = 0;
   return (
-    <div>
-      <div className="flex h-4 w-full gap-[2px] rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }} role="img" aria-label={segs.map((s) => `${s.label} ${n0(s.value)}`).join(', ')}>
-        {vis.map((s) => (
-          <div
-            key={s.label}
-            className="h-full first:rounded-l-full last:rounded-r-full hover:opacity-80 transition-opacity"
-            style={{ width: `${total > 0 ? (s.value / total) * 100 : 0}%`, minWidth: 4, backgroundColor: s.color }}
-            title={`${s.label}: ${n0(s.value)}${unidad} (${pctTxt(s.value, total)})`}
-          />
-        ))}
-      </div>
-      <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
-        {segs.map((s) => (
-          <div key={s.label} className="flex items-center gap-2 min-w-0 text-xs">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-            <span className="text-slate-500 truncate">{s.label}</span>
-            <span className="ml-auto font-bold text-slate-900 tabular-nums">{n0(s.value)}</span>
-            <span className="w-11 text-right text-[11px] text-slate-400 tabular-nums">{pctTxt(s.value, total)}</span>
-          </div>
-        ))}
-      </div>
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={segs.map((s) => `${s.label} ${n0(s.value)}`).join(', ')}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={PD.pista} strokeWidth={grosor} />
+        {total > 0 &&
+          vis.map((s) => {
+            const largo = (s.value / total) * circ;
+            const dash = Math.max(0.5, largo - gap);
+            const offset = -acum;
+            acum += largo;
+            return (
+              <circle
+                key={s.label}
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                fill="none"
+                stroke={s.color}
+                strokeWidth={grosor}
+                strokeDasharray={`${dash} ${circ - dash}`}
+                strokeDashoffset={offset}
+                transform={`rotate(-90 ${size / 2} ${size / 2})`}
+                className="hover:opacity-80 transition-opacity"
+              >
+                <title>{`${s.label}: ${n0(s.value)}${unidad} (${pctTxt(s.value, total)})`}</title>
+              </circle>
+            );
+          })}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">{centro}</div>
     </div>
   );
 };
-
 // Fila de avance: la pista es lo planificado y el relleno lo despachado.
-const AvanceFila: React.FC<{ label: string; sub?: string; plan: number; hecho: number; maxPlan: number; color?: string }> = ({ label, sub, plan, hecho, maxPlan, color = C_INFO }) => {
+const AvanceFila: React.FC<{ label: string; sub?: string; plan: number; hecho: number; maxPlan: number; color?: string }> = ({ label, sub, plan, hecho, maxPlan, color = PD.azul }) => {
   const anchoPista = maxPlan > 0 ? Math.max(6, (plan / maxPlan) * 100) : 0;
   const p = plan > 0 ? hecho / plan : 0;
   return (
@@ -262,13 +289,13 @@ const AvanceFila: React.FC<{ label: string; sub?: string; plan: number; hecho: n
         {sub && <div className="text-[10.5px] text-slate-400 truncate">{sub}</div>}
       </div>
       <div className="h-3" style={{ width: `${anchoPista}%` }}>
-        <div className="h-full w-full rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
+        <div className="h-full w-full rounded-full overflow-hidden" style={{ backgroundColor: PD.pista }}>
           <div className="h-full rounded-full" style={{ width: `${Math.min(100, p * 100)}%`, backgroundColor: color }} />
         </div>
       </div>
       <div className="text-right tabular-nums whitespace-nowrap">
         <span className="text-xs font-bold text-slate-900">{n0(plan)}</span>
-        <span className="ml-1.5 text-[11px] font-semibold" style={{ color: p >= 0.9 ? C_GOOD : p >= 0.6 ? C_INFO : '#b7791f' }}>{Math.round(p * 100)}%</span>
+        <span className="ml-1.5 text-[11px] font-semibold" style={{ color: p >= 0.9 ? PD.verde : p >= 0.6 ? PD.azul : PD.oroTexto }}>{Math.round(p * 100)}%</span>
       </div>
     </div>
   );
@@ -286,7 +313,7 @@ const Anillo: React.FC<{ p: number; size?: number }> = ({ p, size = 84 }) => {
         cy={size / 2}
         r={r}
         fill="none"
-        stroke="#5AACE4"
+        stroke={PD.cielo}
         strokeWidth="8"
         strokeLinecap="round"
         strokeDasharray={`${c * Math.min(1, Math.max(0, p))} ${c}`}
@@ -949,10 +976,10 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
     { l: 'Liquidadas', v: stats.liquidadas, c: C_GOOD },
   ];
   const alertas: { k: string; n: number; t: string; d: string; c: string }[] = [
-    { k: 'atr', n: atrasadas.length, t: 'Rutas con más de 24 h', d: atrasadas.length ? `${crit72} con más de 72 h · todo el tablero` : 'Todo el tablero al día', c: atrasadas.length ? C_CRIT : C_GOOD },
-    { k: 'parc', n: parciales.length, t: 'Rutas parciales', d: parciales.length ? `${n0(pendParc)} CJ pendientes de entregar` : 'Sin entregas parciales pendientes', c: parciales.length ? C_WARN : C_GOOD },
-    { k: 'asig', n: stats.pendientes, t: 'Rutas por asignar', d: `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, c: stats.pendientes ? C_WARN : C_GOOD },
-    { k: 'flota', n: truckSinMotivo, t: 'Camiones disponibles sin motivo', d: `${n0(truckConMotivo)} sin salir con motivo registrado`, c: truckSinMotivo ? C_SERIOUS : C_GOOD },
+    { k: 'atr', n: atrasadas.length, t: 'Rutas con más de 24 h', d: atrasadas.length ? `${crit72} con más de 72 h · todo el tablero` : 'Todo el tablero al día', c: atrasadas.length ? PD.rojo : PD.verde },
+    { k: 'parc', n: parciales.length, t: 'Rutas parciales', d: parciales.length ? `${n0(pendParc)} CJ pendientes de entregar` : 'Sin entregas parciales pendientes', c: parciales.length ? PD.oroTexto : PD.verde },
+    { k: 'asig', n: stats.pendientes, t: 'Rutas por asignar', d: `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, c: stats.pendientes ? PD.oroTexto : PD.verde },
+    { k: 'flota', n: truckSinMotivo, t: 'Camiones disponibles sin motivo', d: `${n0(truckConMotivo)} sin salir con motivo registrado`, c: truckSinMotivo ? PD.naranja : PD.verde },
   ];
 
   // ---------- Datos propios del tablero de Despacho ----------
@@ -1000,6 +1027,39 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   }, [dayRoutes]);
   const horaPico = salidasPorHora.reduce<{ label: string; value: number } | null>((a, x) => (!a || x.value > a.value ? x : a), null);
   const cjPorDespachar = Math.max(0, stats.cajasFisicasHoy - cjDesp);
+  // Rutas y CJ por estado (las mismas rutas del periodo que los indicadores).
+  const porEstado = useMemo(() => {
+    const base = { liq: { n: 0, cj: 0 }, tran: { n: 0, cj: 0 }, abierta: { n: 0, cj: 0 }, piso: { n: 0, cj: 0 }, asig: { n: 0, cj: 0 }, bolson: { n: 0, cj: 0 } };
+    dayRoutes.forEach((r) => {
+      const k: keyof typeof base = esLiquidada(r)
+        ? 'liq'
+        : isBolson(r)
+        ? 'bolson'
+        : r.estado === 'Pendiente'
+        ? isPiso(r)
+          ? 'piso'
+          : 'asig'
+        : r.estado === 'Abierta'
+        ? 'abierta'
+        : 'tran';
+      base[k].n += 1;
+      base[k].cj += cajasPlan(r);
+    });
+    return base;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayRoutes]);
+  const estadosDona = [
+    { k: 'liq', label: 'Liquidadas', color: PD.verde },
+    { k: 'tran', label: 'En tránsito', color: PD.azul },
+    { k: 'abierta', label: 'Abiertas', color: PD.naranja },
+    { k: 'piso', label: 'A piso', color: PD.violeta },
+    { k: 'asig', label: 'Por asignar', color: PD.oro },
+    { k: 'bolson', label: 'Bolsón', color: PD.rojo },
+  ]
+    .filter((e) => e.k !== 'bolson' || porEstado.bolson.n > 0)
+    .map((e) => ({ ...e, value: porEstado[e.k as keyof typeof porEstado].n, cj: porEstado[e.k as keyof typeof porEstado].cj }));
+  const totalEstados = estadosDona.reduce((a, e) => a + e.value, 0);
+  const totalCjEstados = estadosDona.reduce((a, e) => a + e.cj, 0);
   const pDesp = totalPlan > 0 ? despachadas / totalPlan : 0;
   const maxCjAg = Math.max(1, ...resumenAg.map((a) => a.cj));
   const maxCjSeg = Math.max(1, ...segDespacho.map((s) => s.cj));
@@ -1110,34 +1170,96 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
 
         {/* Indicadores de operación */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {tile('Despachadas', n0(despachadas), `${pctTxt(despachadas, totalPlan)} de las rutas planificadas`, C_GOOD, <CheckCircle2 className="w-4 h-4" />)}
-          {tile('Por asignar', n0(stats.pendientes), `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, C_WARN, <Clock className="w-4 h-4" />)}
-          {tile('En ruta', n0(enOperacion), `${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`, C_INFO, <TruckIcon className="w-4 h-4" />)}
-          {tile('Flota en ruta', `${Math.round(utilFlota * 100)}%`, `${n0(truckEnRuta)}/${n0(truckActivos.length)} camiones · ${n0(staffEnRuta)} personas`, C_INFO, <Users className="w-4 h-4" />)}
+          {tile('Despachadas', n0(despachadas), `${pctTxt(despachadas, totalPlan)} de las rutas planificadas`, PD.verde, <CheckCircle2 className="w-4 h-4" />)}
+          {tile('Por asignar', n0(stats.pendientes), `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, PD.oro, <Clock className="w-4 h-4" />)}
+          {tile('En ruta', n0(enOperacion), `${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`, PD.azul, <TruckIcon className="w-4 h-4" />)}
+          {tile('Flota en ruta', `${Math.round(utilFlota * 100)}%`, `${n0(truckEnRuta)}/${n0(truckActivos.length)} camiones · ${n0(staffEnRuta)} personas`, PD.violeta, <Users className="w-4 h-4" />)}
         </div>
 
         {/* Estado de las rutas + atención */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Card title="Estado de las rutas" sub={`Las ${n0(totalPlan)} rutas planificadas, cada una en su estado actual`} icon={<Layers className="w-4 h-4 text-slate-500" />} className="lg:col-span-2">
-            <StackBar
-              segs={[
-                { label: 'Liquidadas', value: stats.liquidadas, color: C_GOOD },
-                { label: 'En tránsito', value: stats.transito, color: C_INFO },
-                { label: 'Abiertas', value: stats.abiertas, color: C_SERIOUS },
-                { label: 'Por asignar', value: stats.pendientes, color: C_WARN },
-                { label: 'A piso', value: stats.pisoHoy, color: '#8B5CF6' },
-                ...(stats.bolson ? [{ label: 'Bolsón', value: stats.bolson, color: C_CRIT }] : []),
-              ]}
-            />
-            <div className="mt-5 pt-4 border-t border-slate-100">
-              <div className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500 mb-2">Cajas (CJ)</div>
-              <StackBar
-                unidad=" CJ"
-                segs={[
-                  { label: 'Despachadas', value: cjDesp, color: C_INFO },
-                  { label: 'Por despachar', value: cjPorDespachar, color: C_WARN },
-                ]}
-              />
+          <Card title="Estado de las rutas" sub={`Rutas planificadas del periodo, cada una en su estado actual`} icon={<Layers className="w-4 h-4 text-slate-500" />} className="lg:col-span-2">
+            <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-5 md:gap-7 items-center">
+              <div className="flex justify-center">
+                <Dona
+                  segs={estadosDona}
+                  centro={
+                    <>
+                      <div className="text-3xl font-black text-slate-900 leading-none tabular-nums">{n0(totalEstados)}</div>
+                      <div className="text-[11px] text-slate-500 mt-1">rutas</div>
+                    </>
+                  }
+                />
+              </div>
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                      <th className="text-left py-2 px-1.5">Estado</th>
+                      <th className="text-right py-2 px-1.5">Rutas</th>
+                      <th className="text-right py-2 px-1.5">%</th>
+                      <th className="text-right py-2 px-1.5">CJ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {estadosDona.map((e) => (
+                      <tr key={e.k} className={e.value ? '' : 'text-slate-400'}>
+                        <td className="py-2 px-1.5">
+                          <span className="inline-flex items-center gap-2 font-semibold" style={{ color: e.value ? '#1f2937' : undefined }}>
+                            <span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ backgroundColor: e.color, opacity: e.value ? 1 : 0.35 }} />
+                            {e.label}
+                          </span>
+                        </td>
+                        <td className="py-2 px-1.5 text-right tabular-nums font-bold">{n0(e.value)}</td>
+                        <td className="py-2 px-1.5 text-right tabular-nums">{pctTxt(e.value, totalEstados)}</td>
+                        <td className="py-2 px-1.5 text-right tabular-nums">{n0(e.cj)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-300 font-black text-slate-900">
+                      <td className="py-2 px-1.5">Total</td>
+                      <td className="py-2 px-1.5 text-right tabular-nums">{n0(totalEstados)}</td>
+                      <td className="py-2 px-1.5 text-right tabular-nums">100%</td>
+                      <td className="py-2 px-1.5 text-right tabular-nums">{n0(totalCjEstados)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+            <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-4 sm:gap-6 items-center">
+              <div className="flex justify-center">
+                <Dona
+                  size={112}
+                  grosor={14}
+                  unidad=" CJ"
+                  segs={[
+                    { label: 'Despachadas', value: cjDesp, color: PD.marino },
+                    { label: 'Por despachar', value: cjPorDespachar, color: PD.cieloSuave },
+                  ]}
+                  centro={
+                    <>
+                      <div className="text-xl font-black text-slate-900 leading-none tabular-nums">{pctTxt(cjDesp, stats.cajasFisicasHoy)}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">despachado</div>
+                    </>
+                  }
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { l: 'CJ planificadas', v: stats.cajasFisicasHoy, c: '#94a3b8' },
+                  { l: 'Despachadas', v: cjDesp, c: PD.marino },
+                  { l: 'Por despachar', v: cjPorDespachar, c: PD.cieloSuave },
+                ].map((x) => (
+                  <div key={x.l} className="rounded-xl border border-slate-200 p-2.5 min-w-0">
+                    <div className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide text-slate-500 truncate">
+                      <span className="w-2 h-2 rounded-[2px] shrink-0" style={{ backgroundColor: x.c }} />
+                      {x.l}
+                    </div>
+                    <div className="text-lg sm:text-xl font-black text-slate-900 tabular-nums mt-1">{n0(x.v)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </Card>
           <Card title="Requiere atención" sub="Lo que hay que resolver ahora" icon={<AlertTriangle className="w-4 h-4 text-slate-500" />}>
@@ -1164,11 +1286,11 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
             sub={salidasPorHora.length ? `Rutas según la hora en que se les asignó camión y tripulación${horaPico ? ` · pico ${horaPico.label} (${n0(horaPico.value)} rutas)` : ''}` : 'Aún no hay rutas asignadas en el periodo'}
             icon={<Clock className="w-4 h-4 text-slate-500" />}
           >
-            {salidasPorHora.length ? <Columns data={salidasPorHora} color={C_INFO} /> : <p className="py-6 text-center text-xs text-slate-400">Sin asignaciones registradas en el periodo.</p>}
+            {salidasPorHora.length ? <Columns data={salidasPorHora} color={PD.azul} /> : <p className="py-6 text-center text-xs text-slate-400">Sin asignaciones registradas en el periodo.</p>}
           </Card>
           {!unDia && (
             <Card title={`CJ planificadas ${porSemana ? 'por semana' : 'por día'}`} sub={`${n0(stats.cajasFisicasHoy)} CJ en ${n0(totalPlan)} rutas · por fecha de ruta`} icon={<Layers className="w-4 h-4 text-slate-500" />}>
-              <Columns data={trendPlan} color={C_INFO} fmt={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : n0(v))} />
+              <Columns data={trendPlan} color={PD.azul} fmt={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : n0(v))} />
             </Card>
           )}
         </div>
@@ -1227,7 +1349,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
                         <td className="py-2 px-2 text-right tabular-nums">{n0(a.cjDesp)}</td>
                         <td className="py-2 px-2 text-right tabular-nums">{a.porAsig || '—'}</td>
                         <td className="py-2 px-2 text-right tabular-nums">{a.piso || '—'}</td>
-                        <td className="py-2 px-2 text-right tabular-nums font-bold" style={{ color: a.atras ? C_CRIT : undefined }}>{a.atras || '—'}</td>
+                        <td className="py-2 px-2 text-right tabular-nums font-bold" style={{ color: a.atras ? PD.rojo : undefined }}>{a.atras || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1272,8 +1394,8 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
             right={
               <div className="flex items-center gap-4 text-right shrink-0">
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: C_GOOD }}>Entregadas</div>
-                  <div className="text-lg font-black tabular-nums" style={{ color: C_GOOD }}>{n0(parcEnt)}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: PD.verde }}>Entregadas</div>
+                  <div className="text-lg font-black tabular-nums" style={{ color: PD.verde }}>{n0(parcEnt)}</div>
                 </div>
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Pendientes</div>
@@ -1294,7 +1416,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
                     plan={x.ent + x.pend}
                     hecho={x.ent}
                     maxPlan={Math.max(1, ...parciales.map((y) => y.ent + y.pend))}
-                    color={C_GOOD}
+                    color={PD.verde}
                   />
                 ))}
                 {parciales.length > 12 && <p className="pt-2 text-[11px] text-slate-400">y {parciales.length - 12} más (todas salen en el PDF).</p>}
