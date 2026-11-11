@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Route, Truck, Staff } from '../types';
 import { DashboardExecutive } from './DashboardExecutive';
 import { DashboardSeguimiento } from './DashboardSeguimiento';
@@ -46,7 +46,8 @@ interface DashboardViewProps {
   usuario?: string;
 }
 
-// Vistas del Dashboard: Despacho · Cajas y Rutas Abiertas · Recargas.
+// Vistas del Dashboard: Despacho (inicio del día) · Cajas y Rutas Abiertas
+// (pendientes de cerrar + liquidación: cumplimiento, entregas, devoluciones) · Recargas.
 // La preferencia se recuerda en este navegador.
 type DashView = 'despacho' | 'seguimiento' | 'recargas';
 const VISTAS: [DashView, string][] = [
@@ -141,7 +142,8 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   const [view, setView] = useState<DashView>(() => {
     try {
       const v = localStorage.getItem('dc_dashboard_view');
-      return v === 'seguimiento' || v === 'recargas' ? v : 'despacho';
+      // 'liquidacion' fue una pestaña aparte por poco tiempo: ahora vive en Cajas y Rutas Abiertas.
+      return v === 'seguimiento' || v === 'liquidacion' ? 'seguimiento' : v === 'recargas' ? 'recargas' : 'despacho';
     } catch {
       return 'despacho';
     }
@@ -160,6 +162,32 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   const registrarReporte = useCallback((armar: () => ReportePdf) => {
     armarRef.current = armar;
   }, []);
+  // Cajas y Rutas Abiertas junta dos reportes (seguimiento + liquidación) en un PDF.
+  const armarSegRef = useRef<(() => ReportePdf) | null>(null);
+  const armarLiqRef = useRef<(() => ReportePdf) | null>(null);
+  const registrarSeg = useCallback((armar: () => ReportePdf) => {
+    armarSegRef.current = armar;
+  }, []);
+  const registrarLiq = useCallback((armar: () => ReportePdf) => {
+    armarLiqRef.current = armar;
+  }, []);
+  useEffect(() => {
+    if (view !== 'seguimiento') return;
+    armarRef.current = () => {
+      const a = armarSegRef.current?.();
+      const b = armarLiqRef.current?.();
+      if (!a || !b) return (a || b)!;
+      return {
+        titulo: 'Cajas y Rutas Abiertas · Liquidación',
+        periodo: b.periodo,
+        agencia: b.agencia || a.agencia,
+        kpis: [...a.kpis, ...b.kpis],
+        barra: a.barra || b.barra,
+        tablas: [...a.tablas, ...b.tablas],
+        notas: [...(a.notas || []), ...(b.notas || [])],
+      };
+    };
+  });
   const [generando, setGenerando] = useState(false);
   const nombreVista = VISTAS.find(([k]) => k === view)?.[1] || 'Dashboard';
   const etiquetaTodas = props.etiquetaTodas && props.etiquetaTodas !== 'Todas' ? props.etiquetaTodas : '';
@@ -213,16 +241,33 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
       </div>
       <div ref={contenidoRef}>
         {view === 'seguimiento' ? (
-          <DashboardSeguimiento
-            routes={props.routes}
-            liquidatedRoutes={props.liquidatedRoutes}
-            selectedAgency={props.selectedAgency}
-            etiquetaTodas={props.etiquetaTodas}
-            historyLimitedDays={props.historyLimitedDays}
-            onLoadFullHistory={props.onLoadFullHistory}
-            isLoadingFullHistory={props.isLoadingFullHistory}
-            registrarReporte={registrarReporte}
-          />
+          <div className="space-y-6">
+            <DashboardSeguimiento
+              routes={props.routes}
+              liquidatedRoutes={props.liquidatedRoutes}
+              selectedAgency={props.selectedAgency}
+              etiquetaTodas={props.etiquetaTodas}
+              historyLimitedDays={props.historyLimitedDays}
+              onLoadFullHistory={props.onLoadFullHistory}
+              isLoadingFullHistory={props.isLoadingFullHistory}
+              registrarReporte={registrarSeg}
+            />
+            {/* Liquidación: cómo se cerraron las rutas del periodo. */}
+            <DashboardExecutive
+              modo="liquidacion"
+              routes={props.routes}
+              liquidatedRoutes={props.liquidatedRoutes}
+              trucks={props.trucks}
+              staff={props.staff}
+              stats={props.stats}
+              selectedAgency={props.selectedAgency}
+              etiquetaTodas={props.etiquetaTodas}
+              historyLimitedDays={props.historyLimitedDays}
+              onLoadFullHistory={props.onLoadFullHistory}
+              isLoadingFullHistory={props.isLoadingFullHistory}
+              registrarReporte={registrarLiq}
+            />
+          </div>
         ) : view === 'recargas' ? (
           <DashboardRecargas
             staff={props.staff}
@@ -234,6 +279,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
           />
         ) : (
           <DashboardExecutive
+            modo="despacho"
             routes={props.routes}
             liquidatedRoutes={props.liquidatedRoutes}
             trucks={props.trucks}
