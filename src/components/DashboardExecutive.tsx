@@ -59,6 +59,9 @@ interface Props {
   isLoadingFullHistory?: boolean;
   // PDF del dashboard: entrega cómo armar el reporte con los datos que se ven.
   registrarReporte?: (armar: () => ReportePdf) => void;
+  // 'despacho' = cómo arranca y sale el día (planificado, asignado, por asignar).
+  // 'liquidacion' = cómo se cerraron las rutas (cumplimiento, entregas, devoluciones).
+  modo?: 'despacho' | 'liquidacion';
 }
 
 type PeriodKind = 'hoy' | 'ayer' | '7d' | 'rango' | 'mes';
@@ -216,6 +219,86 @@ interface DetalleMotivo {
   clientes: { codigo: string; nombre: string; motivo: string; cajas?: number }[];
 }
 
+// ---------- Piezas del tablero de Despacho ----------
+// Barra apilada (partes de un todo) con 2 px de separación entre tramos y
+// leyenda con valor y %. El detalle de cada tramo aparece al pasar el cursor.
+const StackBar: React.FC<{ segs: { label: string; value: number; color: string }[]; unidad?: string }> = ({ segs, unidad = '' }) => {
+  const total = segs.reduce((a, s) => a + s.value, 0);
+  const vis = segs.filter((s) => s.value > 0);
+  return (
+    <div>
+      <div className="flex h-4 w-full gap-[2px] rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }} role="img" aria-label={segs.map((s) => `${s.label} ${n0(s.value)}`).join(', ')}>
+        {vis.map((s) => (
+          <div
+            key={s.label}
+            className="h-full first:rounded-l-full last:rounded-r-full hover:opacity-80 transition-opacity"
+            style={{ width: `${total > 0 ? (s.value / total) * 100 : 0}%`, minWidth: 4, backgroundColor: s.color }}
+            title={`${s.label}: ${n0(s.value)}${unidad} (${pctTxt(s.value, total)})`}
+          />
+        ))}
+      </div>
+      <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
+        {segs.map((s) => (
+          <div key={s.label} className="flex items-center gap-2 min-w-0 text-xs">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+            <span className="text-slate-500 truncate">{s.label}</span>
+            <span className="ml-auto font-bold text-slate-900 tabular-nums">{n0(s.value)}</span>
+            <span className="w-11 text-right text-[11px] text-slate-400 tabular-nums">{pctTxt(s.value, total)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Fila de avance: la pista es lo planificado y el relleno lo despachado.
+const AvanceFila: React.FC<{ label: string; sub?: string; plan: number; hecho: number; maxPlan: number; color?: string }> = ({ label, sub, plan, hecho, maxPlan, color = C_INFO }) => {
+  const anchoPista = maxPlan > 0 ? Math.max(6, (plan / maxPlan) * 100) : 0;
+  const p = plan > 0 ? hecho / plan : 0;
+  return (
+    <div className="grid items-center gap-3 py-1.5" style={{ gridTemplateColumns: 'minmax(0, 11rem) 1fr auto' }} title={`${label}: ${n0(hecho)} de ${n0(plan)} CJ despachadas (${pctTxt(hecho, plan)})`}>
+      <div className="min-w-0">
+        <div className="text-xs font-semibold text-slate-800 truncate">{label}</div>
+        {sub && <div className="text-[10.5px] text-slate-400 truncate">{sub}</div>}
+      </div>
+      <div className="h-3" style={{ width: `${anchoPista}%` }}>
+        <div className="h-full w-full rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
+          <div className="h-full rounded-full" style={{ width: `${Math.min(100, p * 100)}%`, backgroundColor: color }} />
+        </div>
+      </div>
+      <div className="text-right tabular-nums whitespace-nowrap">
+        <span className="text-xs font-bold text-slate-900">{n0(plan)}</span>
+        <span className="ml-1.5 text-[11px] font-semibold" style={{ color: p >= 0.9 ? C_GOOD : p >= 0.6 ? C_INFO : '#b7791f' }}>{Math.round(p * 100)}%</span>
+      </div>
+    </div>
+  );
+};
+
+// Anillo de avance para el encabezado.
+const Anillo: React.FC<{ p: number; size?: number }> = ({ p, size = 84 }) => {
+  const r = (size - 10) / 2;
+  const c = 2 * Math.PI * r;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${Math.round(p * 100)}% despachado`}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="8" />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="#5AACE4"
+        strokeWidth="8"
+        strokeLinecap="round"
+        strokeDasharray={`${c * Math.min(1, Math.max(0, p))} ${c}`}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      <text x="50%" y="50%" dominantBaseline="central" textAnchor="middle" fill="#fff" fontSize="18" fontWeight="800">
+        {Math.round(p * 100)}%
+      </text>
+    </svg>
+  );
+};
+
 const top3 = (pares: Map<string, number>) =>
   Array.from(pares.entries())
     .sort((a, b) => b[1] - a[1])
@@ -328,7 +411,8 @@ const DetalleMotivoPanel: React.FC<{ motivo: string; cajas: number; detalle: Det
   );
 };
 
-export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, trucks, staff, stats: statsHoy, selectedAgency, etiquetaTodas = 'Todas', historyLimitedDays, onLoadFullHistory, isLoadingFullHistory, registrarReporte }) => {
+export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, trucks, staff, stats: statsHoy, selectedAgency, etiquetaTodas = 'Todas', historyLimitedDays, onLoadFullHistory, isLoadingFullHistory, registrarReporte, modo = 'despacho' }) => {
+  const esLiq = modo === 'liquidacion';
   const now = Date.now();
 
   // ---------- Filtro de fechas: Hoy · Ayer · Últimos 7 días · Rango (varios días) · Mes ----------
@@ -429,7 +513,9 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   const utilFlota = truckActivos.length ? truckEnRuta / truckActivos.length : 0;
 
   // ---------- Embudo del día ----------
-  const despachadas = dayRoutes.filter((r) => r.estado !== 'Pendiente' || !!r.liquidacion).length;
+  const esDespachada = (r: Route) => r.estado !== 'Pendiente' || !!r.liquidacion;
+  const despachadas = dayRoutes.filter(esDespachada).length;
+  const cjDesp = dayRoutes.filter(esDespachada).reduce((a, r) => a + cajasPlan(r), 0);
   const funnel = [
     { label: 'Planificadas', value: totalPlan, color: C_INFO },
     { label: 'Despachadas', value: despachadas, color: C_INFO },
@@ -461,6 +547,26 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
     });
     return buckets;
   }, [liqPeriodo, trendDays, porSemana]);
+  // Despacho: CJ planificadas por día (fecha de ruta).
+  const trendPlan = useMemo(() => {
+    type Cubeta = { key: string; label: string; cj: number; n: number };
+    const byDay = new Map<string, Cubeta>((trend as { key: string; label: string }[]).map((b) => [b.key, { key: b.key, label: b.label, cj: 0, n: 0 }] as [string, Cubeta]));
+    const keys = trendDays.map((d) => formatDateToGuatemala(d));
+    const bucketOf = new Map<string, string>();
+    let actual = '';
+    keys.forEach((k, i) => {
+      if (!porSemana || i % 7 === 0) actual = k;
+      bucketOf.set(k, actual);
+    });
+    dayRoutes.forEach((r) => {
+      const b = byDay.get(bucketOf.get(routeDayKey(r) || '') || '');
+      if (!b) return;
+      b.cj += cajasPlan(r);
+      b.n += 1;
+    });
+    return [...byDay.values()].map((b: Cubeta) => ({ key: b.key, label: b.label, value: b.cj, tip: `${b.label}: ${n0(b.n)} rutas · ${n0(b.cj)} CJ planificadas` }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trend, dayRoutes]);
   const trendEfect = trend.map((d) => {
     const v = d.ent + d.dev > 0 ? (d.ent / (d.ent + d.dev)) * 100 : 0;
     return { key: d.key, label: d.label, value: v, tip: d.ent + d.dev > 0 ? `${d.label}: ${v.toFixed(1)}% efectividad (${n1(d.ent)} ent. / ${n1(d.dev)} dev.)` : `${d.label}: sin liquidaciones` };
@@ -488,7 +594,12 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           cumpl: L.length ? liq.length / L.length : 0,
           cj: L.reduce((a, r) => a + cajasPlan(r), 0),
           ent,
+          dev,
           efect: ent + dev > 0 ? ent / (ent + dev) : null,
+          desp: L.filter((r) => r.estado !== 'Pendiente' || !!r.liquidacion).length,
+          cjDesp: L.filter((r) => r.estado !== 'Pendiente' || !!r.liquidacion).reduce((a, r) => a + cajasPlan(r), 0),
+          porAsig: L.filter((r) => !r.liquidacion && r.estado === 'Pendiente' && !isPiso(r) && !isBolson(r)).length,
+          piso: L.filter((r) => !r.liquidacion && r.estado === 'Pendiente' && isPiso(r)).length,
           atras: L.filter((r) => !r.liquidacion && hoursSince(r, now) >= 24).length,
         };
       })
@@ -520,7 +631,6 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   );
   const partTotRutas = participacion.reduce((a, x) => a + x.rutas, 0);
   const partTotCj = participacion.reduce((a, x) => a + x.cj, 0);
-  const verParticipacion = selectedAgency === 'TODAS' && participacion.length > 0;
 
   // ---------- Rutas parciales (entregadas en parte, con cajas por entregar) ----------
   // 1) Ruta Abierta / Revisita: regresó con clientes pendientes. Lo entregado está
@@ -687,55 +797,104 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
       porRuta.set(k, x);
     });
     const topDev = [...porRuta.values()].sort((a, b) => b.dev - a.dev).slice(0, 15);
+    const agencia = selectedAgency === 'TODAS' ? etiquetaTodas : selectedAgency;
+    const varias = participacion.length > 1;
+    const tablaSegmento = {
+      titulo: 'Rutas y cajas por segmento',
+      sub: `${periodLabel} · % sobre el total del filtro`,
+      columnas: [{ t: 'Segmento' }, { t: 'Rutas', num: true }, { t: '% rutas', num: true }, { t: 'CJ', num: true }, { t: '% CJ', num: true }],
+      filas: porSegmento.map((s) => [s.seg, n0(s.rutas), pct(s.rutas, segTotRutas), n1(s.cj), pct(s.cj, segTotCj)]),
+      total: porSegmento.length ? ['Total', n0(segTotRutas), '100%', n1(segTotCj), '100%'] : undefined,
+    };
+    if (!esLiq) {
+      const pend = Math.max(0, stats.cajasFisicasHoy - cjDesp);
+      return {
+        titulo: 'Dashboard de Despacho',
+        periodo: periodLabel,
+        agencia,
+        kpis: [
+          { label: 'Rutas planificadas', valor: n0(totalPlan), sub: `${n1(stats.cajasFisicasHoy)} CJ planificadas`, tono: 'info' },
+          { label: 'Despachadas', valor: n0(despachadas), sub: `${pct(despachadas, totalPlan)} de las planificadas`, tono: 'ok' },
+          { label: 'Por asignar', valor: n0(stats.pendientes), sub: `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, tono: stats.pendientes ? 'warn' : 'ok' },
+          { label: 'CJ despachadas', valor: n0(cjDesp), sub: `${pct(cjDesp, stats.cajasFisicasHoy)} · ${n0(pend)} CJ por despachar`, tono: 'info' },
+          { label: 'En ruta', valor: n0(enOperacion), sub: `${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`, tono: 'info' },
+          { label: 'Flota en ruta', valor: `${Math.round(utilFlota * 100)}%`, sub: `${n0(truckEnRuta)} de ${n0(truckActivos.length)} camiones · ${n0(staffEnRuta)} de ${n0(staffActivos.length)} personas`, tono: 'info' },
+        ],
+        tablas: [
+          {
+            titulo: 'Resumen por agencia',
+            sub: `${periodLabel}${varias ? ' · de mayor a menor por CJ' : ''}`,
+            columnas: [{ t: 'Agencia' }, { t: 'Rutas', num: true }, { t: '% rutas', num: true }, { t: 'CJ planificadas', num: true }, { t: '% CJ', num: true }, { t: 'Despachadas', num: true }, { t: '% despachadas', num: true }, { t: 'CJ despachadas', num: true }, { t: 'Por asignar', num: true }, { t: 'A piso', num: true }],
+            filas: participacion.map((a) => [a.ag, n0(a.rutas), pct(a.rutas, partTotRutas), n1(a.cj), pct(a.cj, partTotCj), n0(a.desp), pct(a.desp, a.rutas), n1(a.cjDesp), n0(a.porAsig), n0(a.piso)]),
+            total: varias
+              ? ['Total', n0(partTotRutas), '100%', n1(partTotCj), '100%', n0(despachadas), pct(despachadas, totalPlan), n1(cjDesp), n0(participacion.reduce((s, a) => s + a.porAsig, 0)), n0(participacion.reduce((s, a) => s + a.piso, 0))]
+              : undefined,
+            vacio: 'Sin rutas en el periodo.',
+          },
+          tablaSegmento,
+          ...(salidasPorHora.length
+            ? [
+                {
+                  titulo: 'Salidas por hora',
+                  sub: `${periodLabel} · rutas despachadas según su hora de salida`,
+                  columnas: [{ t: 'Hora' }, { t: 'Rutas', num: true }, { t: '% de las despachadas', num: true }],
+                  filas: salidasPorHora.filter((h) => h.value > 0).map((h) => [h.label, n0(h.value), pct(h.value, salidasPorHora.reduce((a, x) => a + x.value, 0))]),
+                },
+              ]
+            : []),
+          ...(!unDia
+            ? [
+                {
+                  titulo: `Planificación ${porSemana ? 'por semana' : 'por día'}`,
+                  sub: `${periodLabel} · por fecha de ruta`,
+                  columnas: [{ t: porSemana ? 'Semana' : 'Día' }, { t: 'CJ planificadas', num: true }],
+                  filas: trendPlan.filter((d) => d.value > 0).map((d) => [d.label, n1(d.value)]),
+                  total: ['Total', n1(stats.cajasFisicasHoy)],
+                },
+              ]
+            : []),
+          {
+            titulo: 'Rutas parciales · entregadas en parte',
+            sub: `${periodLabel} · ${n0(parciales.length)} ruta(s) · ${n1(parcEnt)} CJ entregadas · ${n1(parcPend)} CJ pendientes de entregar`,
+            columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Segmento' }, { t: 'Tipo' }, { t: 'Estado' }, { t: 'CJ total', num: true }, { t: 'CJ entregadas', num: true }, { t: 'CJ pendientes', num: true }, { t: '% avance', num: true }],
+            filas: parciales.map((x) => [x.id, x.ag, x.seg, x.tipo, x.estado, n1(x.total), n1(x.ent), n1(x.pend), pct(x.ent, x.ent + x.pend)]),
+            total: parciales.length ? ['Total', '', '', '', '', n1(parciales.reduce((a, x) => a + x.total, 0)), n1(parcEnt), n1(parcPend), pct(parcEnt, parcEnt + parcPend)] : undefined,
+          },
+          {
+            titulo: 'Camiones de apoyo',
+            sub: periodLabel,
+            columnas: [{ t: 'Agencia' }, { t: 'Rutas con apoyo', num: true }, { t: 'Camiones de apoyo', num: true }, { t: 'CJ al apoyo', num: true }, { t: '% de rutas despachadas', num: true }],
+            filas: apoyosPeriodo.filas.map((f) => [f.ag, n0(f.rutas), n0(f.apoyos), f.cajas ? n1(f.cajas) : '—', pct(f.rutas, f.despachadas)]),
+          },
+        ],
+        notas: [
+          'Se analizan las rutas cuya fecha de ruta cae en el periodo. Despachadas: rutas que ya salieron con camión y tripulación (incluye las liquidadas). Camiones y personal muestran el estado actual del tablero.',
+          ...(fueraDeHistorial ? [`Solo están cargados los últimos ${historyLimitedDays} días del historial: el periodo puede estar incompleto.`] : []),
+        ],
+      };
+    }
     return {
-      titulo: 'Dashboard de Despacho',
+      titulo: 'Dashboard de Liquidación',
       periodo: periodLabel,
-      agencia: selectedAgency === 'TODAS' ? etiquetaTodas : selectedAgency,
+      agencia,
       kpis: [
-        { label: 'Rutas planificadas', valor: n0(totalPlan), sub: `${n0(despachadas)} despachadas`, tono: 'info' },
-        { label: isHoy ? 'Cumplimiento del día' : 'Cumplimiento', valor: `${Math.round(cumplimiento * 100)}%`, sub: `${n0(stats.liquidadas)} de ${n0(totalPlan)} rutas liquidadas`, tono: tono(cumplStatus.c) },
-        { label: 'Efectividad de entrega', valor: cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—', sub: `${n1(cjEnt)} CJ entregadas · ${n1(cjDev)} devueltas`, tono: cjEnt + cjDev > 0 ? tono(efStatus.c) : 'info' },
-        { label: 'Cajas (CJ)', valor: n0(stats.cajasFisicasHoy), sub: `${pctTxt(stats.cajasEntregadasHoy, stats.cajasFisicasHoy)} ya entregadas`, tono: 'info' },
-        { label: 'En operación', valor: n0(enOperacion), sub: `${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`, tono: 'info' },
-        { label: 'Por asignar', valor: n0(stats.pendientes), sub: `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, tono: 'warn' },
-        { label: 'Flota en ruta', valor: `${Math.round(utilFlota * 100)}%`, sub: `${n0(truckEnRuta)} de ${n0(truckActivos.length)} camiones · ${n0(staffEnRuta)} de ${n0(staffActivos.length)} personas`, tono: 'info' },
+        { label: 'Rutas liquidadas', valor: n0(stats.liquidadas), sub: `de ${n0(totalPlan)} planificadas`, tono: 'ok' },
+        { label: 'Cumplimiento', valor: `${Math.round(cumplimiento * 100)}%`, sub: 'rutas liquidadas / planificadas', tono: tono(cumplStatus.c) },
+        { label: 'CJ entregadas', valor: n0(cjEnt), sub: `${pct(cjEnt, stats.cajasFisicasHoy)} de ${n0(stats.cajasFisicasHoy)} CJ planificadas`, tono: 'ok' },
+        { label: 'CJ devueltas', valor: n0(cjDev), sub: `${n0(motTotRutas)} ruta(s) con devolución`, tono: cjDev ? 'crit' : 'ok' },
+        { label: 'Efectividad', valor: cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—', sub: 'CJ entregadas / (entregadas + devueltas)', tono: cjEnt + cjDev > 0 ? tono(efStatus.c) : 'info' },
+        { label: 'Por liquidar', valor: n0(enOperacion), sub: `${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`, tono: enOperacion ? 'warn' : 'ok' },
       ],
       tablas: [
         {
-          titulo: 'Desempeño por agencia',
-          sub: periodLabel,
-          columnas: [{ t: 'Agencia' }, { t: 'Rutas', num: true }, { t: 'Liquidadas', num: true }, { t: 'Cumplimiento', num: true }, { t: 'CJ planificadas', num: true }, { t: 'CJ entregadas', num: true }, { t: 'Efectividad', num: true }],
-          filas: porAgencia.map((a) => [a.ag, n0(a.rutas), n0(a.liq), `${Math.round(a.cumpl * 100)}%`, n1(a.cj), n1(a.ent), a.efect === null ? '—' : `${(a.efect * 100).toFixed(1)}%`]),
-          total: porAgencia.length > 1
-            ? ['Total', n0(porAgencia.reduce((s, a) => s + a.rutas, 0)), n0(porAgencia.reduce((s, a) => s + a.liq, 0)), pct(porAgencia.reduce((s, a) => s + a.liq, 0), porAgencia.reduce((s, a) => s + a.rutas, 0)), n1(porAgencia.reduce((s, a) => s + a.cj, 0)), n1(porAgencia.reduce((s, a) => s + a.ent, 0)), cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—']
+          titulo: 'Resumen por agencia',
+          sub: `${periodLabel}${varias ? ' · de mayor a menor por CJ' : ''}`,
+          columnas: [{ t: 'Agencia' }, { t: 'Rutas', num: true }, { t: '% rutas', num: true }, { t: 'CJ planificadas', num: true }, { t: '% CJ', num: true }, { t: 'Liquidadas', num: true }, { t: 'Cumplimiento', num: true }, { t: 'CJ entregadas', num: true }, { t: 'CJ devueltas', num: true }, { t: 'Efectividad', num: true }],
+          filas: participacion.map((a) => [a.ag, n0(a.rutas), pct(a.rutas, partTotRutas), n1(a.cj), pct(a.cj, partTotCj), n0(a.liq), `${Math.round(a.cumpl * 100)}%`, n1(a.ent), n1(a.dev), a.efect === null ? '—' : `${(a.efect * 100).toFixed(1)}%`]),
+          total: varias
+            ? ['Total', n0(partTotRutas), '100%', n1(partTotCj), '100%', n0(stats.liquidadas), pct(stats.liquidadas, totalPlan), n1(cjEnt), n1(cjDev), cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—']
             : undefined,
           vacio: 'Sin rutas en el periodo.',
-        },
-        {
-          titulo: 'Rutas y cajas por segmento',
-          sub: `${periodLabel} · % sobre el total del filtro`,
-          columnas: [{ t: 'Segmento' }, { t: 'Rutas', num: true }, { t: '% rutas', num: true }, { t: 'CJ', num: true }, { t: '% CJ', num: true }],
-          filas: porSegmento.map((s) => [s.seg, n0(s.rutas), pct(s.rutas, segTotRutas), n1(s.cj), pct(s.cj, segTotCj)]),
-          total: porSegmento.length ? ['Total', n0(segTotRutas), '100%', n1(segTotCj), '100%'] : undefined,
-        },
-        ...(verParticipacion
-          ? [
-              {
-                titulo: 'Participación por agencia · Rutas y CJ',
-                sub: `${periodLabel} · % sobre el total, de mayor a menor`,
-                columnas: [{ t: 'Agencia' }, { t: 'Rutas', num: true }, { t: '% rutas', num: true }, { t: 'CJ', num: true }, { t: '% CJ', num: true }],
-                filas: participacion.map((a) => [a.ag, n0(a.rutas), pct(a.rutas, partTotRutas), n1(a.cj), pct(a.cj, partTotCj)]),
-                total: ['Total', n0(partTotRutas), '100%', n1(partTotCj), '100%'],
-              },
-            ]
-          : []),
-        {
-          titulo: 'Rutas parciales · entregadas en parte',
-          sub: `${periodLabel} · ${n0(parciales.length)} ruta(s) · ${n1(parcEnt)} CJ entregadas · ${n1(parcPend)} CJ pendientes de entregar`,
-          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Segmento' }, { t: 'Tipo' }, { t: 'Estado' }, { t: 'CJ total', num: true }, { t: 'CJ entregadas', num: true }, { t: 'CJ pendientes', num: true }, { t: '% avance', num: true }],
-          filas: parciales.map((x) => [x.id, x.ag, x.seg, x.tipo, x.estado, n1(x.total), n1(x.ent), n1(x.pend), pct(x.ent, x.ent + x.pend)]),
-          total: parciales.length ? ['Total', '', '', '', '', n1(parciales.reduce((a, x) => a + x.total, 0)), n1(parcEnt), n1(parcPend), pct(parcEnt, parcEnt + parcPend)] : undefined,
-          vacio: 'Sin rutas parciales pendientes en el periodo.',
         },
         ...(!unDia
           ? [
@@ -754,6 +913,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           columnas: [{ t: 'Motivo' }, { t: 'Rutas', num: true }, { t: 'CJ devueltas', num: true }, { t: '% CJ devueltas', num: true }],
           filas: motivos.map((m) => [m.motivo, n0(m.rutas), n1(m.cajas), pct(m.cajas, motTotCj)]),
           total: motivos.length ? ['Total', n0(motTotRutas), n1(motTotCj), '100%'] : undefined,
+          vacio: 'Sin devoluciones en el periodo.',
         },
         {
           titulo: 'Rutas con mayor devolución',
@@ -761,15 +921,9 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Segmento' }, { t: 'Viajes con dev.', num: true }, { t: 'CJ salida', num: true }, { t: 'CJ devueltas', num: true }, { t: '% dev.', num: true }, { t: 'Motivo principal' }, { t: 'Piloto(s)' }],
           filas: topDev.map((x) => [x.id, x.ag, x.seg, n0(x.viajes), n1(x.sal), n1(x.dev), pct(x.dev, x.sal), [...x.motivos.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '-', [...x.pilotos].join(', ')]),
         },
-        {
-          titulo: 'Camiones de apoyo',
-          sub: periodLabel,
-          columnas: [{ t: 'Agencia' }, { t: 'Rutas con apoyo', num: true }, { t: 'Camiones de apoyo', num: true }, { t: 'CJ al apoyo', num: true }, { t: '% de rutas despachadas', num: true }],
-          filas: apoyosPeriodo.filas.map((f) => [f.ag, n0(f.rutas), n0(f.apoyos), f.cajas ? n1(f.cajas) : '—', pct(f.rutas, f.despachadas)]),
-        },
       ],
       notas: [
-        'Se analizan las rutas cuya fecha de ruta cae en el periodo (liquidadas y pendientes). Camiones y personal muestran el estado actual del tablero.',
+        'Se analizan las rutas cuya fecha de ruta cae en el periodo. Efectividad = CJ entregadas / (entregadas + devueltas) de las rutas liquidadas.',
         ...(fueraDeHistorial ? [`Solo están cargados los últimos ${historyLimitedDays} días del historial: el periodo puede estar incompleto.`] : []),
       ],
     };
@@ -781,69 +935,462 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   const cumplStatus = cumplimiento >= 0.9 ? { c: C_GOOD, t: 'En meta' } : cumplimiento >= 0.7 ? { c: C_WARN, t: 'En curso' } : { c: C_CRIT, t: 'Bajo' };
   const efStatus = efectividad >= 0.97 ? { c: C_GOOD, t: 'Óptima' } : efectividad >= 0.9 ? { c: C_WARN, t: 'Vigilar' } : { c: C_SERIOUS, t: 'Alta devolución' };
 
+  // Resumen por agencia: una sola tabla (participación, cumplimiento y
+  // efectividad), de mayor a menor por CJ.
+  const resumenAg = participacion;
+  const variasAg = resumenAg.length > 1;
+  const pendParc = parciales.reduce((a, x) => a + x.pend, 0);
+  const estadoChips = [
+    { l: 'Por asignar', v: stats.pendientes, c: C_WARN },
+    { l: 'En tránsito', v: stats.transito, c: C_INFO },
+    { l: 'Abiertas', v: stats.abiertas, c: C_SERIOUS },
+    { l: 'A piso', v: stats.pisoHoy, c: C_WARN },
+    ...(stats.bolson ? [{ l: 'Bolsón', v: stats.bolson, c: C_CRIT }] : []),
+    { l: 'Liquidadas', v: stats.liquidadas, c: C_GOOD },
+  ];
+  const alertas: { k: string; n: number; t: string; d: string; c: string }[] = [
+    { k: 'atr', n: atrasadas.length, t: 'Rutas con más de 24 h', d: atrasadas.length ? `${crit72} con más de 72 h · todo el tablero` : 'Todo el tablero al día', c: atrasadas.length ? C_CRIT : C_GOOD },
+    { k: 'parc', n: parciales.length, t: 'Rutas parciales', d: parciales.length ? `${n0(pendParc)} CJ pendientes de entregar` : 'Sin entregas parciales pendientes', c: parciales.length ? C_WARN : C_GOOD },
+    { k: 'asig', n: stats.pendientes, t: 'Rutas por asignar', d: `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, c: stats.pendientes ? C_WARN : C_GOOD },
+    { k: 'flota', n: truckSinMotivo, t: 'Camiones disponibles sin motivo', d: `${n0(truckConMotivo)} sin salir con motivo registrado`, c: truckSinMotivo ? C_SERIOUS : C_GOOD },
+  ];
+
+  // ---------- Datos propios del tablero de Despacho ----------
+  const segDespacho = useMemo(() => {
+    const m = new Map<string, { rutas: number; cj: number; cjDesp: number; desp: number }>();
+    dayRoutes.forEach((r) => {
+      const k = (r.segmento || '').trim().toUpperCase() || 'SIN SEGMENTO';
+      const x = m.get(k) || { rutas: 0, cj: 0, cjDesp: 0, desp: 0 };
+      x.rutas += 1;
+      x.cj += cajasPlan(r);
+      if (r.estado !== 'Pendiente' || !!r.liquidacion) {
+        x.desp += 1;
+        x.cjDesp += cajasPlan(r);
+      }
+      m.set(k, x);
+    });
+    return [...m.entries()].map(([seg, v]) => ({ seg, ...v })).sort((a, b) => b.cj - a.cj);
+  }, [dayRoutes]);
+  // Hora de salida de las rutas despachadas (camión + tripulación).
+  const salidasPorHora = useMemo(() => {
+    const cuenta = new Map<number, { n: number; cj: number }>();
+    dayRoutes.forEach((r) => {
+      if (!(r.estado !== 'Pendiente' || !!r.liquidacion)) return;
+      const h = String(r.asignacion?.horaSalida || r.ultimoDespacho?.horaSalida || '');
+      const m = /^(\d{1,2}):/.exec(h);
+      if (!m) return;
+      const hr = Number(m[1]);
+      const x = cuenta.get(hr) || { n: 0, cj: 0 };
+      x.n += 1;
+      x.cj += cajasPlan(r);
+      cuenta.set(hr, x);
+    });
+    if (!cuenta.size) return [];
+    const horas = [...cuenta.keys()];
+    const desde = Math.min(...horas, 5);
+    const hasta = Math.max(...horas, 10);
+    const out: { key: string; label: string; value: number; tip: string }[] = [];
+    for (let h = desde; h <= hasta; h++) {
+      const x = cuenta.get(h) || { n: 0, cj: 0 };
+      out.push({ key: String(h), label: `${String(h).padStart(2, '0')}:00`, value: x.n, tip: `${String(h).padStart(2, '0')}:00 - ${String(h).padStart(2, '0')}:59 · ${n0(x.n)} ruta(s) · ${n0(x.cj)} CJ` });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayRoutes]);
+  const horaPico = salidasPorHora.reduce<{ label: string; value: number } | null>((a, x) => (!a || x.value > a.value ? x : a), null);
+  const cjPorDespachar = Math.max(0, stats.cajasFisicasHoy - cjDesp);
+  const pDesp = totalPlan > 0 ? despachadas / totalPlan : 0;
+  const maxCjAg = Math.max(1, ...resumenAg.map((a) => a.cj));
+  const maxCjSeg = Math.max(1, ...segDespacho.map((s) => s.cj));
+  const [verTablaAg, setVerTablaAg] = useState(false);
+  const agenciaTxt = selectedAgency === 'TODAS' ? etiquetaTodas : selectedAgency;
+
+  if (!esLiq) {
+    const tile = (label: string, value: string, sub: string, color: string, icon: React.ReactNode) => (
+      <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-sm min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${color}1A`, color }}>
+            {icon}
+          </span>
+          <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500 truncate">{label}</span>
+        </div>
+        <div className="mt-2 text-2xl sm:text-[28px] font-black text-slate-900 leading-none tabular-nums">{value}</div>
+        <div className="mt-1.5 text-[11px] text-slate-500 leading-snug">{sub}</div>
+      </div>
+    );
+    return (
+      <div className="space-y-4">
+        {/* Encabezado con lo esencial del día */}
+        <section className="rounded-2xl shadow-sm text-white overflow-hidden" style={{ background: 'linear-gradient(135deg, #2C3790 0%, #1E2768 100%)' }}>
+          <div className="p-4 sm:p-5 flex flex-col gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-sky-200">Tablero de Despacho</div>
+                <h2 className="text-xl sm:text-2xl font-black leading-tight">{periodLabel}</h2>
+                <p className="text-xs text-sky-100/80 mt-0.5">
+                  Agencia: <span className="font-semibold text-white">{agenciaTxt}</span>
+                </p>
+              </div>
+              <div role="tablist" aria-label="Periodo del dashboard" className="flex flex-wrap gap-1 bg-white/10 rounded-xl p-1">
+                {([
+                  ['hoy', 'Hoy'],
+                  ['ayer', 'Ayer'],
+                  ['7d', '7 días'],
+                  ['rango', 'Rango'],
+                  ['mes', 'Mes'],
+                ] as [PeriodKind, string][]).map(([k, l]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    role="tab"
+                    aria-selected={kind === k}
+                    onClick={() => setKind(k)}
+                    className={`min-h-[36px] px-3 rounded-lg text-xs sm:text-sm font-semibold cursor-pointer ${kind === k ? 'bg-white text-[#2C3790] shadow-sm' : 'text-sky-100 hover:bg-white/10'}`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {(kind === 'rango' || kind === 'mes') && (
+              <div className="flex flex-wrap items-center gap-2 text-xs [color-scheme:dark]">
+                {kind === 'rango' ? (
+                  <>
+                    <label className="flex items-center gap-1 font-semibold text-sky-100">
+                      Desde
+                      <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} className="min-h-[36px] px-2 rounded-lg bg-white/10 border border-white/20 text-white" />
+                    </label>
+                    <label className="flex items-center gap-1 font-semibold text-sky-100">
+                      Hasta
+                      <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} className="min-h-[36px] px-2 rounded-lg bg-white/10 border border-white/20 text-white" />
+                    </label>
+                  </>
+                ) : (
+                  <label className="flex items-center gap-1 font-semibold text-sky-100">
+                    Mes
+                    <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="min-h-[36px] px-2 rounded-lg bg-white/10 border border-white/20 text-white" />
+                  </label>
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_1fr] gap-4 sm:gap-6 items-center">
+              <div className="flex items-center gap-3">
+                <Anillo p={pDesp} />
+                <div>
+                  <div className="text-sm font-bold">Despachado</div>
+                  <div className="text-[11px] text-sky-100/80">{n0(despachadas)} de {n0(totalPlan)} rutas</div>
+                </div>
+              </div>
+              <div className="sm:border-l sm:border-white/15 sm:pl-6">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-sky-200">Rutas planificadas</div>
+                <div className="text-4xl font-black leading-none tabular-nums mt-1">{n0(totalPlan)}</div>
+                <div className="text-[11px] text-sky-100/80 mt-1">{n0(stats.pendientes)} por asignar · {n0(stats.pisoHoy)} a piso</div>
+              </div>
+              <div className="sm:border-l sm:border-white/15 sm:pl-6">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-sky-200">Cajas planificadas (CJ)</div>
+                <div className="text-4xl font-black leading-none tabular-nums mt-1">{n0(stats.cajasFisicasHoy)}</div>
+                <div className="text-[11px] text-sky-100/80 mt-1">
+                  {n0(cjDesp)} despachadas ({pctTxt(cjDesp, stats.cajasFisicasHoy)}) · {n0(cjPorDespachar)} por despachar
+                </div>
+              </div>
+            </div>
+          </div>
+          {fueraDeHistorial && (
+            <div className="px-4 sm:px-5 py-2 bg-amber-400/20 text-[11px] text-amber-100 flex flex-wrap items-center gap-2">
+              Solo están cargados los últimos {historyLimitedDays} días del historial; el periodo puede salir incompleto.
+              {onLoadFullHistory && (
+                <button type="button" onClick={onLoadFullHistory} disabled={isLoadingFullHistory} className="font-bold underline cursor-pointer disabled:opacity-50">
+                  {isLoadingFullHistory ? 'Cargando historial…' : 'Cargar historial completo'}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Indicadores de operación */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {tile('Despachadas', n0(despachadas), `${pctTxt(despachadas, totalPlan)} de las rutas planificadas`, C_GOOD, <CheckCircle2 className="w-4 h-4" />)}
+          {tile('Por asignar', n0(stats.pendientes), `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, C_WARN, <Clock className="w-4 h-4" />)}
+          {tile('En ruta', n0(enOperacion), `${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`, C_INFO, <TruckIcon className="w-4 h-4" />)}
+          {tile('Flota en ruta', `${Math.round(utilFlota * 100)}%`, `${n0(truckEnRuta)}/${n0(truckActivos.length)} camiones · ${n0(staffEnRuta)} personas`, C_INFO, <Users className="w-4 h-4" />)}
+        </div>
+
+        {/* Estado de las rutas + atención */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Card title="Estado de las rutas" sub={`Las ${n0(totalPlan)} rutas planificadas, cada una en su estado actual`} icon={<Layers className="w-4 h-4 text-slate-500" />} className="lg:col-span-2">
+            <StackBar
+              segs={[
+                { label: 'Liquidadas', value: stats.liquidadas, color: C_GOOD },
+                { label: 'En tránsito', value: stats.transito, color: C_INFO },
+                { label: 'Abiertas', value: stats.abiertas, color: C_SERIOUS },
+                { label: 'Por asignar', value: stats.pendientes, color: C_WARN },
+                { label: 'A piso', value: stats.pisoHoy, color: '#8B5CF6' },
+                ...(stats.bolson ? [{ label: 'Bolsón', value: stats.bolson, color: C_CRIT }] : []),
+              ]}
+            />
+            <div className="mt-5 pt-4 border-t border-slate-100">
+              <div className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500 mb-2">Cajas (CJ)</div>
+              <StackBar
+                unidad=" CJ"
+                segs={[
+                  { label: 'Despachadas', value: cjDesp, color: C_INFO },
+                  { label: 'Por despachar', value: cjPorDespachar, color: C_WARN },
+                ]}
+              />
+            </div>
+          </Card>
+          <Card title="Requiere atención" sub="Lo que hay que resolver ahora" icon={<AlertTriangle className="w-4 h-4 text-slate-500" />}>
+            <ul className="divide-y divide-slate-100 -my-1">
+              {alertas.map((a) => (
+                <li key={a.k} className="flex items-center gap-3 py-2.5" title={a.k === 'atr' && atrasadas.length ? atrasadas.slice(0, 15).map(({ r, h }) => `${r.id} · ${r.agencia} · ${Math.floor(h)} h`).join('\n') : undefined}>
+                  <span className="min-w-[2.75rem] h-9 px-2 rounded-xl flex items-center justify-center text-base font-black tabular-nums" style={{ backgroundColor: `${a.c}1A`, color: a.c }}>
+                    {n0(a.n)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-800 leading-tight">{a.t}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{a.d}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+
+        {/* Salidas por hora + planificación por día */}
+        <div className={`grid grid-cols-1 gap-4 ${!unDia ? 'lg:grid-cols-2' : ''}`}>
+          <Card
+            title="Salidas por hora"
+            sub={salidasPorHora.length ? `Rutas despachadas según su hora de salida${horaPico ? ` · pico ${horaPico.label} (${n0(horaPico.value)} rutas)` : ''}` : 'Aún no hay rutas despachadas con hora de salida'}
+            icon={<Clock className="w-4 h-4 text-slate-500" />}
+          >
+            {salidasPorHora.length ? <Columns data={salidasPorHora} color={C_INFO} /> : <p className="py-6 text-center text-xs text-slate-400">Sin salidas registradas en el periodo.</p>}
+          </Card>
+          {!unDia && (
+            <Card title={`CJ planificadas ${porSemana ? 'por semana' : 'por día'}`} sub={`${n0(stats.cajasFisicasHoy)} CJ en ${n0(totalPlan)} rutas · por fecha de ruta`} icon={<Layers className="w-4 h-4 text-slate-500" />}>
+              <Columns data={trendPlan} color={C_INFO} fmt={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : n0(v))} />
+            </Card>
+          )}
+        </div>
+
+        {/* Agencias y segmentos: largo de la barra = CJ planificadas; relleno = despachado */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <Card
+            title="Avance por agencia"
+            sub="Largo = CJ planificadas · relleno = % despachado"
+            icon={<Building2 className="w-4 h-4 text-slate-500" />}
+            right={
+              <button type="button" onClick={() => setVerTablaAg((v) => !v)} className="min-h-[32px] px-2.5 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer shrink-0">
+                {verTablaAg ? 'Ver gráfica' : 'Ver tabla'}
+              </button>
+            }
+          >
+            {resumenAg.length === 0 ? (
+              <p className="py-6 text-center text-xs text-slate-400">Sin rutas en el periodo.</p>
+            ) : !verTablaAg ? (
+              <div className="divide-y divide-slate-50">
+                {resumenAg.map((a) => (
+                  <AvanceFila
+                    key={a.ag}
+                    label={a.ag}
+                    sub={`${n0(a.rutas)} rutas${variasAg ? ` · ${pctTxt(a.cj, partTotCj)} de las CJ` : ''}${a.porAsig ? ` · ${a.porAsig} por asignar` : ''}`}
+                    plan={a.cj}
+                    hecho={a.cjDesp}
+                    maxPlan={maxCjAg}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full text-xs min-w-[560px]">
+                  <thead>
+                    <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                      <th className="text-left py-2 px-2">Agencia</th>
+                      <th className="text-right py-2 px-2">Rutas</th>
+                      {variasAg && <th className="text-right py-2 px-2">% CJ</th>}
+                      <th className="text-right py-2 px-2">CJ plan</th>
+                      <th className="text-right py-2 px-2">Despachadas</th>
+                      <th className="text-right py-2 px-2">CJ desp.</th>
+                      <th className="text-right py-2 px-2">Por asignar</th>
+                      <th className="text-right py-2 px-2">A piso</th>
+                      <th className="text-right py-2 px-2">+24 h</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {resumenAg.map((a) => (
+                      <tr key={a.ag} className="hover:bg-slate-50">
+                        <td className="py-2 px-2 font-semibold text-slate-800 whitespace-nowrap">{a.ag}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{n0(a.rutas)}</td>
+                        {variasAg && <td className="py-2 px-2 text-right tabular-nums text-slate-500">{pctTxt(a.cj, partTotCj)}</td>}
+                        <td className="py-2 px-2 text-right tabular-nums font-semibold">{n0(a.cj)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{n0(a.desp)} <span className="text-slate-400">({pctTxt(a.desp, a.rutas)})</span></td>
+                        <td className="py-2 px-2 text-right tabular-nums">{n0(a.cjDesp)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{a.porAsig || '—'}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{a.piso || '—'}</td>
+                        <td className="py-2 px-2 text-right tabular-nums font-bold" style={{ color: a.atras ? C_CRIT : undefined }}>{a.atras || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {variasAg && (
+                    <tfoot>
+                      <tr className="border-t-2 border-slate-300 font-black text-slate-900">
+                        <td className="py-2 px-2">Total</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{n0(partTotRutas)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">100%</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{n0(partTotCj)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{n0(despachadas)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{n0(cjDesp)}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{resumenAg.reduce((s, a) => s + a.porAsig, 0) || '—'}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{resumenAg.reduce((s, a) => s + a.piso, 0) || '—'}</td>
+                        <td className="py-2 px-2 text-right tabular-nums">{resumenAg.reduce((s, a) => s + a.atras, 0) || '—'}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            )}
+          </Card>
+          <Card title="Avance por segmento" sub="Largo = CJ planificadas · relleno = % despachado" icon={<Layers className="w-4 h-4 text-slate-500" />}>
+            {segDespacho.length === 0 ? (
+              <p className="py-6 text-center text-xs text-slate-400">Sin rutas en el periodo.</p>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {segDespacho.map((s) => (
+                  <AvanceFila key={s.seg} label={s.seg} sub={`${n0(s.rutas)} rutas · ${pctTxt(s.cj, segTotCj)} de las CJ`} plan={s.cj} hecho={s.cjDesp} maxPlan={maxCjSeg} />
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* Rutas parciales y camiones de apoyo */}
+        <div className={`grid grid-cols-1 gap-4 ${apoyosPeriodo.total > 0 ? 'xl:grid-cols-2' : ''}`}>
+          <Card
+            title="Rutas parciales"
+            sub="Entregadas en parte, con cajas aún por entregar"
+            icon={<PackageCheck className="w-4 h-4 text-slate-500" />}
+            right={
+              <div className="flex items-center gap-4 text-right shrink-0">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: C_GOOD }}>Entregadas</div>
+                  <div className="text-lg font-black tabular-nums" style={{ color: C_GOOD }}>{n0(parcEnt)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Pendientes</div>
+                  <div className="text-lg font-black tabular-nums text-amber-700">{n0(parcPend)}</div>
+                </div>
+              </div>
+            }
+          >
+            {parciales.length === 0 ? (
+              <p className="py-4 text-center text-xs text-slate-400">Sin rutas parciales pendientes en el periodo.</p>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {parciales.slice(0, 12).map((x) => (
+                  <AvanceFila
+                    key={x.key}
+                    label={`Ruta ${x.id}`}
+                    sub={`${x.ag} · ${x.tipo} · ${n0(x.pend)} CJ pendientes`}
+                    plan={x.ent + x.pend}
+                    hecho={x.ent}
+                    maxPlan={Math.max(1, ...parciales.map((y) => y.ent + y.pend))}
+                    color={C_GOOD}
+                  />
+                ))}
+                {parciales.length > 12 && <p className="pt-2 text-[11px] text-slate-400">y {parciales.length - 12} más (todas salen en el PDF).</p>}
+              </div>
+            )}
+          </Card>
+          {apoyosPeriodo.total > 0 && (
+            <Card title="Camiones de apoyo" sub={`${n0(apoyosPeriodo.total)} apoyo(s) · rutas que necesitaron un segundo camión`} icon={<TruckIcon className="w-4 h-4 text-slate-500" />}>
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                      <th className="text-left py-2 px-1">Agencia</th>
+                      <th className="text-right py-2 px-1">Rutas</th>
+                      <th className="text-right py-2 px-1">Apoyos</th>
+                      <th className="text-right py-2 px-1">CJ</th>
+                      <th className="text-right py-2 px-1">% desp.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {apoyosPeriodo.filas.map((f) => (
+                      <tr key={f.ag}>
+                        <td className="py-2 px-1 font-semibold text-slate-800">{f.ag}</td>
+                        <td className="py-2 px-1 text-right tabular-nums">{n0(f.rutas)}</td>
+                        <td className="py-2 px-1 text-right tabular-nums font-semibold">{n0(f.apoyos)}</td>
+                        <td className="py-2 px-1 text-right tabular-nums">{f.cajas ? n1(f.cajas) : '—'}</td>
+                        <td className="py-2 px-1 text-right tabular-nums font-bold">{pctTxt(f.rutas, f.despachadas)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500">Por motivo: {apoyosPeriodo.motivos.map(([m, n]) => `${m} ${n0(n)}`).join(' · ')}</p>
+            </Card>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {/* Encabezado */}
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-bold text-slate-800">Dashboard de Despacho</h2>
-          <p className="text-xs text-slate-500">
-            {periodLabel} · Agencia: <span className="font-semibold text-slate-700">{selectedAgency === 'TODAS' ? etiquetaTodas : selectedAgency}</span> · {n0(totalPlan)} rutas planificadas
-          </p>
+      {/* Encabezado + periodo en una sola barra */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-slate-900 leading-tight">{esLiq ? 'Liquidación de rutas' : 'Dashboard de Despacho'}</h2>
+            <p className="text-xs text-slate-500 mt-0.5" title="Se analizan las rutas cuya fecha de ruta cae en el periodo (liquidadas y pendientes). Camiones y personal muestran el estado actual.">
+              <span className="font-semibold text-slate-700">{periodLabel}</span> · Agencia:{' '}
+              <span className="font-semibold text-slate-700">{selectedAgency === 'TODAS' ? etiquetaTodas : selectedAgency}</span> · {n0(totalPlan)} rutas planificadas
+            </p>
+          </div>
+          <div role="tablist" aria-label="Periodo del dashboard" className="inline-flex flex-wrap gap-1 bg-slate-100 rounded-xl p-1">
+            {([
+              ['hoy', 'Hoy'],
+              ['ayer', 'Ayer'],
+              ['7d', '7 días'],
+              ['rango', 'Rango'],
+              ['mes', 'Mes'],
+            ] as [PeriodKind, string][]).map(([k, l]) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={kind === k}
+                onClick={() => setKind(k)}
+                className={`min-h-[36px] px-3 rounded-lg text-xs sm:text-sm font-semibold cursor-pointer ${kind === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
         </div>
-        <span className="text-[11px] text-slate-400">Se actualiza solo con cada cambio del tablero</span>
-      </div>
-
-      {/* Filtro de periodo */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mr-1">Periodo</span>
-        <div role="tablist" aria-label="Periodo del dashboard" className="inline-flex flex-wrap gap-1 bg-slate-100 rounded-xl p-1">
-          {([
-            ['hoy', 'Hoy'],
-            ['ayer', 'Ayer'],
-            ['7d', 'Últimos 7 días'],
-            ['rango', 'Rango de días'],
-            ['mes', 'Mes'],
-          ] as [PeriodKind, string][]).map(([k, l]) => (
-            <button
-              key={k}
-              type="button"
-              role="tab"
-              aria-selected={kind === k}
-              onClick={() => setKind(k)}
-              className={`min-h-[40px] px-3 rounded-lg text-xs sm:text-sm font-semibold cursor-pointer ${kind === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
-        {kind === 'rango' && (
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <label className="flex items-center gap-1 font-semibold text-slate-600">
-              Desde
-              <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} className="min-h-[40px] px-2 border border-slate-300 rounded-lg bg-white" />
-            </label>
-            <label className="flex items-center gap-1 font-semibold text-slate-600">
-              Hasta
-              <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} className="min-h-[40px] px-2 border border-slate-300 rounded-lg bg-white" />
-            </label>
+        {(kind === 'rango' || kind === 'mes') && (
+          <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
+            {kind === 'rango' ? (
+              <>
+                <label className="flex items-center gap-1 font-semibold text-slate-600">
+                  Desde
+                  <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} className="min-h-[36px] px-2 border border-slate-300 rounded-lg bg-white" />
+                </label>
+                <label className="flex items-center gap-1 font-semibold text-slate-600">
+                  Hasta
+                  <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} className="min-h-[36px] px-2 border border-slate-300 rounded-lg bg-white" />
+                </label>
+              </>
+            ) : (
+              <label className="flex items-center gap-1 font-semibold text-slate-600">
+                Mes
+                <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="min-h-[36px] px-2 border border-slate-300 rounded-lg bg-white" />
+              </label>
+            )}
           </div>
         )}
-        {kind === 'mes' && (
-          <label className="flex items-center gap-1 text-xs font-semibold text-slate-600">
-            Mes
-            <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="min-h-[40px] px-2 border border-slate-300 rounded-lg bg-white" />
-          </label>
-        )}
-        <span className="text-xs font-semibold text-slate-700 ml-auto">{periodLabel}</span>
-        {(
-          <p className="basis-full text-[11px] text-slate-500">
-            Se analizan las rutas cuya <b>fecha de ruta</b> cae en el periodo (liquidadas y pendientes). Camiones y personal muestran el estado actual.
-          </p>
-        )}
         {fueraDeHistorial && (
-          <div className="basis-full flex flex-wrap items-center gap-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-            ⚠ Solo están cargados los últimos {historyLimitedDays} días del historial; el periodo elegido puede salir incompleto.
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            Solo están cargados los últimos {historyLimitedDays} días del historial; el periodo elegido puede salir incompleto.
             {onLoadFullHistory && (
               <button type="button" onClick={onLoadFullHistory} disabled={isLoadingFullHistory} className="font-bold underline cursor-pointer disabled:opacity-50">
                 {isLoadingFullHistory ? 'Cargando historial…' : 'Cargar historial completo'}
@@ -853,211 +1400,320 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
         )}
       </div>
 
-      {/* 1. KPIs principales. Con UN solo día, Cumplimiento y Efectividad no se
-          muestran (el avance del día ya está en "Avance del día" más abajo). */}
-      <div className={`grid grid-cols-2 md:grid-cols-3 gap-3 ${unDia ? 'xl:grid-cols-4' : 'xl:grid-cols-6'}`}>
-        {!unDia && (
-        <>
-        <Kpi
-          label={isHoy ? 'Cumplimiento del día' : 'Cumplimiento del periodo'}
-          value={`${Math.round(cumplimiento * 100)}%`}
-          progress={cumplimiento}
-          accent={cumplStatus.c}
-          status={cumplStatus.t}
-          sub={`${n0(stats.liquidadas)} de ${n0(totalPlan)} rutas liquidadas`}
-          icon={<Target className="w-4 h-4" />}
-        />
-        <Kpi
-          label="Efectividad de entrega"
-          value={cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—'}
-          progress={cjEnt + cjDev > 0 ? efectividad : undefined}
-          accent={efStatus.c}
-          status={cjEnt + cjDev > 0 ? efStatus.t : undefined}
-          sub={`${n1(cjEnt)} CJ entregadas · ${n1(cjDev)} devueltas`}
-          icon={<PackageCheck className="w-4 h-4" />}
-        />
-        </>
-        )}
-        <Kpi
-          label={isHoy ? 'Cajas del día (CJ)' : 'Cajas del periodo (CJ)'}
-          value={n0(stats.cajasFisicasHoy)}
-          progress={stats.cajasFisicasHoy > 0 ? Math.min(1, stats.cajasEntregadasHoy / stats.cajasFisicasHoy) : undefined}
-          accent={C_INFO}
-          sub={`${pctTxt(stats.cajasEntregadasHoy, stats.cajasFisicasHoy)} ya entregadas`}
-          icon={<Layers className="w-4 h-4" />}
-        />
-        <Kpi
-          label={isHoy ? 'En operación' : 'Aún en operación'}
-          value={n0(enOperacion)}
-          accent={C_INFO}
-          sub={`${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`}
-          icon={<TruckIcon className="w-4 h-4" />}
-        />
-        <Kpi
-          label="Por asignar"
-          value={n0(stats.pendientes)}
-          accent={C_WARN}
-          sub={`${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`}
-          icon={<Clock className="w-4 h-4" />}
-        />
-        <Kpi
-          label="Atrasadas +24 h"
-          value={n0(atrasadas.length)}
-          accent={atrasadas.length ? C_CRIT : C_GOOD}
-          status={atrasadas.length ? (crit72 ? `${crit72} > 72 h` : 'Revisar') : 'Al día'}
-          sub="Todo el tablero · pasa el cursor para ver cuáles"
-          icon={<AlertTriangle className="w-4 h-4" />}
-          detalle={
-            atrasadas.length === 0 ? (
-              <p className="text-xs text-slate-500">No hay rutas con más de 24 h sin entregar ni liquidar. 👍</p>
-            ) : (
-              <>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">
-                  {n0(atrasadas.length)} ruta(s) con más de 24 h sin entregar ni liquidar
-                </p>
-                <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 pr-1">
-                  {atrasadas.map(({ r, h }) => (
-                    <div key={getRouteKey(r) + '|' + (r.tripNumber || 1)} className="flex items-center justify-between gap-2 py-1.5 text-xs">
-                      <span className="font-mono font-bold text-slate-800 shrink-0">{r.id}</span>
-                      <span className="text-slate-500 truncate flex-1">
-                        {r.agencia} · {r.estado}
-                        {r.asignacion?.camionPlaca ? ` · ${r.asignacion.camionPlaca}` : ''}
-                      </span>
-                      <span className="font-bold tabular-nums shrink-0" style={{ color: h > 72 ? C_CRIT : C_SERIOUS }}>
-                        {h >= 48 ? `${Math.floor(h / 24)} d ${Math.floor(h % 24)} h` : `${Math.floor(h)} h`}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )
-          }
-        />
-      </div>
-
-      {/* 2. Embudo + recursos: solo cuando se filtra UN día */}
-      {unDia && (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card title="Avance del día" sub="De lo planificado a lo liquidado" icon={<CheckCircle2 className="w-4 h-4 text-slate-500" />} className="lg:col-span-2">
-          <div className="space-y-2.5">
-            {funnel.map((f) => (
-              <HBar key={f.label} label={f.label} value={f.value} max={Math.max(1, totalPlan)} color={f.color} display={`${n0(f.value)} · ${pctTxt(f.value, totalPlan)}`} />
-            ))}
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-center">
-            {[
-              { l: 'Pendientes', v: stats.pendientes, c: C_WARN },
-              { l: 'En tránsito', v: stats.transito, c: C_INFO },
-              { l: 'Abiertas', v: stats.abiertas, c: C_SERIOUS },
-              { l: 'A piso', v: stats.pisoHoy, c: C_WARN },
-            ].map((x) => (
-              <div key={x.l} className="rounded-xl border border-slate-200 p-2">
-                <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-500 font-semibold">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: x.c }} />
-                  {x.l}
-                </div>
-                <div className="text-lg font-black text-slate-900 tabular-nums">{n0(x.v)}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-        <Card title="Recursos" sub="Uso de flota y personal ahora" icon={<Users className="w-4 h-4 text-slate-500" />}>
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-semibold text-slate-700">Camiones en ruta</span>
-                <span className="font-bold text-slate-900 tabular-nums">{truckEnRuta} / {truckActivos.length}</span>
-              </div>
-              <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
-                <div className="h-full rounded-full" style={{ width: `${utilFlota * 100}%`, backgroundColor: C_INFO }} />
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">{Math.round(utilFlota * 100)}% de la flota activa</p>
-            </div>
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="font-semibold text-slate-700">Personal en ruta</span>
-                <span className="font-bold text-slate-900 tabular-nums">{staffEnRuta} / {staffActivos.length}</span>
-              </div>
-              <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
-                <div className="h-full rounded-full" style={{ width: `${staffActivos.length ? (staffEnRuta / staffActivos.length) * 100 : 0}%`, backgroundColor: C_INFO }} />
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">{pctTxt(staffEnRuta, staffActivos.length)} del personal activo</p>
-            </div>
-            <div className="text-[11px] text-slate-600 border-t border-slate-100 pt-2 space-y-0.5">
-              <div>🚚 {truckConMotivo} camión(es) sin salir con motivo registrado</div>
-              {truckSinMotivo > 0 && <div style={{ color: C_SERIOUS }} className="font-semibold">⚠ {truckSinMotivo} disponible(s) sin motivo de no asignación</div>}
-            </div>
-          </div>
-        </Card>
-      </div>
+      {/* 1. Seis indicadores clave */}
+      {!esLiq ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          <Kpi
+            label="Rutas planificadas"
+            value={n0(totalPlan)}
+            accent={C_INFO}
+            sub={`${n0(stats.cajasFisicasHoy)} CJ planificadas`}
+            icon={<TruckIcon className="w-4 h-4" />}
+          />
+          <Kpi
+            label="Despachadas"
+            value={n0(despachadas)}
+            progress={totalPlan > 0 ? despachadas / totalPlan : undefined}
+            accent={C_GOOD}
+            sub={`${pctTxt(despachadas, totalPlan)} de las planificadas`}
+            icon={<CheckCircle2 className="w-4 h-4" />}
+          />
+          <Kpi
+            label="Por asignar"
+            value={n0(stats.pendientes)}
+            accent={stats.pendientes ? C_WARN : C_GOOD}
+            sub={`${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`}
+            icon={<Clock className="w-4 h-4" />}
+          />
+          <Kpi
+            label="CJ despachadas"
+            value={n0(cjDesp)}
+            progress={stats.cajasFisicasHoy > 0 ? Math.min(1, cjDesp / stats.cajasFisicasHoy) : undefined}
+            accent={C_INFO}
+            sub={`${pctTxt(cjDesp, stats.cajasFisicasHoy)} de ${n0(stats.cajasFisicasHoy)} CJ`}
+            icon={<Layers className="w-4 h-4" />}
+          />
+          <Kpi
+            label="En ruta"
+            value={n0(enOperacion)}
+            accent={C_INFO}
+            sub={`${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`}
+            icon={<TruckIcon className="w-4 h-4" />}
+          />
+          <Kpi
+            label="Flota en ruta"
+            value={`${Math.round(utilFlota * 100)}%`}
+            progress={utilFlota}
+            accent={C_INFO}
+            sub={`${n0(truckEnRuta)} de ${n0(truckActivos.length)} camiones · ${n0(staffEnRuta)} personas`}
+            icon={<Users className="w-4 h-4" />}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          <Kpi
+            label="Rutas liquidadas"
+            value={n0(stats.liquidadas)}
+            accent={C_GOOD}
+            sub={`de ${n0(totalPlan)} planificadas`}
+            icon={<CheckCircle2 className="w-4 h-4" />}
+          />
+          <Kpi
+            label="Cumplimiento"
+            value={`${Math.round(cumplimiento * 100)}%`}
+            progress={cumplimiento}
+            accent={cumplStatus.c}
+            status={cumplStatus.t}
+            sub="rutas liquidadas / planificadas"
+            icon={<Target className="w-4 h-4" />}
+          />
+          <Kpi
+            label="CJ entregadas"
+            value={n0(cjEnt)}
+            accent={C_GOOD}
+            sub={`${pctTxt(cjEnt, stats.cajasFisicasHoy)} de ${n0(stats.cajasFisicasHoy)} CJ planificadas`}
+            icon={<PackageCheck className="w-4 h-4" />}
+          />
+          <Kpi
+            label="CJ devueltas"
+            value={n0(cjDev)}
+            accent={cjDev ? C_SERIOUS : C_GOOD}
+            sub={`${n0(motTotRutas)} ruta(s) con devolución`}
+            icon={<PackageX className="w-4 h-4" />}
+          />
+          <Kpi
+            label="Efectividad"
+            value={cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—'}
+            progress={cjEnt + cjDev > 0 ? efectividad : undefined}
+            accent={cjEnt + cjDev > 0 ? efStatus.c : C_INFO}
+            status={cjEnt + cjDev > 0 ? efStatus.t : undefined}
+            sub="CJ entregadas / (entregadas + devueltas)"
+            icon={<Target className="w-4 h-4" />}
+          />
+          <Kpi
+            label="Por liquidar"
+            value={n0(enOperacion)}
+            accent={enOperacion ? C_WARN : C_GOOD}
+            sub={`${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`}
+            icon={<Clock className="w-4 h-4" />}
+          />
+        </div>
       )}
 
-      {/* 3. Efectividad de entrega del periodo */}
-      <div className="grid grid-cols-1 gap-4">
+      {/* 2. Avance + lo que requiere atención */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card
-          title={`Efectividad de entrega · ${tendTxt}`}
-          sub={`${isHoy ? 'Hoy' : 'Periodo'}: ${sem.ent + sem.dev > 0 ? ((sem.ent / (sem.ent + sem.dev)) * 100).toFixed(1) + '%' : '—'} (${n1(sem.ent)} CJ entregadas / ${n1(sem.dev)} devueltas)`}
+          title={esLiq ? (isHoy ? 'Cierre del día' : 'Cierre del periodo') : isHoy ? 'Salida del día' : 'Salida del periodo'}
+          sub={esLiq ? 'Rutas liquidadas y cajas entregadas' : 'Rutas y cajas planificadas que ya salieron'}
+          icon={<CheckCircle2 className="w-4 h-4 text-slate-500" />}
+          className="lg:col-span-2"
         >
-          {unDia ? (
-            <div className="space-y-2.5">
-              {porAgencia
-                .filter((a) => a.efect !== null)
-                .map((a) => (
-                  <HBar key={a.ag} label={a.ag} value={(a.efect || 0) * 100} max={100} color={C_GOOD} display={`${((a.efect || 0) * 100).toFixed(1)}%`} />
-                ))}
-              {porAgencia.every((a) => a.efect === null) && <p className="text-xs text-slate-400">Sin liquidaciones {isHoy ? 'hoy' : 'en el día'}.</p>}
-            </div>
-          ) : (
-            <Columns data={trendEfect} color={C_GOOD} fmt={(v) => `${Math.round(v)}%`} maxValue={100} />
-          )}
-        </Card>
-      </div>
-
-      {/* 4. Agencias + segmentos */}
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-        <Card title="Desempeño por agencia" sub={periodLabel} icon={<Building2 className="w-4 h-4 text-slate-500" />} className="xl:col-span-3">
-          <div className="overflow-x-auto -mx-1">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
-                  <th className="text-left py-2 px-1">Agencia</th>
-                  <th className="text-right py-2 px-1">Rutas</th>
-                  <th className="text-left py-2 px-1 w-40">Cumplimiento</th>
-                  <th className="text-right py-2 px-1">CJ plan</th>
-                  <th className="text-right py-2 px-1">CJ entreg.</th>
-                  <th className="text-right py-2 px-1">Efectividad</th>
-                  <th className="text-right py-2 px-1">+24 h</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {porAgencia.map((a) => (
-                  <tr key={a.ag} className="hover:bg-slate-50">
-                    <td className="py-2 px-1 font-semibold text-slate-800 whitespace-nowrap">{a.ag}</td>
-                    <td className="py-2 px-1 text-right tabular-nums">{a.rutas}</td>
-                    <td className="py-2 px-1">
-                      <div className="flex items-center gap-2" title={`${a.liq} de ${a.rutas} liquidadas`}>
-                        <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
-                          <div className="h-full rounded-full" style={{ width: `${a.cumpl * 100}%`, backgroundColor: a.cumpl >= 0.9 ? C_GOOD : a.cumpl >= 0.7 ? C_WARN : C_INFO }} />
-                        </div>
-                        <span className="w-9 text-right font-bold tabular-nums">{Math.round(a.cumpl * 100)}%</span>
-                      </div>
-                    </td>
-                    <td className="py-2 px-1 text-right tabular-nums">{n0(a.cj)}</td>
-                    <td className="py-2 px-1 text-right tabular-nums">{n0(a.ent)}</td>
-                    <td className="py-2 px-1 text-right tabular-nums">{a.efect === null ? '—' : `${(a.efect * 100).toFixed(1)}%`}</td>
-                    <td className="py-2 px-1 text-right tabular-nums font-bold" style={{ color: a.atras ? C_CRIT : undefined }}>{a.atras || '—'}</td>
-                  </tr>
-                ))}
-                {porAgencia.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="py-6 text-center text-slate-400">Sin rutas en el periodo.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          <div className="space-y-2.5">
+            <div className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500">Rutas</div>
+            <HBar label="Planificadas" value={totalPlan} max={Math.max(1, totalPlan)} color={C_INFO} display={n0(totalPlan)} valueWidth="w-24" />
+            {esLiq ? (
+              <HBar label="Liquidadas" value={stats.liquidadas} max={Math.max(1, totalPlan)} color={C_GOOD} display={`${n0(stats.liquidadas)} · ${pctTxt(stats.liquidadas, totalPlan)}`} valueWidth="w-24" />
+            ) : (
+              <>
+                <HBar label="Despachadas" value={despachadas} max={Math.max(1, totalPlan)} color={C_GOOD} display={`${n0(despachadas)} · ${pctTxt(despachadas, totalPlan)}`} valueWidth="w-24" />
+                <HBar label="Por asignar" value={stats.pendientes} max={Math.max(1, totalPlan)} color={C_WARN} display={`${n0(stats.pendientes)} · ${pctTxt(stats.pendientes, totalPlan)}`} valueWidth="w-24" />
+              </>
+            )}
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 space-y-2.5">
+            <div className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500">Cajas (CJ)</div>
+            <HBar label="Planificadas" value={stats.cajasFisicasHoy} max={Math.max(1, stats.cajasFisicasHoy)} color={C_INFO} display={n0(stats.cajasFisicasHoy)} valueWidth="w-24" />
+            {esLiq ? (
+              <>
+                <HBar label="Entregadas" value={cjEnt} max={Math.max(1, stats.cajasFisicasHoy)} color={C_GOOD} display={`${n0(cjEnt)} · ${pctTxt(cjEnt, stats.cajasFisicasHoy)}`} valueWidth="w-24" />
+                <HBar label="Devueltas" value={cjDev} max={Math.max(1, stats.cajasFisicasHoy)} color={C_SERIOUS} display={`${n0(cjDev)} · ${pctTxt(cjDev, stats.cajasFisicasHoy)}`} valueWidth="w-24" />
+              </>
+            ) : (
+              <>
+                <HBar label="Despachadas" value={cjDesp} max={Math.max(1, stats.cajasFisicasHoy)} color={C_GOOD} display={`${n0(cjDesp)} · ${pctTxt(cjDesp, stats.cajasFisicasHoy)}`} valueWidth="w-24" />
+                <HBar label="Por despachar" value={Math.max(0, stats.cajasFisicasHoy - cjDesp)} max={Math.max(1, stats.cajasFisicasHoy)} color={C_WARN} display={`${n0(Math.max(0, stats.cajasFisicasHoy - cjDesp))} · ${pctTxt(Math.max(0, stats.cajasFisicasHoy - cjDesp), stats.cajasFisicasHoy)}`} valueWidth="w-24" />
+              </>
+            )}
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-x-5 gap-y-2">
+            {estadoChips.map((x) => (
+              <div key={x.l} className="flex items-center gap-2 text-xs">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: x.c }} />
+                <span className="text-slate-500">{x.l}</span>
+                <span className="font-black text-slate-900 tabular-nums">{n0(x.v)}</span>
+              </div>
+            ))}
           </div>
         </Card>
-        <Card title="Por segmento · Rutas y CJ" sub={`${periodLabel} · % sobre el total del filtro`} icon={<Layers className="w-4 h-4 text-slate-500" />} className="xl:col-span-2">
+        {esLiq ? (
+          <Card title={unDia ? 'Efectividad por agencia' : `Efectividad · ${tendTxt}`} sub={`${cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—'} en el periodo`} icon={<PackageCheck className="w-4 h-4 text-slate-500" />}>
+            {unDia ? (
+              <div className="space-y-2.5">
+                {porAgencia
+                  .filter((a) => a.efect !== null)
+                  .map((a) => (
+                    <HBar key={a.ag} label={a.ag} value={(a.efect || 0) * 100} max={100} color={C_GOOD} display={`${((a.efect || 0) * 100).toFixed(1)}%`} />
+                  ))}
+                {porAgencia.every((a) => a.efect === null) && <p className="text-xs text-slate-400">Sin liquidaciones en el periodo.</p>}
+              </div>
+            ) : (
+              <Columns data={trendEfect} color={C_GOOD} fmt={(v) => `${Math.round(v)}%`} maxValue={100} />
+            )}
+          </Card>
+        ) : (
+          <Card title="Requiere atención" sub="Lo que hay que resolver ahora" icon={<AlertTriangle className="w-4 h-4 text-slate-500" />}>
+            <ul className="divide-y divide-slate-100 -my-1">
+              {alertas.map((a) => (
+                <li key={a.k} className="flex items-center gap-3 py-2.5" title={a.k === 'atr' && atrasadas.length ? atrasadas.slice(0, 15).map(({ r, h }) => `${r.id} · ${r.agencia} · ${Math.floor(h)} h`).join('\n') : undefined}>
+                  <span className="min-w-[2.75rem] h-9 px-2 rounded-xl flex items-center justify-center text-base font-black tabular-nums" style={{ backgroundColor: `${a.c}1A`, color: a.c }}>
+                    {n0(a.n)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-800 leading-tight">{a.t}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{a.d}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </div>
+
+      {/* 3. Planificación por día (despacho, varios días) */}
+      {!esLiq && !unDia && (
+        <Card title={`CJ planificadas ${porSemana ? 'por semana' : 'por día'}`} sub={`${n0(stats.cajasFisicasHoy)} CJ en ${n0(totalPlan)} rutas · por fecha de ruta`} icon={<Layers className="w-4 h-4 text-slate-500" />}>
+          <Columns data={trendPlan} color={C_INFO} fmt={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : n0(v))} />
+        </Card>
+      )}
+
+      {/* 4. Resumen por agencia (una sola tabla) */}
+      <Card
+        title="Resumen por agencia"
+        sub={`${periodLabel}${variasAg ? ' · % del total y de mayor a menor por CJ' : ''}`}
+        icon={<Building2 className="w-4 h-4 text-slate-500" />}
+      >
+        <div className="overflow-x-auto -mx-1">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                <th className="text-left py-2 px-2">Agencia</th>
+                <th className="text-right py-2 px-2">Rutas</th>
+                {variasAg && <th className="text-right py-2 px-2">% rutas</th>}
+                <th className="text-right py-2 px-2">CJ plan</th>
+                {variasAg && <th className="text-left py-2 px-2 w-36">% CJ</th>}
+                {esLiq ? (
+                  <>
+                    <th className="text-left py-2 px-2 w-40">Cumplimiento</th>
+                    <th className="text-right py-2 px-2">CJ entregadas</th>
+                    <th className="text-right py-2 px-2">CJ devueltas</th>
+                    <th className="text-right py-2 px-2">Efectividad</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="text-left py-2 px-2 w-40">Despachadas</th>
+                    <th className="text-right py-2 px-2">CJ despachadas</th>
+                    <th className="text-right py-2 px-2">Por asignar</th>
+                    <th className="text-right py-2 px-2">A piso</th>
+                    <th className="text-right py-2 px-2" title="Rutas sin liquidar con más de 24 h">+24 h</th>
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {resumenAg.map((a) => {
+                const pDesp = a.rutas ? a.desp / a.rutas : 0;
+                return (
+                  <tr key={a.ag} className="hover:bg-slate-50">
+                    <td className="py-2.5 px-2 font-semibold text-slate-800 whitespace-nowrap">{a.ag}</td>
+                    <td className="py-2.5 px-2 text-right tabular-nums">{n0(a.rutas)}</td>
+                    {variasAg && <td className="py-2.5 px-2 text-right tabular-nums text-slate-500">{pctTxt(a.rutas, partTotRutas)}</td>}
+                    <td className="py-2.5 px-2 text-right tabular-nums font-semibold">{n0(a.cj)}</td>
+                    {variasAg && (
+                      <td className="py-2.5 px-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
+                            <div className="h-full rounded-full" style={{ width: `${partTotCj > 0 ? (a.cj / partTotCj) * 100 : 0}%`, backgroundColor: C_INFO }} />
+                          </div>
+                          <span className="w-11 text-right font-bold tabular-nums" style={{ color: C_INFO }}>{pctTxt(a.cj, partTotCj)}</span>
+                        </div>
+                      </td>
+                    )}
+                    {esLiq ? (
+                      <>
+                        <td className="py-2.5 px-2">
+                          <div className="flex items-center gap-2" title={`${a.liq} de ${a.rutas} liquidadas`}>
+                            <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
+                              <div className="h-full rounded-full" style={{ width: `${a.cumpl * 100}%`, backgroundColor: a.cumpl >= 0.9 ? C_GOOD : a.cumpl >= 0.7 ? C_WARN : C_INFO }} />
+                            </div>
+                            <span className="w-9 text-right font-bold tabular-nums">{Math.round(a.cumpl * 100)}%</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-2 text-right tabular-nums">{n0(a.ent)}</td>
+                        <td className="py-2.5 px-2 text-right tabular-nums" style={{ color: a.dev ? C_SERIOUS : undefined }}>{a.dev ? n0(a.dev) : '—'}</td>
+                        <td className="py-2.5 px-2 text-right tabular-nums font-semibold" style={{ color: a.efect === null ? undefined : a.efect >= 0.97 ? C_GOOD : a.efect >= 0.9 ? '#b7791f' : C_SERIOUS }}>
+                          {a.efect === null ? '—' : `${(a.efect * 100).toFixed(1)}%`}
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-2.5 px-2">
+                          <div className="flex items-center gap-2" title={`${a.desp} de ${a.rutas} despachadas`}>
+                            <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
+                              <div className="h-full rounded-full" style={{ width: `${pDesp * 100}%`, backgroundColor: pDesp >= 0.9 ? C_GOOD : pDesp >= 0.6 ? C_INFO : C_WARN }} />
+                            </div>
+                            <span className="w-9 text-right font-bold tabular-nums">{Math.round(pDesp * 100)}%</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-2 text-right tabular-nums">{n0(a.cjDesp)}</td>
+                        <td className="py-2.5 px-2 text-right tabular-nums font-semibold" style={{ color: a.porAsig ? '#b7791f' : undefined }}>{a.porAsig || '—'}</td>
+                        <td className="py-2.5 px-2 text-right tabular-nums">{a.piso || '—'}</td>
+                        <td className="py-2.5 px-2 text-right tabular-nums font-bold" style={{ color: a.atras ? C_CRIT : undefined }}>{a.atras || '—'}</td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+              {resumenAg.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="py-6 text-center text-slate-400">Sin rutas en el periodo.</td>
+                </tr>
+              )}
+            </tbody>
+            {variasAg && (
+              <tfoot>
+                <tr className="border-t-2 border-slate-300 font-black text-slate-900">
+                  <td className="py-2.5 px-2">Total</td>
+                  <td className="py-2.5 px-2 text-right tabular-nums">{n0(partTotRutas)}</td>
+                  <td className="py-2.5 px-2 text-right tabular-nums">100%</td>
+                  <td className="py-2.5 px-2 text-right tabular-nums">{n0(partTotCj)}</td>
+                  <td className="py-2.5 px-2 text-right tabular-nums">100%</td>
+                  {esLiq ? (
+                    <>
+                      <td className="py-2.5 px-2 text-right tabular-nums">{pctTxt(stats.liquidadas, totalPlan)}</td>
+                      <td className="py-2.5 px-2 text-right tabular-nums">{n0(cjEnt)}</td>
+                      <td className="py-2.5 px-2 text-right tabular-nums">{n0(cjDev)}</td>
+                      <td className="py-2.5 px-2 text-right tabular-nums">{cjEnt + cjDev > 0 ? `${(efectividad * 100).toFixed(1)}%` : '—'}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="py-2.5 px-2 text-right tabular-nums">{pctTxt(despachadas, totalPlan)}</td>
+                      <td className="py-2.5 px-2 text-right tabular-nums">{n0(cjDesp)}</td>
+                      <td className="py-2.5 px-2 text-right tabular-nums">{resumenAg.reduce((s, a) => s + a.porAsig, 0) || '—'}</td>
+                      <td className="py-2.5 px-2 text-right tabular-nums">{resumenAg.reduce((s, a) => s + a.piso, 0) || '—'}</td>
+                      <td className="py-2.5 px-2 text-right tabular-nums">{resumenAg.reduce((s, a) => s + a.atras, 0) || '—'}</td>
+                    </>
+                  )}
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </Card>
+
+      {/* 5. Segmentos + rutas parciales (despacho) */}
+      {!esLiq && (
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+        <Card title="Por segmento" sub={`${periodLabel} · % del total`} icon={<Layers className="w-4 h-4 text-slate-500" />} className="xl:col-span-2">
           <div className="overflow-x-auto -mx-1">
             <table className="w-full text-xs">
               <thead>
@@ -1099,136 +1755,77 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
             </table>
           </div>
         </Card>
-      </div>
-
-      {/* 4b. Participación por agencia + rutas parciales */}
-      <div className={`grid grid-cols-1 gap-4 ${verParticipacion ? 'xl:grid-cols-5' : ''}`}>
-        {verParticipacion && (
-          <Card
-            title="Participación por agencia · Rutas y CJ"
-            sub={`${periodLabel} · % del total, de mayor a menor`}
-            icon={<Building2 className="w-4 h-4 text-slate-500" />}
-            className="xl:col-span-2"
-          >
-            <div className="overflow-x-auto -mx-1">
+        <Card
+          title="Rutas parciales"
+          sub="Entregadas en parte, con cajas aún por entregar"
+          icon={<PackageCheck className="w-4 h-4 text-slate-500" />}
+          className="xl:col-span-3"
+          right={
+            <div className="flex items-center gap-4 text-right shrink-0">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: C_GOOD }}>Entregadas</div>
+                <div className="text-lg font-black tabular-nums" style={{ color: C_GOOD }}>{n0(parcEnt)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Pendientes</div>
+                <div className="text-lg font-black tabular-nums text-amber-700">{n0(parcPend)}</div>
+              </div>
+            </div>
+          }
+        >
+          {parciales.length === 0 ? (
+            <p className="py-6 text-center text-xs text-slate-400">Sin rutas parciales pendientes en el periodo.</p>
+          ) : (
+            <div className="overflow-x-auto -mx-1 max-h-[340px] overflow-y-auto">
               <table className="w-full text-xs">
-                <thead>
+                <thead className="sticky top-0 bg-white">
                   <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                    <th className="text-left py-2 px-1">Ruta</th>
                     <th className="text-left py-2 px-1">Agencia</th>
-                    <th className="text-right py-2 px-1">Rutas</th>
-                    <th className="text-right py-2 px-1">% rutas</th>
-                    <th className="text-right py-2 px-1">CJ</th>
-                    <th className="text-left py-2 px-1 w-36">% CJ</th>
+                    <th className="text-left py-2 px-1">Tipo</th>
+                    <th className="text-right py-2 px-1">Entregadas</th>
+                    <th className="text-right py-2 px-1">Pendientes</th>
+                    <th className="text-left py-2 px-1 w-32">Avance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {participacion.map((a) => (
-                    <tr key={a.ag} className="hover:bg-slate-50">
-                      <td className="py-2 px-1 font-semibold text-slate-800 whitespace-nowrap">{a.ag}</td>
-                      <td className="py-2 px-1 text-right tabular-nums">{n0(a.rutas)}</td>
-                      <td className="py-2 px-1 text-right tabular-nums text-slate-500">{pctTxt(a.rutas, partTotRutas)}</td>
-                      <td className="py-2 px-1 text-right tabular-nums font-semibold">{n0(a.cj)}</td>
-                      <td className="py-2 px-1">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
-                            <div className="h-full rounded-full" style={{ width: `${partTotCj > 0 ? (a.cj / partTotCj) * 100 : 0}%`, backgroundColor: C_INFO }} />
+                  {parciales.map((x) => {
+                    const av = x.ent + x.pend > 0 ? x.ent / (x.ent + x.pend) : 0;
+                    return (
+                      <tr key={x.key} className="hover:bg-slate-50">
+                        <td className="py-2 px-1 font-mono font-bold text-slate-800">{x.id}</td>
+                        <td className="py-2 px-1 whitespace-nowrap">
+                          <div className="font-semibold text-slate-800">{x.ag}</div>
+                          <div className="text-[10.5px] text-slate-500">{x.seg}</div>
+                        </td>
+                        <td className="py-2 px-1">
+                          <div className="text-slate-700">{x.tipo}</div>
+                          <div className="text-[10.5px] text-slate-500">{x.estado}</div>
+                        </td>
+                        <td className="py-2 px-1 text-right tabular-nums font-semibold" style={{ color: C_GOOD }}>{n0(x.ent)}</td>
+                        <td className="py-2 px-1 text-right tabular-nums font-bold text-amber-700">{n0(x.pend)}</td>
+                        <td className="py-2 px-1">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
+                              <div className="h-full rounded-full" style={{ width: `${av * 100}%`, backgroundColor: C_GOOD }} />
+                            </div>
+                            <span className="w-9 text-right font-bold tabular-nums">{Math.round(av * 100)}%</span>
                           </div>
-                          <span className="w-11 text-right font-bold tabular-nums" style={{ color: C_INFO }}>{pctTxt(a.cj, partTotCj)}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-slate-300 font-black text-slate-900">
-                    <td className="py-2 px-1">Total</td>
-                    <td className="py-2 px-1 text-right tabular-nums">{n0(partTotRutas)}</td>
-                    <td className="py-2 px-1 text-right tabular-nums">100%</td>
-                    <td className="py-2 px-1 text-right tabular-nums">{n0(partTotCj)}</td>
-                    <td className="py-2 px-1 text-right tabular-nums">100%</td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
-          </Card>
-        )}
-        <Card
-          title="Rutas parciales · entregadas en parte"
-          sub={`${periodLabel} · rutas abiertas / revisitas y rutas partidas con cajas aún por entregar`}
-          icon={<PackageCheck className="w-4 h-4 text-slate-500" />}
-          className={verParticipacion ? 'xl:col-span-3' : ''}
-        >
-          <div className="grid grid-cols-3 gap-2 mb-3">
-            <div className="rounded-xl border border-slate-200 p-3">
-              <div className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500">Rutas parciales</div>
-              <div className="text-2xl font-black text-slate-900 tabular-nums">{n0(parciales.length)}</div>
-            </div>
-            <div className="rounded-xl border p-3" style={{ borderColor: C_GOOD, backgroundColor: '#0ca30c12' }}>
-              <div className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C_GOOD }}>CJ entregadas</div>
-              <div className="text-2xl font-black tabular-nums" style={{ color: C_GOOD }}>{n0(parcEnt)}</div>
-              <div className="text-[10.5px] text-slate-500">{pctTxt(parcEnt, parcEnt + parcPend)} del total parcial</div>
-            </div>
-            <div className="rounded-xl border p-3" style={{ borderColor: C_WARN, backgroundColor: '#fab21914' }}>
-              <div className="text-[10.5px] font-bold uppercase tracking-wide text-amber-700">CJ pendientes de entregar</div>
-              <div className="text-2xl font-black tabular-nums text-amber-700">{n0(parcPend)}</div>
-              <div className="text-[10.5px] text-slate-500">{pctTxt(parcPend, parcEnt + parcPend)} del total parcial</div>
-            </div>
-          </div>
-          <div className="overflow-x-auto -mx-1 max-h-[360px] overflow-y-auto">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-white">
-                <tr className="text-[10.5px] uppercase tracking-wide text-slate-500 border-b border-slate-200">
-                  <th className="text-left py-2 px-1">Ruta</th>
-                  <th className="text-left py-2 px-1">Agencia</th>
-                  <th className="text-left py-2 px-1">Tipo</th>
-                  <th className="text-right py-2 px-1">CJ total</th>
-                  <th className="text-right py-2 px-1">Entregadas</th>
-                  <th className="text-right py-2 px-1">Pendientes</th>
-                  <th className="text-left py-2 px-1 w-32">Avance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {parciales.map((x) => {
-                  const av = x.ent + x.pend > 0 ? x.ent / (x.ent + x.pend) : 0;
-                  return (
-                    <tr key={x.key} className="hover:bg-slate-50">
-                      <td className="py-2 px-1 font-mono font-bold text-slate-800">{x.id}</td>
-                      <td className="py-2 px-1 whitespace-nowrap">
-                        <div className="font-semibold text-slate-800">{x.ag}</div>
-                        <div className="text-[10.5px] text-slate-500">{x.seg}</div>
-                      </td>
-                      <td className="py-2 px-1">
-                        <div className="text-slate-700">{x.tipo}</div>
-                        <div className="text-[10.5px] text-slate-500">{x.estado}</div>
-                      </td>
-                      <td className="py-2 px-1 text-right tabular-nums">{n0(x.total)}</td>
-                      <td className="py-2 px-1 text-right tabular-nums font-semibold" style={{ color: C_GOOD }}>{n0(x.ent)}</td>
-                      <td className="py-2 px-1 text-right tabular-nums font-bold text-amber-700">{n0(x.pend)}</td>
-                      <td className="py-2 px-1">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: C_TRACK }}>
-                            <div className="h-full rounded-full" style={{ width: `${av * 100}%`, backgroundColor: C_GOOD }} />
-                          </div>
-                          <span className="w-9 text-right font-bold tabular-nums">{Math.round(av * 100)}%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {parciales.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="py-6 text-center text-slate-400">Sin rutas parciales pendientes en el periodo.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          )}
         </Card>
       </div>
 
-      {/* 5. Motivos de devolución y 6. Rutas con mayor devolución: solo cuando
-          se filtra MÁS de un día (con un solo día quedan en blanco y ocupan espacio). */}
-      {!unDia && (
+      )}
+
+      {/* 6. Motivos de devolución y rutas con mayor devolución (liquidación) */}
+      {esLiq && (
       <>
       <Card title="Principales motivos de devolución" sub={`Cajas devueltas · ${periodLabel} · % sobre el total del filtro`} icon={<PackageX className="w-4 h-4 text-slate-500" />}>
         <div className="overflow-x-auto -mx-1">
@@ -1289,7 +1886,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
       )}
 
       {/* 7. Camiones de apoyo (caminos angostos) */}
-      {apoyosPeriodo.total > 0 && (
+      {!esLiq && apoyosPeriodo.total > 0 && (
         <Card title="Camiones de apoyo" sub={`${periodLabel} · rutas que necesitaron un segundo camión`} icon={<TruckIcon className="w-4 h-4 text-slate-500" />}>
           <div className="overflow-x-auto -mx-1">
             <table className="w-full text-xs">
