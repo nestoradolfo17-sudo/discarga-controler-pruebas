@@ -830,17 +830,35 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
       titulo: 'Rutas y cajas por segmento',
       sub: `${periodLabel} · % sobre el total del filtro`,
       columnas: [{ t: 'Segmento' }, { t: 'Rutas', num: true }, { t: '% rutas', num: true }, { t: 'CJ', num: true }, { t: '% CJ', num: true }],
-      filas: porSegmento.map((s) => [s.seg, n0(s.rutas), pct(s.rutas, segTotRutas), n1(s.cj), pct(s.cj, segTotCj)]),
-      total: porSegmento.length ? ['Total', n0(segTotRutas), '100%', n1(segTotCj), '100%'] : undefined,
+      filas: porSegmento.map((s) => [s.seg, n0(s.rutas), pct(s.rutas, segTotRutas), n0(s.cj), pct(s.cj, segTotCj)]),
+      total: porSegmento.length ? ['Total', n0(segTotRutas), '100%', n0(segTotCj), '100%'] : undefined,
     };
     if (!esLiq) {
       const pend = Math.max(0, stats.cajasFisicasHoy - cjDesp);
+      const rgbDe = (hex: string) => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)] as [number, number, number];
+      const topAg = participacion[0];
+      const conPend = participacion.filter((x) => x.porAsig > 0).sort((x, y) => y.porAsig - x.porAsig);
+      const resumen = [
+        `Se planificaron ${n0(totalPlan)} rutas con ${n0(stats.cajasFisicasHoy)} CJ; ya salieron ${n0(despachadas)} rutas (${pct(despachadas, totalPlan)}) y ${n0(cjDesp)} CJ (${pct(cjDesp, stats.cajasFisicasHoy)}).`,
+        stats.pendientes
+          ? `Quedan ${n0(stats.pendientes)} rutas por asignar${conPend.length ? `, principalmente en ${conPend.slice(0, 3).map((x) => `${x.ag} (${x.porAsig})`).join(', ')}` : ''}; ${n0(pend)} CJ por despachar.`
+          : 'Todas las rutas planificadas ya tienen camión y tripulación asignados.',
+        ...(varias && topAg ? [`${topAg.ag} concentra la mayor carga: ${pct(topAg.cj, partTotCj)} de las CJ (${n0(topAg.cj)}) y ${pct(topAg.rutas, partTotRutas)} de las rutas.`] : []),
+        ...(salidasPorHora.length && horaPico ? [`La mayor parte de las asignaciones se hizo entre ${horaPico.label} y ${horaPico.label.replace(':00', ':59')} (${n0(horaPico.value)} rutas).`] : []),
+        `Flota en ruta: ${Math.round(utilFlota * 100)}% (${n0(truckEnRuta)} de ${n0(truckActivos.length)} camiones).${atrasadas.length ? ` Hay ${n0(atrasadas.length)} ruta(s) con más de 24 h sin cerrar.` : ''}`,
+      ];
       return {
         titulo: 'Dashboard de Despacho',
         periodo: periodLabel,
         agencia,
+        resumen,
+        barra: {
+          titulo: 'Estado de las rutas',
+          sub: `${n0(totalEstados)} rutas planificadas, cada una en su estado actual`,
+          segmentos: estadosDona.map((e) => ({ label: e.label, valor: e.value, color: rgbDe(e.color) })),
+        },
         kpis: [
-          { label: 'Rutas planificadas', valor: n0(totalPlan), sub: `${n1(stats.cajasFisicasHoy)} CJ planificadas`, tono: 'info' },
+          { label: 'Rutas planificadas', valor: n0(totalPlan), sub: `${n0(stats.cajasFisicasHoy)} CJ planificadas`, tono: 'info' },
           { label: 'Despachadas', valor: n0(despachadas), sub: `${pct(despachadas, totalPlan)} de las planificadas`, tono: 'ok' },
           { label: 'Por asignar', valor: n0(stats.pendientes), sub: `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, tono: stats.pendientes ? 'warn' : 'ok' },
           { label: 'CJ despachadas', valor: n0(cjDesp), sub: `${pct(cjDesp, stats.cajasFisicasHoy)} · ${n0(pend)} CJ por despachar`, tono: 'info' },
@@ -852,9 +870,9 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
             titulo: 'Resumen por agencia',
             sub: `${periodLabel}${varias ? ' · de mayor a menor por CJ' : ''}`,
             columnas: [{ t: 'Agencia' }, { t: 'Rutas', num: true }, { t: '% rutas', num: true }, { t: 'CJ planificadas', num: true }, { t: '% CJ', num: true }, { t: 'Despachadas', num: true }, { t: '% despachadas', num: true }, { t: 'CJ despachadas', num: true }, { t: 'Por asignar', num: true }, { t: 'A piso', num: true }],
-            filas: participacion.map((a) => [a.ag, n0(a.rutas), pct(a.rutas, partTotRutas), n1(a.cj), pct(a.cj, partTotCj), n0(a.desp), pct(a.desp, a.rutas), n1(a.cjDesp), n0(a.porAsig), n0(a.piso)]),
+            filas: participacion.map((a) => [a.ag, n0(a.rutas), pct(a.rutas, partTotRutas), n0(a.cj), pct(a.cj, partTotCj), n0(a.desp), pct(a.desp, a.rutas), n0(a.cjDesp), n0(a.porAsig), n0(a.piso)]),
             total: varias
-              ? ['Total', n0(partTotRutas), '100%', n1(partTotCj), '100%', n0(despachadas), pct(despachadas, totalPlan), n1(cjDesp), n0(participacion.reduce((s, a) => s + a.porAsig, 0)), n0(participacion.reduce((s, a) => s + a.piso, 0))]
+              ? ['Total', n0(partTotRutas), '100%', n0(partTotCj), '100%', n0(despachadas), pct(despachadas, totalPlan), n0(cjDesp), n0(participacion.reduce((s, a) => s + a.porAsig, 0)), n0(participacion.reduce((s, a) => s + a.piso, 0))]
               : undefined,
             vacio: 'Sin rutas en el periodo.',
           },
@@ -875,23 +893,23 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
                   titulo: `Planificación ${porSemana ? 'por semana' : 'por día'}`,
                   sub: `${periodLabel} · por fecha de ruta`,
                   columnas: [{ t: porSemana ? 'Semana' : 'Día' }, { t: 'CJ planificadas', num: true }],
-                  filas: trendPlan.filter((d) => d.value > 0).map((d) => [d.label, n1(d.value)]),
-                  total: ['Total', n1(stats.cajasFisicasHoy)],
+                  filas: trendPlan.filter((d) => d.value > 0).map((d) => [d.label, n0(d.value)]),
+                  total: ['Total', n0(stats.cajasFisicasHoy)],
                 },
               ]
             : []),
           {
             titulo: 'Rutas parciales · entregadas en parte',
-            sub: `${periodLabel} · ${n0(parciales.length)} ruta(s) · ${n1(parcEnt)} CJ entregadas · ${n1(parcPend)} CJ pendientes de entregar`,
+            sub: `${periodLabel} · ${n0(parciales.length)} ruta(s) · ${n0(parcEnt)} CJ entregadas · ${n0(parcPend)} CJ pendientes de entregar`,
             columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Segmento' }, { t: 'Tipo' }, { t: 'Estado' }, { t: 'CJ total', num: true }, { t: 'CJ entregadas', num: true }, { t: 'CJ pendientes', num: true }, { t: '% avance', num: true }],
-            filas: parciales.map((x) => [x.id, x.ag, x.seg, x.tipo, x.estado, n1(x.total), n1(x.ent), n1(x.pend), pct(x.ent, x.ent + x.pend)]),
-            total: parciales.length ? ['Total', '', '', '', '', n1(parciales.reduce((a, x) => a + x.total, 0)), n1(parcEnt), n1(parcPend), pct(parcEnt, parcEnt + parcPend)] : undefined,
+            filas: parciales.map((x) => [x.id, x.ag, x.seg, x.tipo, x.estado, n0(x.total), n0(x.ent), n0(x.pend), pct(x.ent, x.ent + x.pend)]),
+            total: parciales.length ? ['Total', '', '', '', '', n0(parciales.reduce((a, x) => a + x.total, 0)), n0(parcEnt), n0(parcPend), pct(parcEnt, parcEnt + parcPend)] : undefined,
           },
           {
             titulo: 'Camiones de apoyo',
             sub: periodLabel,
             columnas: [{ t: 'Agencia' }, { t: 'Rutas con apoyo', num: true }, { t: 'Camiones de apoyo', num: true }, { t: 'CJ al apoyo', num: true }, { t: '% de rutas despachadas', num: true }],
-            filas: apoyosPeriodo.filas.map((f) => [f.ag, n0(f.rutas), n0(f.apoyos), f.cajas ? n1(f.cajas) : '—', pct(f.rutas, f.despachadas)]),
+            filas: apoyosPeriodo.filas.map((f) => [f.ag, n0(f.rutas), n0(f.apoyos), f.cajas ? n0(f.cajas) : '—', pct(f.rutas, f.despachadas)]),
           },
         ],
         notas: [
