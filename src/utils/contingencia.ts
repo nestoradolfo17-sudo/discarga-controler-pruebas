@@ -863,7 +863,7 @@ export function buildContingenciaPlan(input: PlanInput): ContPlan {
     if (usando.length) {
       const ids = Array.from(new Set(usando.map((r) => String(r.id)))).join(', ');
       if (t.estado !== 'En Ruta' || t.rutaActual !== ids || t.motivoNoAsignado)
-        nt = { ...t, estado: 'En Ruta', rutaActual: ids, motivoNoAsignado: null, motivoNoAsignadoFecha: null, remuneraNoAsignado: null };
+        nt = { ...t, estado: 'En Ruta', rutaActual: ids, motivoNoAsignado: null, motivoNoAsignadoFecha: null, remuneraNoAsignado: null, comentarioNoAsignado: null };
     } else if (t.estado === 'En Ruta') nt = { ...t, estado: 'Disponible', rutaActual: null };
     if (nt !== t) changedTrucks.push(nt);
   });
@@ -875,7 +875,7 @@ export function buildContingenciaPlan(input: PlanInput): ContPlan {
     let ns: Staff = s;
     if (enRutaNombres.has(n)) {
       if (s.estado !== 'En Ruta' || s.motivoNoAsignado)
-        ns = { ...s, estado: 'En Ruta', motivoNoAsignado: null, motivoNoAsignadoFecha: null, remuneraNoAsignado: null };
+        ns = { ...s, estado: 'En Ruta', motivoNoAsignado: null, motivoNoAsignadoFecha: null, remuneraNoAsignado: null, comentarioNoAsignado: null };
     } else if (s.estado === 'En Ruta') ns = { ...s, estado: 'Disponible' };
     if (ns !== s) changedStaff.push(ns);
   });
