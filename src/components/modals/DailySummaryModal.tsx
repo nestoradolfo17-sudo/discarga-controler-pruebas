@@ -985,12 +985,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         id: t.idCamion || t.id,
         placa: t.placa,
         motivo: t.motivoNoAsignado || '-',
+        comentario: t.comentarioNoAsignado || '',
       })),
       staff: unassignedStaff.map((s) => ({
         id: s.codigoCorto || s.codigo || s.id,
         nombre: s.nombre,
         puesto: s.puesto,
         motivo: s.motivoNoAsignado || '-',
+        comentario: s.comentarioNoAsignado || '',
       })),
       trucksByReason: unassignedTrucksByReason,
       staffByReason: unassignedStaffByReason,
@@ -1138,14 +1140,14 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
         {
           titulo: 'Camiones no asignados',
           sub: 'Con motivo registrado',
-          columnas: [{ t: 'ID camión' }, { t: 'Placa' }, { t: 'Agencia' }, { t: 'Motivo' }],
-          filas: unassignedTrucks.map((t) => [String(t.idCamion || '-'), t.placa, t.agencia || '-', String(t.motivoNoAsignado || '-')]),
+          columnas: [{ t: 'ID camión' }, { t: 'Placa' }, { t: 'Agencia' }, { t: 'Motivo' }, { t: 'Comentario' }],
+          filas: unassignedTrucks.map((t) => [String(t.idCamion || '-'), t.placa, t.agencia || '-', String(t.motivoNoAsignado || '-'), t.comentarioNoAsignado || '-']),
         },
         {
           titulo: 'Personal no asignado',
           sub: 'Con motivo registrado',
-          columnas: [{ t: 'Código' }, { t: 'Nombre' }, { t: 'Puesto' }, { t: 'Agencia' }, { t: 'Motivo' }],
-          filas: unassignedStaff.map((x) => [x.codigoCorto || x.codigo || '-', x.nombre, String(x.puesto || '-'), x.agencia || '-', String(x.motivoNoAsignado || '-')]),
+          columnas: [{ t: 'Código' }, { t: 'Nombre' }, { t: 'Puesto' }, { t: 'Agencia' }, { t: 'Motivo' }, { t: 'Comentario' }],
+          filas: unassignedStaff.map((x) => [x.codigoCorto || x.codigo || '-', x.nombre, String(x.puesto || '-'), x.agencia || '-', String(x.motivoNoAsignado || '-'), x.comentarioNoAsignado || '-']),
         },
       ],
       notas: ['Recargas programadas: rutas activas asignadas como 2° viaje.'],
@@ -3119,7 +3121,10 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                               {t.idCamion ? `#${t.idCamion} — ` : ''}
                               {t.placa}
                             </span>
-                            <span className="text-amber-700 font-medium">{t.motivoNoAsignado}</span>
+                            <span className="text-right">
+                              <span className="text-amber-700 font-medium">{t.motivoNoAsignado}</span>
+                              {t.comentarioNoAsignado && <span className="block text-[10.5px] text-slate-500 italic">{t.comentarioNoAsignado}</span>}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -3160,7 +3165,10 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
                             className="flex items-center justify-between text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5"
                           >
                             <span className="font-semibold text-slate-700">{s.nombre}</span>
-                            <span className="text-amber-700 font-medium">{s.motivoNoAsignado}</span>
+                            <span className="text-right">
+                              <span className="text-amber-700 font-medium">{s.motivoNoAsignado}</span>
+                              {s.comentarioNoAsignado && <span className="block text-[10.5px] text-slate-500 italic">{s.comentarioNoAsignado}</span>}
+                            </span>
                           </li>
                         ))}
                       </ul>
