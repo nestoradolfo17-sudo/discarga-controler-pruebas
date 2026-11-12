@@ -400,74 +400,8 @@ const Spark: React.FC<{ valores: number[]; color: string }> = ({ valores, color 
   );
 };
 
-// Columnas (rutas asignadas por hora) + líneas de % acumulado (periodo y comparación).
+// Datos por horario de asignación.
 type BarraHora = { key: string; label: string; n: number; pct: number | null; prevPct: number | null; titulo: string; lineas: Lineas };
-const ComboHoras: React.FC<{ data: BarraHora[]; nombrePrev: string; color?: string }> = ({ data, nombrePrev, color = PD.azul }) => {
-  const [hover, setHover] = useState<number | null>(null);
-  const max = Math.max(1, ...data.map((d) => d.n));
-  const N = data.length;
-  const X = (i: number) => ((i + 0.5) / N) * 100;
-  const Y = (p: number) => 100 - Math.min(100, Math.max(0, p));
-  const linea = (k: 'pct' | 'prevPct') =>
-    data
-      .map((d, i) => (d[k] == null ? null : `${X(i).toFixed(2)},${Y(d[k] as number).toFixed(2)}`))
-      .filter(Boolean)
-      .join(' ');
-  const lHoy = linea('pct');
-  const lPrev = linea('prevPct');
-  return (
-    <div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mb-2">
-        <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: color }} />Rutas asignadas en la hora</span>
-        <span className="inline-flex items-center gap-1.5"><span className="w-4 h-[3px] rounded" style={{ backgroundColor: PD.marino }} />% acumulado del periodo</span>
-        {lPrev && <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed" style={{ borderColor: PD.cielo }} />{nombrePrev}</span>}
-      </div>
-      <div className="relative h-48 pr-9">
-        <div className="absolute right-0 top-0 bottom-0 flex flex-col justify-between text-[10px] text-slate-400 tabular-nums">
-          <span>100%</span>
-          <span>50%</span>
-          <span>0%</span>
-        </div>
-        <div className="relative h-full border-b border-slate-200">
-          <div className="absolute inset-x-0 top-0 border-t border-dashed border-slate-100" />
-          <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-slate-100" />
-          <div className="absolute inset-0 flex items-end">
-            {data.map((d, i) => (
-              <div
-                key={d.key}
-                className={`relative flex-1 h-full flex flex-col items-center justify-end rounded-md cursor-default outline-none ${hover === i ? 'bg-slate-50' : ''}`}
-                tabIndex={0}
-                onMouseEnter={() => setHover(i)}
-                onMouseLeave={() => setHover(null)}
-                onFocus={() => setHover(i)}
-                onBlur={() => setHover(null)}
-              >
-                <span className="text-[10px] font-bold text-slate-600 mb-0.5 tabular-nums">{d.n > 0 ? n0(d.n) : ''}</span>
-                <div className="w-[58%] rounded-t-[4px]" style={{ height: `${d.n > 0 ? Math.max(3, (d.n / max) * 78) : 0}%`, backgroundColor: hover === i ? PD.marino : color }} />
-                {hover === i && (
-                  <TipBox
-                    titulo={d.titulo}
-                    lineas={d.lineas}
-                    className={`top-0 ${i < 2 ? 'left-0' : i > N - 3 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" aria-hidden="true">
-            {lPrev && <polyline points={lPrev} fill="none" stroke={PD.cielo} strokeWidth="2.25" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />}
-            {lHoy && <polyline points={lHoy} fill="none" stroke={PD.marino} strokeWidth="2.75" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />}
-          </svg>
-        </div>
-      </div>
-      <div className="flex pr-9 mt-1">
-        {data.map((d) => (
-          <span key={d.key} className="flex-1 text-center text-[10px] text-slate-500 tabular-nums truncate">{d.label}</span>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 // Columnas apiladas por día: despachadas (abajo) y pendientes (arriba).
 type ColDia = { key: string; label: string; total: number; hecho: number; titulo: string; lineas: Lineas; porAsig?: number };
@@ -1553,6 +1487,7 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   const [estadoActivo, setEstadoActivo] = useState<string | null>(null);
   const [segActivo, setSegActivo] = useState<string | null>(null);
   const [medidaAg, setMedidaAg] = useState<'cj' | 'rutas'>('cj');
+  const [horaActiva, setHoraActiva] = useState<string | null>(null);
   const masAtrasadas = resumenAg
     .filter((a) => a.rutas > 0 && a.desp < a.rutas)
     .sort((a, b) => a.desp / a.rutas - b.desp / b.rutas || b.rutas - a.rutas)
@@ -1580,6 +1515,18 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
       ? barrasHora.filter((b) => b.pct != null).map((b) => Math.max(0, totalPlan - ((b.pct as number) / 100) * totalPlan))
       : colsDia.map((c) => c.porAsig || 0);
     const cjEnRuta = porEstado.tran.cj + porEstado.abierta.cj;
+    // Pie de hora de asignación: solo los horarios con rutas, en orden de hora.
+    const coloresHora = [PD.marino, PD.azul, PD.cielo, PD.verde, PD.violeta, PD.oro, PD.naranja, PD.rojo, '#64748b', '#0f766e', '#a16207', '#7c3aed'];
+    const horasPie = barrasHora
+      .filter((b) => b.n > 0)
+      .map((b, i) => {
+        const h = Number(b.key);
+        const cj = asignHoras.act.mins.filter((x) => asignHoras.hora(x.m) === h).reduce((a, x) => a + cajasPlan(x.r), 0);
+        const rango = h < 0 ? 'Día anterior' : h >= 24 ? 'Después del día de la ruta' : `${b.label} – ${b.label.replace(':00', ':59')}`;
+        return { key: b.key, label: b.label, rango, n: b.n, cj, color: coloresHora[i % coloresHora.length], titulo: b.titulo, lineas: b.lineas };
+      });
+    const totAsigHora = horasPie.reduce((a, h) => a + h.n, 0);
+    const horaAct = horasPie.find((h) => h.label === horaActiva);
     const truckDisp = trucks.filter((t) => t.estado === 'Disponible').length;
     const staffDisp = staff.filter((s) => s.estado === 'Disponible').length;
     const sinHoraAct = asignHoras.act.sinHora;
@@ -1924,29 +1871,16 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
           </Card>
         </div>
 
-        {/* Hora de asignación + planificación por día */}
-        <div className={`grid grid-cols-1 gap-4 ${!unDia ? 'lg:grid-cols-2' : ''}`}>
+        {/* CJ por día (varios días) */}
+        {!unDia && (
           <Card
-            title="Hora de asignación"
-            sub={
-              barrasHora.length
-                ? `Rutas según la hora en que se les asignó camión y tripulación${unDia ? '' : ` · suma de los ${n0(periodDays.length)} días`}${horaPico ? ` · pico ${horaPico.label} (${n0(horaPico.value)} rutas)` : ''}${sinHoraAct ? ` · ${n0(sinHoraAct)} despachada(s) sin hora registrada` : ''}`
-                : 'Aún no hay rutas asignadas en el periodo'
-            }
-            icon={<Clock className="w-4 h-4 text-slate-500" />}
+            title={`CJ ${porSemana ? 'por semana' : 'por día'}`}
+            sub={`${n0(stats.cajasFisicasHoy)} CJ planificadas en ${n0(totalPlan)} rutas · ${n0(cjDesp)} despachadas (${pctTxt(cjDesp, stats.cajasFisicasHoy)}) · por fecha de ruta`}
+            icon={<Layers className="w-4 h-4 text-slate-500" />}
           >
-            {barrasHora.length ? <ComboHoras data={barrasHora} nombrePrev={nombrePrev} /> : <p className="py-6 text-center text-xs text-slate-400">Sin asignaciones registradas en el periodo.</p>}
+            <ColApiladas data={colsDia} fmt={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : n0(v))} />
           </Card>
-          {!unDia && (
-            <Card
-              title={`CJ ${porSemana ? 'por semana' : 'por día'}`}
-              sub={`${n0(stats.cajasFisicasHoy)} CJ planificadas en ${n0(totalPlan)} rutas · ${n0(cjDesp)} despachadas (${pctTxt(cjDesp, stats.cajasFisicasHoy)}) · por fecha de ruta`}
-              icon={<Layers className="w-4 h-4 text-slate-500" />}
-            >
-              <ColApiladas data={colsDia} fmt={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : n0(v))} />
-            </Card>
-          )}
-        </div>
+        )}
 
         {/* Asignación por agencia y hora */}
         {variasAg && mapaAg.lista.length > 0 && asignHoras.act.mins.length > 0 && (
@@ -2297,6 +2231,87 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
             </Card>
           )}
         </div>
+
+        {/* Hora de asignación (al final): % de las rutas asignadas en cada horario */}
+        <Card
+          title="Hora de asignación"
+          sub={
+            horasPie.length
+              ? `% de las rutas asignadas en cada horario${unDia ? '' : ` · suma de los ${n0(periodDays.length)} días`}${horaPico ? ` · pico ${horaPico.label} (${n0(horaPico.value)} rutas)` : ''}${sinHoraAct ? ` · ${n0(sinHoraAct)} despachada(s) sin hora registrada` : ''}`
+              : 'Aún no hay rutas asignadas en el periodo'
+          }
+          icon={<Clock className="w-4 h-4 text-slate-500" />}
+        >
+          {horasPie.length === 0 ? (
+            <p className="py-6 text-center text-xs text-slate-400">Sin asignaciones registradas en el periodo.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-5 md:gap-8 items-center">
+              <div className="flex justify-center">
+                <Dona
+                  size={190}
+                  grosor={26}
+                  unidad=" rutas"
+                  segs={horasPie.map((h) => ({ label: h.label, value: h.n, color: h.color }))}
+                  activo={horaActiva}
+                  onActivo={setHoraActiva}
+                  centro={
+                    horaAct ? (
+                      <>
+                        <div className="text-2xl font-black text-slate-900 leading-none tabular-nums">{pctTxt(horaAct.n, totAsigHora)}</div>
+                        <div className="text-[11px] font-semibold text-slate-700 mt-1">{horaAct.label}</div>
+                        <div className="text-[10.5px] text-slate-500">{n0(horaAct.n)} rutas</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-3xl font-black text-slate-900 leading-none tabular-nums">{n0(totAsigHora)}</div>
+                        <div className="text-[11px] text-slate-500 mt-1">rutas asignadas</div>
+                      </>
+                    )
+                  }
+                />
+              </div>
+              <div className="min-w-0">
+                <div className="grid gap-2 px-1.5 pb-2 border-b border-slate-200 text-[10.5px] font-bold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: 'minmax(0, 1fr) 2.75rem 3.5rem 4rem' }}>
+                  <span>Horario</span>
+                  <span className="text-right">Rutas</span>
+                  <span className="text-right">%</span>
+                  <span className="text-right">CJ</span>
+                </div>
+                {horasPie.map((h) => (
+                  <ConTip
+                    key={h.key}
+                    titulo={h.titulo}
+                    lineas={[['% de las asignadas', pctTxt(h.n, totAsigHora)], ...h.lineas]}
+                    alinear="der"
+                    lado="arriba"
+                    className="cursor-default"
+                  >
+                    <div
+                      className={`grid gap-2 items-center px-1.5 py-2 text-xs border-b border-slate-100 rounded-md transition-opacity ${horaActiva === h.label ? 'bg-slate-50' : ''}`}
+                      style={{ gridTemplateColumns: 'minmax(0, 1fr) 2.75rem 3.5rem 4rem', opacity: horaActiva && horaActiva !== h.label ? 0.5 : 1 }}
+                      onMouseEnter={() => setHoraActiva(h.label)}
+                      onMouseLeave={() => setHoraActiva(null)}
+                    >
+                      <span className="flex items-center gap-2 font-semibold text-slate-800 truncate">
+                        <span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ backgroundColor: h.color }} />
+                        {h.rango}
+                      </span>
+                      <span className="text-right font-bold tabular-nums">{n0(h.n)}</span>
+                      <span className="text-right tabular-nums">{pctTxt(h.n, totAsigHora)}</span>
+                      <span className="text-right tabular-nums text-slate-600">{n0(h.cj)}</span>
+                    </div>
+                  </ConTip>
+                ))}
+                <div className="grid gap-2 px-1.5 py-2 text-xs font-black text-slate-900 border-t-2 border-slate-300" style={{ gridTemplateColumns: 'minmax(0, 1fr) 2.75rem 3.5rem 4rem' }}>
+                  <span>Total</span>
+                  <span className="text-right tabular-nums">{n0(totAsigHora)}</span>
+                  <span className="text-right tabular-nums">100%</span>
+                  <span className="text-right tabular-nums">{n0(horasPie.reduce((a, h) => a + h.cj, 0))}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
       </div>
     );
   }
