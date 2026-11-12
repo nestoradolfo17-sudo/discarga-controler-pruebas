@@ -409,31 +409,85 @@ const ColApiladas: React.FC<{ data: ColDia[]; fmt?: (v: number) => string }> = (
   const [hover, setHover] = useState<number | null>(null);
   const max = Math.max(1, ...data.map((d) => d.total));
   const N = data.length;
+  // Línea acumulada de CJ planificadas (eje derecho): llega hasta el último día
+  // con rutas, para no dibujar días que aún no ocurren.
+  let suma = 0, sumaD = 0;
+  const acum = data.map((d) => ((suma += d.total), (sumaD += d.hecho), { cj: suma, desp: sumaD }));
+  let ultimo = -1;
+  data.forEach((d, i) => {
+    if (d.total > 0) ultimo = i;
+  });
+  const totalAcum = ultimo >= 0 ? acum[ultimo].cj : 0;
+  const X = (i: number) => ((i + 0.5) / N) * 100;
+  const Y = (v: number) => 100 - (totalAcum ? (v / totalAcum) * 92 : 0);
+  const puntos = ultimo >= 0 ? acum.slice(0, ultimo + 1).map((a, i) => `${X(i).toFixed(2)},${Y(a.cj).toFixed(2)}`).join(' ') : '';
+  const corto = (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : n0(v));
   return (
     <div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mb-2">
         <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: PD.azul }} />Despachadas</span>
         <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: '#f1d58c' }} />Por despachar</span>
+        {totalAcum > 0 && (
+          <span className="inline-flex items-center gap-1.5"><span className="w-4 h-[3px] rounded" style={{ backgroundColor: PD.verde }} />CJ acumuladas del periodo (eje derecho)</span>
+        )}
       </div>
-      <div className="flex items-end gap-1 h-48 border-b border-slate-200">
-        {data.map((d, i) => (
-          <div
-            key={d.key}
-            className={`relative flex-1 min-w-0 h-full flex flex-col items-center justify-end rounded-md cursor-default outline-none ${hover === i ? 'bg-slate-50' : ''}`}
-            tabIndex={0}
-            onMouseEnter={() => setHover(i)}
-            onMouseLeave={() => setHover(null)}
-            onFocus={() => setHover(i)}
-            onBlur={() => setHover(null)}
-          >
-            <span className="text-[9.5px] font-bold text-slate-600 mb-0.5 tabular-nums">{d.total > 0 && N <= 16 ? fmt(d.total) : ''}</span>
-            <div className="w-[64%] rounded-t-[4px]" style={{ height: `${(Math.max(0, d.total - d.hecho) / max) * 82}%`, backgroundColor: '#f1d58c' }} />
-            <div className={`w-[64%] ${d.total - d.hecho > 0 ? '' : 'rounded-t-[4px]'}`} style={{ height: `${(d.hecho / max) * 82}%`, backgroundColor: hover === i ? PD.marino : PD.azul }} />
-            {hover === i && <TipBox titulo={d.titulo} lineas={d.lineas} className={`top-0 ${i < 2 ? 'left-0' : i > N - 3 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`} />}
+      <div className="relative h-48 pr-10">
+        {totalAcum > 0 && (
+          <div className="absolute right-0 flex flex-col justify-between text-[10px] leading-3 tabular-nums text-right w-9" style={{ color: PD.verde, top: 'calc(8% - 6px)', bottom: -6 }}>
+            <span>{corto(totalAcum)}</span>
+            <span>{corto(totalAcum / 2)}</span>
+            <span>0</span>
           </div>
-        ))}
+        )}
+        <div className="relative h-full border-b border-slate-200">
+          <div className="absolute inset-0 flex items-end">
+            {data.map((d, i) => (
+              <div
+                key={d.key}
+                className={`relative flex-1 min-w-0 h-full flex flex-col items-center justify-end rounded-md cursor-default outline-none ${hover === i ? 'bg-slate-50' : ''}`}
+                tabIndex={0}
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover(null)}
+                onFocus={() => setHover(i)}
+                onBlur={() => setHover(null)}
+              >
+                <span className="text-[9.5px] font-bold text-slate-600 mb-0.5 tabular-nums">{d.total > 0 && N <= 16 ? fmt(d.total) : ''}</span>
+                <div className="w-[64%] rounded-t-[4px]" style={{ height: `${(Math.max(0, d.total - d.hecho) / max) * 78}%`, backgroundColor: '#f1d58c' }} />
+                <div className={`w-[64%] ${d.total - d.hecho > 0 ? '' : 'rounded-t-[4px]'}`} style={{ height: `${(d.hecho / max) * 78}%`, backgroundColor: hover === i ? PD.marino : PD.azul }} />
+                {hover === i && (
+                  <TipBox
+                    titulo={d.titulo}
+                    lineas={[
+                      ...d.lineas,
+                      ...(i <= ultimo
+                        ? ([
+                            ['CJ acumuladas', `${n0(acum[i].cj)} (${pctTxt(acum[i].cj, totalAcum)} del periodo)`],
+                            ['Despachadas acumuladas', n0(acum[i].desp)],
+                          ] as Lineas)
+                        : []),
+                    ]}
+                    className={`top-0 ${i < 2 ? 'left-0' : i > N - 3 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          {puntos && (
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" aria-hidden="true">
+              <polyline points={puntos} fill="none" stroke={PD.verde} strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+            </svg>
+          )}
+          {puntos &&
+            acum.slice(0, ultimo + 1).map((a, i) => (
+              <span
+                key={i}
+                className="absolute w-2 h-2 -ml-1 -mt-1 rounded-full bg-white pointer-events-none"
+                style={{ left: `${X(i)}%`, top: `${Y(a.cj)}%`, border: `2px solid ${PD.verde}`, transform: hover === i ? 'scale(1.5)' : undefined }}
+              />
+            ))}
+        </div>
       </div>
-      <div className="flex gap-1 mt-1">
+      <div className="flex pr-10 mt-1">
         {data.map((d, i) => (
           <span key={d.key} className="flex-1 min-w-0 text-center text-[10px] text-slate-500 tabular-nums truncate">{N > 16 && i % 2 ? '' : d.label}</span>
         ))}
