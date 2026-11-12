@@ -1589,10 +1589,6 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
     const segDona = segDespacho.map((s, i) => ({ label: s.seg, value: s.cj, color: segColores[i % segColores.length] }));
     const segAct = segDespacho.find((s) => s.seg === segActivo);
     const maxAg = Math.max(1, ...resumenAg.map((a) => (medidaAg === 'cj' ? a.cj : a.rutas)));
-    const tonoCelda = (n: number) => {
-      const f = n / mapaAg.max;
-      return n === 0 ? PD.pista : f < 0.25 ? PD.cieloSuave : f < 0.5 ? '#8fb3e6' : f < 0.75 ? PD.azul : PD.marino;
-    };
     const flotaPartes = (lista: { l: string; n: number; c: string; txt: string; extra: Lineas }[], nombre: string) => {
       const tot = lista.reduce((a, x) => a + x.n, 0);
       return { nombre, tot, partes: lista.filter((x) => x.n > 0).map((x) => ({ ...x, p: tot ? x.n / tot : 0 })) };
@@ -1933,65 +1929,6 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
             icon={<Layers className="w-4 h-4 text-slate-500" />}
           >
             <ColApiladas data={colsDia} fmt={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : n0(v))} />
-          </Card>
-        )}
-
-        {/* Asignación por agencia y hora */}
-        {variasAg && mapaAg.lista.length > 0 && asignHoras.act.mins.length > 0 && (
-          <Card
-            title="Asignación por agencia y hora"
-            sub={`Rutas asignadas en cada hora${unDia ? '' : ` (suma de los ${n0(periodDays.length)} días)`} · más oscuro = más rutas · ordenadas de menor a mayor avance`}
-            icon={<Clock className="w-4 h-4 text-slate-500" />}
-            right={
-              <div className="hidden sm:flex items-center gap-1 text-[10px] text-slate-500 shrink-0">
-                <span>0</span>
-                {[PD.pista, PD.cieloSuave, '#8fb3e6', PD.azul, PD.marino].map((c) => (
-                  <span key={c} className="w-4 h-2.5 rounded-[3px]" style={{ backgroundColor: c }} />
-                ))}
-                <span>más</span>
-              </div>
-            }
-          >
-            <div className="space-y-1">
-              <div className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: `minmax(4.5rem, 9rem) repeat(${mapaAg.lista.length}, minmax(0, 1fr)) 2.75rem` }}>
-                <span>Agencia</span>
-                {mapaAg.lista.map((h) => (
-                  <span key={h} className="text-center truncate">{etiquetaHora(h).replace(':00', '')}</span>
-                ))}
-                <span className="text-right">Avance</span>
-              </div>
-              {mapaAg.filas.map((f) => {
-                const p = f.rutas ? f.desp / f.rutas : 0;
-                const N = mapaAg.lista.length;
-                return (
-                  <div key={f.ag} className="grid gap-1 items-center" style={{ gridTemplateColumns: `minmax(4.5rem, 9rem) repeat(${N}, minmax(0, 1fr)) 2.75rem` }}>
-                    <span className="text-xs font-semibold text-slate-800 truncate">{f.ag}</span>
-                    {f.celdas.map((c, i) => (
-                      <ConTip
-                        key={c.h}
-                        titulo={`${f.ag} · ${c.h < 0 ? 'asignadas el día anterior' : c.h >= 24 ? 'asignadas después' : `${etiquetaHora(c.h)} – ${etiquetaHora(c.h).replace(':00', ':59')}`}`}
-                        alinear={i > N / 2 ? 'der' : 'izq'}
-                        lineas={[
-                          ['Rutas asignadas', n0(c.n)],
-                          ['CJ de esas rutas', n0(c.cj)],
-                          ['Acumulado de la agencia', `${n0(c.acum)} de ${n0(f.rutas)} (${pctTxt(c.acum, f.rutas)})`],
-                          ['Todas las agencias en esa hora', `${n0(mapaAg.totHora.get(c.h) || 0)} rutas`],
-                        ]}
-                        className="cursor-default"
-                      >
-                        <div
-                          className="h-7 rounded-md flex items-center justify-center text-[10.5px] font-bold tabular-nums hover:ring-2 hover:ring-slate-800 hover:ring-inset"
-                          style={{ backgroundColor: tonoCelda(c.n), color: c.n / mapaAg.max >= 0.5 ? '#fff' : '#0f172a' }}
-                        >
-                          {c.n || ''}
-                        </div>
-                      </ConTip>
-                    ))}
-                    <span className="text-right text-xs font-bold tabular-nums" style={{ color: p >= 0.9 ? PD.verde : p >= 0.6 ? PD.oroTexto : PD.rojo }}>{Math.round(p * 100)}%</span>
-                  </div>
-                );
-              })}
-            </div>
           </Card>
         )}
 
