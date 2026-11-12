@@ -2777,6 +2777,7 @@ export default function App() {
             motivoNoAsignado: null,
             motivoNoAsignadoFecha: null,
             remuneraNoAsignado: null,
+            comentarioNoAsignado: null,
           };
         }
         return t;
@@ -2800,6 +2801,7 @@ export default function App() {
             motivoNoAsignado: null,
             motivoNoAsignadoFecha: null,
             remuneraNoAsignado: null,
+            comentarioNoAsignado: null,
           };
         }
         return st;
@@ -4398,6 +4400,17 @@ export default function App() {
     }
   };
 
+  // Comentario opcional del Fin de Asignación (no es obligatorio). Se guarda
+  // junto con el motivo en el camión / la persona.
+  const handleSetTruckComment = (truckId: string, comentario: string) => {
+    const txt = comentario.trim().slice(0, 300) || null;
+    setTrucks((prev) => prev.map((t) => (t.id === truckId && (t.comentarioNoAsignado || null) !== txt ? { ...t, comentarioNoAsignado: txt } : t)));
+  };
+  const handleSetStaffComment = (staffId: string, comentario: string) => {
+    const txt = comentario.trim().slice(0, 300) || null;
+    setStaff((prev) => prev.map((s) => (s.id === staffId && (s.comentarioNoAsignado || null) !== txt ? { ...s, comentarioNoAsignado: txt } : s)));
+  };
+
   // Corrección de seguridad crítica: "Restablecer Datos de Ejemplo" reemplaza
   // TODO el contenido de Rutas, Camiones y Personal por los datos de ejemplo
   // con los que arranca la app en modo local — algo razonable únicamente
@@ -5469,6 +5482,8 @@ export default function App() {
         routes={rutasFinAsignacion}
         onSetTruckReason={handleSetTruckReason}
         onSetStaffReason={handleSetStaffReason}
+        onSetTruckComment={handleSetTruckComment}
+        onSetStaffComment={handleSetStaffComment}
         summaryRoutes={routes.filter((r) => canViewAgency(r.agencia) && enAgenciaSel(r.agencia))}
         // Resumen de Fin de Asignación con la fecha del filtro del Tablero (o hoy).
         fechaOperacion={boardFecha || formatDateToGuatemala(new Date())}
