@@ -238,9 +238,19 @@ export const PD = {
 };
 
 // Anillo (dona) con 2 px de separación entre tramos y el total al centro.
-const Dona: React.FC<{ segs: { label: string; value: number; color: string }[]; size?: number; grosor?: number; centro: React.ReactNode; unidad?: string }> = ({ segs, size = 168, grosor = 22, centro, unidad = '' }) => {
+// Con `onActivo` el tramo bajo el cursor se resalta y avisa cuál es (para
+// mostrar su detalle al centro y en la tabla).
+const Dona: React.FC<{
+  segs: { label: string; value: number; color: string }[];
+  size?: number;
+  grosor?: number;
+  centro: React.ReactNode;
+  unidad?: string;
+  activo?: string | null;
+  onActivo?: (label: string | null) => void;
+}> = ({ segs, size = 168, grosor = 22, centro, unidad = '', activo = null, onActivo }) => {
   const total = segs.reduce((a, s) => a + s.value, 0);
-  const r = (size - grosor) / 2;
+  const r = (size - grosor - 8) / 2;
   const circ = 2 * Math.PI * r;
   const vis = segs.filter((s) => s.value > 0);
   const gap = vis.length > 1 ? 2 : 0;
@@ -263,13 +273,16 @@ const Dona: React.FC<{ segs: { label: string; value: number; color: string }[]; 
                 r={r}
                 fill="none"
                 stroke={s.color}
-                strokeWidth={grosor}
+                strokeWidth={activo === s.label ? grosor + 7 : grosor}
                 strokeDasharray={`${dash} ${circ - dash}`}
                 strokeDashoffset={offset}
                 transform={`rotate(-90 ${size / 2} ${size / 2})`}
-                className="hover:opacity-80 transition-opacity"
+                style={{ opacity: activo && activo !== s.label ? 0.4 : 1, transition: 'opacity .15s, stroke-width .15s', cursor: onActivo ? 'pointer' : undefined }}
+                onMouseEnter={onActivo ? () => onActivo(s.label) : undefined}
+                onMouseLeave={onActivo ? () => onActivo(null) : undefined}
+                onClick={onActivo ? () => onActivo(activo === s.label ? null : s.label) : undefined}
               >
-                <title>{`${s.label}: ${n0(s.value)}${unidad} (${pctTxt(s.value, total)})`}</title>
+                {!onActivo && <title>{`${s.label}: ${n0(s.value)}${unidad} (${pctTxt(s.value, total)})`}</title>}
               </circle>
             );
           })}
@@ -279,11 +292,11 @@ const Dona: React.FC<{ segs: { label: string; value: number; color: string }[]; 
   );
 };
 // Fila de avance: la pista es lo planificado y el relleno lo despachado.
-const AvanceFila: React.FC<{ label: string; sub?: string; plan: number; hecho: number; maxPlan: number; color?: string }> = ({ label, sub, plan, hecho, maxPlan, color = PD.azul }) => {
+const AvanceFila: React.FC<{ label: string; sub?: string; plan: number; hecho: number; maxPlan: number; color?: string; nativo?: boolean }> = ({ label, sub, plan, hecho, maxPlan, color = PD.azul, nativo = true }) => {
   const anchoPista = maxPlan > 0 ? Math.max(6, (plan / maxPlan) * 100) : 0;
   const p = plan > 0 ? hecho / plan : 0;
   return (
-    <div className="grid items-center gap-3 py-1.5" style={{ gridTemplateColumns: 'minmax(0, 11rem) 1fr auto' }} title={`${label}: ${n0(hecho)} de ${n0(plan)} CJ despachadas (${pctTxt(hecho, plan)})`}>
+    <div className="grid items-center gap-3 py-1.5" style={{ gridTemplateColumns: 'minmax(0, 11rem) 1fr auto' }} title={nativo ? `${label}: ${n0(hecho)} de ${n0(plan)} CJ despachadas (${pctTxt(hecho, plan)})` : undefined}>
       <div className="min-w-0">
         <div className="text-xs font-semibold text-slate-800 truncate">{label}</div>
         {sub && <div className="text-[10.5px] text-slate-400 truncate">{sub}</div>}
@@ -325,6 +338,242 @@ const Anillo: React.FC<{ p: number; size?: number }> = ({ p, size = 84 }) => {
     </svg>
   );
 };
+
+// ---------- Detalle al pasar el cursor (o al tocar en tablet/celular) ----------
+type Lineas = [string, string][];
+const TipBox: React.FC<{ titulo: string; lineas: Lineas; className?: string; style?: React.CSSProperties }> = ({ titulo, lineas, className = '', style }) => (
+  <div
+    data-no-pdf
+    role="tooltip"
+    className={`absolute z-40 w-max min-w-[12.5rem] max-w-[min(20rem,85vw)] bg-slate-900 text-white rounded-xl shadow-xl px-3 py-2.5 text-[11.5px] leading-relaxed pointer-events-none text-left font-normal ${className}`}
+    style={style}
+  >
+    <div className="font-bold text-[12px] mb-1">{titulo}</div>
+    {lineas.map(([k, v], i) => (
+      <div key={`${k}${i}`} className="flex justify-between gap-4">
+        <span className="text-slate-300">{k}</span>
+        <span className="font-semibold tabular-nums text-right">{v}</span>
+      </div>
+    ))}
+  </div>
+);
+const POS_TIP = {
+  abajo: { izq: 'top-full mt-1.5 left-0', der: 'top-full mt-1.5 right-0', centro: 'top-full mt-1.5 left-1/2 -translate-x-1/2' },
+  arriba: { izq: 'bottom-full mb-1.5 left-0', der: 'bottom-full mb-1.5 right-0', centro: 'bottom-full mb-1.5 left-1/2 -translate-x-1/2' },
+};
+const ConTip: React.FC<{
+  titulo: string;
+  lineas: Lineas;
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+  lado?: 'abajo' | 'arriba';
+  alinear?: 'izq' | 'der' | 'centro';
+}> = ({ titulo, lineas, children, className = '', style, lado = 'abajo', alinear = 'izq' }) => {
+  const [ver, setVer] = useState(false);
+  return (
+    <div
+      className={`relative outline-none ${className}`}
+      style={style}
+      tabIndex={0}
+      onMouseEnter={() => setVer(true)}
+      onMouseLeave={() => setVer(false)}
+      onFocus={() => setVer(true)}
+      onBlur={() => setVer(false)}
+    >
+      {children}
+      {ver && <TipBox titulo={titulo} lineas={lineas} className={POS_TIP[lado][alinear]} />}
+    </div>
+  );
+};
+
+// Mini tendencia para las tarjetas.
+const Spark: React.FC<{ valores: number[]; color: string }> = ({ valores, color }) => {
+  if (valores.length < 2) return null;
+  const max = Math.max(1, ...valores);
+  const pts = valores.map((v, i) => `${((i / (valores.length - 1)) * 100).toFixed(1)},${(30 - (v / max) * 28).toFixed(1)}`);
+  return (
+    <svg viewBox="0 0 100 32" preserveAspectRatio="none" className="w-20 sm:w-24 h-8 shrink-0 overflow-visible" aria-hidden="true">
+      <polygon points={`0,32 ${pts.join(' ')} 100,32`} fill={color} opacity="0.12" />
+      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+    </svg>
+  );
+};
+
+// Columnas (rutas asignadas por hora) + líneas de % acumulado (periodo y comparación).
+type BarraHora = { key: string; label: string; n: number; pct: number | null; prevPct: number | null; titulo: string; lineas: Lineas };
+const ComboHoras: React.FC<{ data: BarraHora[]; nombrePrev: string; color?: string }> = ({ data, nombrePrev, color = PD.azul }) => {
+  const [hover, setHover] = useState<number | null>(null);
+  const max = Math.max(1, ...data.map((d) => d.n));
+  const N = data.length;
+  const X = (i: number) => ((i + 0.5) / N) * 100;
+  const Y = (p: number) => 100 - Math.min(100, Math.max(0, p));
+  const linea = (k: 'pct' | 'prevPct') =>
+    data
+      .map((d, i) => (d[k] == null ? null : `${X(i).toFixed(2)},${Y(d[k] as number).toFixed(2)}`))
+      .filter(Boolean)
+      .join(' ');
+  const lHoy = linea('pct');
+  const lPrev = linea('prevPct');
+  return (
+    <div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mb-2">
+        <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: color }} />Rutas asignadas en la hora</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-4 h-[3px] rounded" style={{ backgroundColor: PD.marino }} />% acumulado del periodo</span>
+        {lPrev && <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed" style={{ borderColor: PD.cielo }} />{nombrePrev}</span>}
+      </div>
+      <div className="relative h-48 pr-9">
+        <div className="absolute right-0 top-0 bottom-0 flex flex-col justify-between text-[10px] text-slate-400 tabular-nums">
+          <span>100%</span>
+          <span>50%</span>
+          <span>0%</span>
+        </div>
+        <div className="relative h-full border-b border-slate-200">
+          <div className="absolute inset-x-0 top-0 border-t border-dashed border-slate-100" />
+          <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-slate-100" />
+          <div className="absolute inset-0 flex items-end">
+            {data.map((d, i) => (
+              <div
+                key={d.key}
+                className={`relative flex-1 h-full flex flex-col items-center justify-end rounded-md cursor-default outline-none ${hover === i ? 'bg-slate-50' : ''}`}
+                tabIndex={0}
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover(null)}
+                onFocus={() => setHover(i)}
+                onBlur={() => setHover(null)}
+              >
+                <span className="text-[10px] font-bold text-slate-600 mb-0.5 tabular-nums">{d.n > 0 ? n0(d.n) : ''}</span>
+                <div className="w-[58%] rounded-t-[4px]" style={{ height: `${d.n > 0 ? Math.max(3, (d.n / max) * 78) : 0}%`, backgroundColor: hover === i ? PD.marino : color }} />
+                {hover === i && (
+                  <TipBox
+                    titulo={d.titulo}
+                    lineas={d.lineas}
+                    className={`top-0 ${i < 2 ? 'left-0' : i > N - 3 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none overflow-visible" aria-hidden="true">
+            {lPrev && <polyline points={lPrev} fill="none" stroke={PD.cielo} strokeWidth="2.25" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />}
+            {lHoy && <polyline points={lHoy} fill="none" stroke={PD.marino} strokeWidth="2.75" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />}
+          </svg>
+        </div>
+      </div>
+      <div className="flex pr-9 mt-1">
+        {data.map((d) => (
+          <span key={d.key} className="flex-1 text-center text-[10px] text-slate-500 tabular-nums truncate">{d.label}</span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Columnas apiladas por día: despachadas (abajo) y pendientes (arriba).
+type ColDia = { key: string; label: string; total: number; hecho: number; titulo: string; lineas: Lineas; porAsig?: number };
+const ColApiladas: React.FC<{ data: ColDia[]; fmt?: (v: number) => string }> = ({ data, fmt = n0 }) => {
+  const [hover, setHover] = useState<number | null>(null);
+  const max = Math.max(1, ...data.map((d) => d.total));
+  const N = data.length;
+  return (
+    <div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mb-2">
+        <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: PD.azul }} />Despachadas</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: '#f1d58c' }} />Por despachar</span>
+      </div>
+      <div className="flex items-end gap-1 h-48 border-b border-slate-200">
+        {data.map((d, i) => (
+          <div
+            key={d.key}
+            className={`relative flex-1 min-w-0 h-full flex flex-col items-center justify-end rounded-md cursor-default outline-none ${hover === i ? 'bg-slate-50' : ''}`}
+            tabIndex={0}
+            onMouseEnter={() => setHover(i)}
+            onMouseLeave={() => setHover(null)}
+            onFocus={() => setHover(i)}
+            onBlur={() => setHover(null)}
+          >
+            <span className="text-[9.5px] font-bold text-slate-600 mb-0.5 tabular-nums">{d.total > 0 && N <= 16 ? fmt(d.total) : ''}</span>
+            <div className="w-[64%] rounded-t-[4px]" style={{ height: `${(Math.max(0, d.total - d.hecho) / max) * 82}%`, backgroundColor: '#f1d58c' }} />
+            <div className={`w-[64%] ${d.total - d.hecho > 0 ? '' : 'rounded-t-[4px]'}`} style={{ height: `${(d.hecho / max) * 82}%`, backgroundColor: hover === i ? PD.marino : PD.azul }} />
+            {hover === i && <TipBox titulo={d.titulo} lineas={d.lineas} className={`top-0 ${i < 2 ? 'left-0' : i > N - 3 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`} />}
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-1 mt-1">
+        {data.map((d, i) => (
+          <span key={d.key} className="flex-1 min-w-0 text-center text-[10px] text-slate-500 tabular-nums truncate">{N > 16 && i % 2 ? '' : d.label}</span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Barra apilada: despachado + pendiente; el largo total es lo planificado.
+const ApiladaFila: React.FC<{ label: string; sub?: string; plan: number; hecho: number; maxPlan: number; fmt?: (v: number) => string; titulo: string; lineas: Lineas; punto?: string }> = ({
+  label,
+  punto,
+  sub,
+  plan,
+  hecho,
+  maxPlan,
+  fmt = n0,
+  titulo,
+  lineas,
+}) => {
+  const p = plan > 0 ? hecho / plan : 0;
+  const ancho = maxPlan > 0 ? Math.max(4, (plan / maxPlan) * 100) : 0;
+  return (
+    <ConTip titulo={titulo} lineas={lineas} className="rounded-lg hover:bg-slate-50 focus:bg-slate-50 px-1 -mx-1">
+      <div className="grid items-center gap-3 py-1.5" style={{ gridTemplateColumns: 'minmax(0, 11rem) 1fr auto' }}>
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-slate-800 truncate flex items-center gap-1.5">
+            {punto && <span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ backgroundColor: punto }} />}
+            <span className="truncate">{label}</span>
+          </div>
+          {sub && <div className="text-[10.5px] text-slate-400 truncate">{sub}</div>}
+        </div>
+        <div className="h-3 flex rounded-full overflow-hidden" style={{ width: `${ancho}%`, backgroundColor: PD.pista }}>
+          <div className="h-full" style={{ width: `${Math.min(100, p * 100)}%`, backgroundColor: PD.azul }} />
+          <div className="h-full" style={{ width: `${Math.max(0, 100 - p * 100)}%`, backgroundColor: '#f1d58c' }} />
+        </div>
+        <div className="text-right tabular-nums whitespace-nowrap">
+          <span className="text-xs font-bold text-slate-900">{fmt(plan)}</span>
+          <span className="ml-1.5 text-[11px] font-semibold" style={{ color: p >= 0.9 ? PD.verde : p >= 0.6 ? PD.azul : PD.oroTexto }}>{Math.round(p * 100)}%</span>
+        </div>
+      </div>
+    </ConTip>
+  );
+};
+
+// Fecha y hora de un texto ("dd/mm/aaaa hh:mm", "aaaa-mm-dd hh:mm" o ISO con
+// zona) en minutos, en hora de Guatemala. Sin hora = medianoche.
+const minutosDe = (s: string): number | null => {
+  const t = String(s || '').trim();
+  if (!t) return null;
+  if (/T\d{2}:\d{2}.*(Z|[+-]\d{2}:?\d{2})$/.test(t)) {
+    const d = new Date(t);
+    return isNaN(d.getTime()) ? null : Math.floor(d.getTime() / 60000) - 360; // Guatemala = UTC-6, sin horario de verano
+  }
+  let y = 0, mo = 0, da = 0;
+  const a = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/.exec(t);
+  const b = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t);
+  if (a) [da, mo, y] = [Number(a[1]), Number(a[2]), Number(a[3])];
+  else if (b) [y, mo, da] = [Number(b[1]), Number(b[2]), Number(b[3])];
+  else return null;
+  const h = /(?:\s|T|,)(\d{1,2}):(\d{2})/.exec(t);
+  return Math.floor(Date.UTC(y, mo - 1, da, h ? Number(h[1]) : 0, h ? Number(h[2]) : 0) / 60000);
+};
+const textoAsignacion = (r: Route) => String(r.fechaAsignacion || r.asignacion?.fechaAsignacion || r.ultimoDespacho?.fechaAsignacion || '');
+// Minutos desde el inicio del día de la ruta hasta que se le asignó camión
+// (negativo = se asignó el día anterior). Null si no hay hora registrada.
+const minutosAsignacion = (r: Route): number | null => {
+  const txt = textoAsignacion(r);
+  if (!/\d{1,2}:\d{2}/.test(txt)) return null;
+  const a = minutosDe(txt);
+  const d = minutosDe(routeDayKey(r) || '');
+  return a == null || d == null ? null : a - d;
+};
+const etiquetaHora = (h: number) => (h < 0 ? 'Día ant.' : h >= 24 ? 'Día sig.' : `${String(h).padStart(2, '0')}:00`);
 
 const top3 = (pares: Map<string, number>) =>
   Array.from(pares.entries())
@@ -1019,28 +1268,32 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   // Hora de asignación: cuándo se le asignó camión y tripulación a cada ruta
   // (fecha y hora que registra el sistema al asignar, "dd/mm/aaaa hh:mm").
   const salidasPorHora = useMemo(() => {
+    // Hora contada desde el inicio del día de la ruta (igual que la gráfica):
+    // "Día ant." = se asignó el día anterior; "Día sig." = después del día de la ruta.
     const cuenta = new Map<number, { n: number; cj: number }>();
     dayRoutes.forEach((r) => {
       if (!(r.estado !== 'Pendiente' || !!r.liquidacion)) return;
-      const f = String(r.fechaAsignacion || r.asignacion?.fechaAsignacion || r.ultimoDespacho?.fechaAsignacion || '');
-      const m = /(?:^|\s|T)(\d{1,2}):\d{2}/.exec(f);
-      if (!m) return;
-      const hr = Number(m[1]);
+      const m = minutosAsignacion(r);
+      if (m == null) return;
+      const hr = m < 0 ? -1 : m >= 1440 ? 24 : Math.floor(m / 60);
       const x = cuenta.get(hr) || { n: 0, cj: 0 };
       x.n += 1;
       x.cj += cajasPlan(r);
       cuenta.set(hr, x);
     });
     if (!cuenta.size) return [];
-    const horas = [...cuenta.keys()];
-    const desde = Math.min(...horas, 5);
-    const hasta = Math.max(...horas, 10);
-    const out: { key: string; label: string; value: number; tip: string }[] = [];
-    for (let h = desde; h <= hasta; h++) {
+    const enDia = [...cuenta.keys()].filter((h) => h >= 0 && h < 24);
+    const lista: number[] = [];
+    if (cuenta.has(-1)) lista.push(-1);
+    const desde = Math.min(5, ...enDia);
+    const hasta = Math.max(10, ...enDia);
+    for (let h = desde; h <= hasta; h++) lista.push(h);
+    if (cuenta.has(24)) lista.push(24);
+    return lista.map((h) => {
       const x = cuenta.get(h) || { n: 0, cj: 0 };
-      out.push({ key: String(h), label: `${String(h).padStart(2, '0')}:00`, value: x.n, tip: `${String(h).padStart(2, '0')}:00 - ${String(h).padStart(2, '0')}:59 · ${n0(x.n)} ruta(s) asignada(s) · ${n0(x.cj)} CJ` });
-    }
-    return out;
+      const l = etiquetaHora(h);
+      return { key: String(h), label: l, value: x.n, tip: `${l} · ${n0(x.n)} ruta(s) asignada(s) · ${n0(x.cj)} CJ` };
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dayRoutes]);
   const horaPico = salidasPorHora.reduce<{ label: string; value: number } | null>((a, x) => (!a || x.value > a.value ? x : a), null);
@@ -1084,19 +1337,283 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
   const [verTablaAg, setVerTablaAg] = useState(false);
   const agenciaTxt = selectedAgency === 'TODAS' ? etiquetaTodas : selectedAgency;
 
+  // ---------- Despacho: comparación con el periodo anterior ----------
+  // Hoy → ayer · Ayer → anteayer · 7 días / rango → los mismos días justo antes ·
+  // Mes → el mes anterior completo. Mismas reglas que el periodo elegido.
+  const prevDays = useMemo(() => {
+    if (!periodDays.length) return [] as Date[];
+    const a = periodDays[0];
+    let ini: Date, fin: Date;
+    if (kind === 'mes') {
+      ini = new Date(a.getFullYear(), a.getMonth() - 1, 1);
+      fin = new Date(a.getFullYear(), a.getMonth(), 0);
+    } else {
+      fin = new Date(a.getFullYear(), a.getMonth(), a.getDate() - 1);
+      ini = new Date(a.getFullYear(), a.getMonth(), a.getDate() - periodDays.length);
+    }
+    const out: Date[] = [];
+    for (let d = new Date(ini); d <= fin && out.length < 400; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) out.push(d);
+    return out;
+  }, [periodDays, kind]);
+  const prevRoutes = useMemo(() => {
+    const keys = new Set(prevDays.map((d) => formatDateToGuatemala(d)));
+    const m = new Map<string, Route>();
+    [...liquidatedRoutes, ...routes].forEach((r) => {
+      const k = routeDayKey(r);
+      if (k && keys.has(k)) m.set(getRouteKey(r) + '|' + (r.tripNumber || 1) + '|' + (r.liquidacion?.fechaLiquidacion || ''), r);
+    });
+    return Array.from(m.values());
+  }, [routes, liquidatedRoutes, prevDays]);
+  // Rutas planificadas con la misma fórmula del encabezado (estado de cada ruta).
+  const planDe = (L: Route[]) => {
+    const noLiq = L.filter((r) => !esLiquidada(r));
+    return (
+      noLiq.filter((r) => r.estado === 'Pendiente' && !isPiso(r) && !isBolson(r)).length +
+      noLiq.filter(isBolson).length +
+      noLiq.filter((r) => r.estado === 'En Tránsito').length +
+      noLiq.filter((r) => r.estado === 'Abierta').length +
+      noLiq.filter((r) => r.estado === 'Pendiente' && isPiso(r)).length +
+      (L.length - noLiq.length)
+    );
+  };
+  const prevPlan = planDe(prevRoutes);
+  const prevDesp = prevRoutes.filter(esDespachada).length;
+  const nombrePrev = kind === 'hoy' ? 'Ayer' : kind === 'ayer' ? 'Anteayer' : kind === 'mes' ? 'Mes anterior' : `${prevDays.length} días anteriores`;
+  // Minuto actual del día en Guatemala (para comparar "a esta hora").
+  const ahoraMin = (() => {
+    const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Guatemala', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+    const g = (t: string) => Number(p.find((x) => x.type === t)?.value || 0);
+    return (g('hour') % 24) * 60 + g('minute');
+  })();
+
+  // ---------- Despacho: asignaciones por hora (periodo y comparación) ----------
+  // Cada ruta despachada cae en la hora en que se le asignó camión, contada
+  // desde el inicio del día de la ruta ("Día ant." = asignada el día anterior).
+  const asignHoras = useMemo(() => {
+    const leer = (L: Route[]) => {
+      const mins: { r: Route; m: number }[] = [];
+      let sinHora = 0;
+      L.filter(esDespachada).forEach((r) => {
+        const m = minutosAsignacion(r);
+        if (m == null) sinHora += 1;
+        else mins.push({ r, m });
+      });
+      return { mins, sinHora };
+    };
+    const act = leer(dayRoutes);
+    const prev = leer(prevRoutes);
+    const hora = (m: number) => (m < 0 ? -1 : m >= 1440 ? 24 : Math.floor(m / 60));
+    const presentes = new Set(act.mins.map((x) => hora(x.m)));
+    const enDia = [...presentes].filter((h) => h >= 0 && h < 24);
+    const lista: number[] = [];
+    if (presentes.has(-1)) lista.push(-1);
+    if (enDia.length || presentes.size) {
+      const desde = Math.min(5, ...enDia);
+      const hasta = Math.max(10, ...enDia);
+      for (let h = desde; h <= hasta; h++) lista.push(h);
+    }
+    if (presentes.has(24)) lista.push(24);
+    return { act, prev, hora, lista };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayRoutes, prevRoutes]);
+  // Hasta qué minuto del día se acumula "hoy" (las horas que aún no llegan no se dibujan).
+  const limiteHoy = isHoy ? ahoraMin : Infinity;
+  const barrasHora: BarraHora[] = useMemo(() => {
+    const { act, prev, hora, lista } = asignHoras;
+    const prevConHora = prev.mins.length;
+    return lista.map((h) => {
+      const enHora = act.mins.filter((x) => hora(x.m) === h);
+      const finBloque = h < 0 ? 0 : h >= 24 ? Infinity : (h + 1) * 60;
+      const acum = act.mins.filter((x) => x.m < finBloque).length;
+      const acumPrev = prev.mins.filter((x) => x.m < finBloque).length;
+      const futura = isHoy && h >= 0 && h < 24 && h * 60 > limiteHoy;
+      const pct = futura || !totalPlan ? null : (acum / totalPlan) * 100;
+      const prevPct = prevPlan && prevConHora ? (acumPrev / prevPlan) * 100 : null;
+      const cj = enHora.reduce((a, x) => a + cajasPlan(x.r), 0);
+      const porAg = new Map<string, number>();
+      enHora.forEach((x) => porAg.set(x.r.agencia || 'Sin agencia', (porAg.get(x.r.agencia || 'Sin agencia') || 0) + 1));
+      const masAsig = [...porAg.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([ag, n]) => `${ag} (${n})`).join(', ');
+      const lbl = etiquetaHora(h);
+      const lineas: Lineas = futura
+        ? [[`${nombrePrev} acumulado`, prevPct == null ? '—' : `${prevPct.toFixed(1)}%`]]
+        : [
+            ['Rutas asignadas', n0(enHora.length)],
+            ['CJ de esas rutas', n0(cj)],
+            ['Acumulado del periodo', `${n0(acum)} de ${n0(totalPlan)} (${pct == null ? '—' : pct.toFixed(1) + '%'})`],
+            [`${nombrePrev} acumulado`, prevPct == null ? 'sin datos' : `${prevPct.toFixed(1)}%`],
+            ...(pct != null && prevPct != null ? ([['Diferencia', `${pct - prevPct >= 0 ? '+' : ''}${(pct - prevPct).toFixed(1)} pts`]] as Lineas) : []),
+            ...(masAsig && variasAg ? ([['Más asignaron', masAsig]] as Lineas) : []),
+          ];
+      return {
+        key: String(h),
+        label: lbl,
+        n: enHora.length,
+        pct,
+        prevPct,
+        titulo: h < 0 ? 'Asignadas el día anterior' : h >= 24 ? 'Asignadas después del día de la ruta' : `${lbl} – ${lbl.replace(':00', ':59')}${futura ? ' · aún no llega' : ''}`,
+        lineas,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asignHoras, totalPlan, prevPlan, isHoy, limiteHoy, nombrePrev, variasAg]);
+  // % despachado del periodo anterior para comparar en el encabezado. Con
+  // "Hoy" se compara contra ayer a la misma hora (rutas con hora registrada).
+  const comparacion = useMemo(() => {
+    if (!prevPlan || !totalPlan) return null;
+    if (isHoy) {
+      const hoyA = asignHoras.act.mins.filter((x) => x.m <= ahoraMin).length / totalPlan;
+      const ayerA = asignHoras.prev.mins.filter((x) => x.m <= ahoraMin).length / prevPlan;
+      if (!asignHoras.prev.mins.length) return null;
+      return { dif: (hoyA - ayerA) * 100, txt: `vs ayer a esta hora (${(ayerA * 100).toFixed(1)}%)` };
+    }
+    const p = prevDesp / prevPlan;
+    return { dif: (pDesp - p) * 100, txt: `vs ${nombrePrev.toLowerCase()} (${(p * 100).toFixed(1)}%)` };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asignHoras, prevPlan, prevDesp, totalPlan, isHoy, pDesp, nombrePrev]);
+
+  // ---------- Despacho: CJ por día (7 días, rango, mes) ----------
+  const colsDia: ColDia[] = useMemo(() => {
+    if (unDia) return [];
+    const keys = trendDays.map((d) => formatDateToGuatemala(d));
+    const bucketOf = new Map<string, number>();
+    const cubetas: { key: string; label: string; cj: number; cjD: number; n: number; d: number; porAsig: number }[] = [];
+    keys.forEach((k, i) => {
+      if (!porSemana || i % 7 === 0) {
+        const d = trendDays[i];
+        cubetas.push({ key: k, label: `${porSemana ? 'Sem ' : ''}${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`, cj: 0, cjD: 0, n: 0, d: 0, porAsig: 0 });
+      }
+      bucketOf.set(k, cubetas.length - 1);
+    });
+    dayRoutes.forEach((r) => {
+      const i = bucketOf.get(routeDayKey(r) || '');
+      if (i == null) return;
+      const c = cubetas[i];
+      c.cj += cajasPlan(r);
+      c.n += 1;
+      if (esDespachada(r)) {
+        c.d += 1;
+        c.cjD += cajasPlan(r);
+      } else if (!esLiquidada(r) && r.estado === 'Pendiente' && !isPiso(r) && !isBolson(r)) c.porAsig += 1;
+    });
+    const hoyK = formatDateToGuatemala(hoyD);
+    return cubetas.map((c) => ({
+      key: c.key,
+      label: c.label,
+      total: c.cj,
+      hecho: c.cjD,
+      porAsig: c.porAsig,
+      titulo: `${porSemana ? 'Semana del ' : ''}${c.label}${!porSemana && c.key === hoyK ? ' · hoy, en curso' : ''}`,
+      lineas: [
+        ['CJ planificadas', n0(c.cj)],
+        ['CJ despachadas', `${n0(c.cjD)} (${pctTxt(c.cjD, c.cj)})`],
+        ['CJ por despachar', n0(c.cj - c.cjD)],
+        ['Rutas', `${n0(c.d)} de ${n0(c.n)} despachadas`],
+        ['Por asignar', n0(c.porAsig)],
+      ] as Lineas,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayRoutes, trendDays, porSemana, unDia]);
+
+  // ---------- Despacho: asignación por agencia y hora (mapa de calor) ----------
+  const mapaAg = useMemo(() => {
+    const { act, hora, lista } = asignHoras;
+    const porAg = new Map<string, Map<number, { n: number; cj: number }>>();
+    act.mins.forEach(({ r, m }) => {
+      const ag = r.agencia || 'Sin agencia';
+      const x = porAg.get(ag) || new Map<number, { n: number; cj: number }>();
+      const c = x.get(hora(m)) || { n: 0, cj: 0 };
+      c.n += 1;
+      c.cj += cajasPlan(r);
+      x.set(hora(m), c);
+      porAg.set(ag, x);
+    });
+    const totHora = new Map<number, number>();
+    act.mins.forEach(({ m }) => totHora.set(hora(m), (totHora.get(hora(m)) || 0) + 1));
+    const max = Math.max(1, ...[...porAg.values()].flatMap((x) => [...x.values()].map((c) => c.n)));
+    const filas = resumenAg.map((a) => {
+      const x = porAg.get(a.ag) || new Map<number, { n: number; cj: number }>();
+      let acum = 0;
+      const celdas = lista.map((h) => {
+        const c = x.get(h) || { n: 0, cj: 0 };
+        acum += c.n;
+        return { h, n: c.n, cj: c.cj, acum };
+      });
+      let pico = -99, picoN = 0;
+      x.forEach((c, h) => {
+        if (c.n > picoN) [pico, picoN] = [h, c.n];
+      });
+      return { ag: a.ag, rutas: a.rutas, desp: a.desp, celdas, pico: picoN ? etiquetaHora(pico) : '—' };
+    });
+    filas.sort((a, b) => a.desp / Math.max(1, a.rutas) - b.desp / Math.max(1, b.rutas) || b.rutas - a.rutas);
+    return { filas, max, totHora, lista };
+  }, [asignHoras, resumenAg]);
+  const picoAg = useMemo(() => new Map(mapaAg.filas.map((f) => [f.ag, f.pico])), [mapaAg]);
+
+  // ---------- Despacho: piezas con detalle ----------
+  const [estadoActivo, setEstadoActivo] = useState<string | null>(null);
+  const [segActivo, setSegActivo] = useState<string | null>(null);
+  const [medidaAg, setMedidaAg] = useState<'cj' | 'rutas'>('cj');
+  const masAtrasadas = resumenAg
+    .filter((a) => a.rutas > 0 && a.desp < a.rutas)
+    .sort((a, b) => a.desp / a.rutas - b.desp / b.rutas || b.rutas - a.rutas)
+    .slice(0, 3);
+
   if (!esLiq) {
-    const tile = (label: string, value: string, sub: string, color: string, icon: React.ReactNode) => (
-      <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-sm min-w-0">
+    const tile = (label: string, value: string, sub: string, color: string, icon: React.ReactNode, lineas: Lineas, spark: number[] = [], alinear: 'izq' | 'der' = 'izq') => (
+      <ConTip titulo={label} lineas={lineas} alinear={alinear} className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-sm min-w-0 hover:border-slate-300 focus:border-slate-300 cursor-default">
         <div className="flex items-center gap-2">
           <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${color}1A`, color }}>
             {icon}
           </span>
           <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500 truncate">{label}</span>
         </div>
-        <div className="mt-2 text-2xl sm:text-[28px] font-black text-slate-900 leading-none tabular-nums">{value}</div>
+        <div className="mt-2 flex items-end justify-between gap-2">
+          <div className="text-2xl sm:text-[28px] font-black text-slate-900 leading-none tabular-nums">{value}</div>
+          <Spark valores={spark} color={color} />
+        </div>
         <div className="mt-1.5 text-[11px] text-slate-500 leading-snug">{sub}</div>
-      </div>
+      </ConTip>
     );
+    // Mini tendencias: por hora con un solo día, por día con varios días.
+    const sparkDesp = unDia ? barrasHora.filter((b) => b.pct != null).map((b) => b.pct as number) : colsDia.map((c) => (c.total ? (c.hecho / c.total) * 100 : 0));
+    const sparkPorAsig = unDia
+      ? barrasHora.filter((b) => b.pct != null).map((b) => Math.max(0, totalPlan - ((b.pct as number) / 100) * totalPlan))
+      : colsDia.map((c) => c.porAsig || 0);
+    const cjEnRuta = porEstado.tran.cj + porEstado.abierta.cj;
+    const truckDisp = trucks.filter((t) => t.estado === 'Disponible').length;
+    const staffDisp = staff.filter((s) => s.estado === 'Disponible').length;
+    const sinHoraAct = asignHoras.act.sinHora;
+    const estAct = estadosDona.find((e) => e.label === estadoActivo);
+    const segColores = [PD.marino, PD.cielo, PD.verde, PD.violeta, PD.oro, PD.naranja, PD.azul, PD.rojo];
+    const segDona = segDespacho.map((s, i) => ({ label: s.seg, value: s.cj, color: segColores[i % segColores.length] }));
+    const segAct = segDespacho.find((s) => s.seg === segActivo);
+    const maxAg = Math.max(1, ...resumenAg.map((a) => (medidaAg === 'cj' ? a.cj : a.rutas)));
+    const tonoCelda = (n: number) => {
+      const f = n / mapaAg.max;
+      return n === 0 ? PD.pista : f < 0.25 ? PD.cieloSuave : f < 0.5 ? '#8fb3e6' : f < 0.75 ? PD.azul : PD.marino;
+    };
+    const flotaPartes = (lista: { l: string; n: number; c: string; txt: string; extra: Lineas }[], nombre: string) => {
+      const tot = lista.reduce((a, x) => a + x.n, 0);
+      return { nombre, tot, partes: lista.filter((x) => x.n > 0).map((x) => ({ ...x, p: tot ? x.n / tot : 0 })) };
+    };
+    const truckDispSin = trucks.filter((t) => t.estado === 'Disponible' && !t.motivoNoAsignado).length;
+    const flota = [
+      flotaPartes(
+        [
+          { l: 'En ruta', n: truckEnRuta, c: PD.azul, txt: '#fff', extra: [] },
+          { l: 'Disponibles sin motivo', n: truckDispSin, c: PD.oro, txt: '#3b2c00', extra: [] },
+          { l: 'Disponibles con motivo', n: truckDisp - truckDispSin, c: PD.cieloSuave, txt: '#0f172a', extra: [] },
+        ],
+        'Camiones'
+      ),
+      flotaPartes(
+        [
+          { l: 'En ruta', n: staffEnRuta, c: PD.violeta, txt: '#fff', extra: [] },
+          { l: 'Disponibles', n: staffDisp, c: '#ddd3f3', txt: '#0f172a', extra: [] },
+        ],
+        'Personal (pilotos y auxiliares)'
+      ),
+    ];
     return (
       <div className="space-y-4">
         {/* Encabezado con lo esencial del día */}
@@ -1158,6 +1675,11 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
                 <div>
                   <div className="text-sm font-bold">Despachado</div>
                   <div className="text-[11px] text-sky-100/80">{n0(despachadas)} de {n0(totalPlan)} rutas</div>
+                  {comparacion && (
+                    <div className="text-[11px] font-bold mt-0.5" style={{ color: comparacion.dif >= 0 ? '#8fe3c4' : '#ffc2c4' }} title="Diferencia en puntos porcentuales de rutas despachadas">
+                      {comparacion.dif >= 0 ? '▲' : '▼'} {Math.abs(comparacion.dif).toFixed(1)} pts <span className="font-medium text-sky-100/80">{comparacion.txt}</span>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="sm:border-l sm:border-white/15 sm:pl-6">
@@ -1188,10 +1710,68 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
 
         {/* Indicadores de operación */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {tile('Despachadas', n0(despachadas), `${pctTxt(despachadas, totalPlan)} de las rutas planificadas`, PD.verde, <CheckCircle2 className="w-4 h-4" />)}
-          {tile('Por asignar', n0(stats.pendientes), `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`, PD.oro, <Clock className="w-4 h-4" />)}
-          {tile('En ruta', n0(enOperacion), `${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`, PD.azul, <TruckIcon className="w-4 h-4" />)}
-          {tile('Flota en ruta', `${Math.round(utilFlota * 100)}%`, `${n0(truckEnRuta)}/${n0(truckActivos.length)} camiones · ${n0(staffEnRuta)} personas`, PD.violeta, <Users className="w-4 h-4" />)}
+          {tile(
+            'Despachadas',
+            n0(despachadas),
+            `${pctTxt(despachadas, totalPlan)} de las rutas planificadas`,
+            PD.verde,
+            <CheckCircle2 className="w-4 h-4" />,
+            [
+              ['Rutas despachadas', `${n0(despachadas)} de ${n0(totalPlan)}`],
+              ['CJ despachadas', `${n0(cjDesp)} (${pctTxt(cjDesp, stats.cajasFisicasHoy)})`],
+              ['Ya liquidadas', n0(stats.liquidadas)],
+              [nombrePrev, prevPlan ? `${pctTxt(prevDesp, prevPlan)} (${n0(prevDesp)} de ${n0(prevPlan)})` : 'sin datos'],
+              ...(sinHoraAct ? ([['Sin hora de asignación', n0(sinHoraAct)]] as Lineas) : []),
+            ],
+            sparkDesp
+          )}
+          {tile(
+            'Por asignar',
+            n0(stats.pendientes),
+            `${n0(stats.pisoHoy)} a piso${bolsonCount ? ` · ${n0(bolsonCount)} en bolsón` : ''}`,
+            PD.oro,
+            <Clock className="w-4 h-4" />,
+            [
+              ['Sin camión asignado', n0(stats.pendientes)],
+              ['A piso', n0(stats.pisoHoy)],
+              ...(stats.bolson ? ([['En bolsón', n0(stats.bolson)]] as Lineas) : []),
+              ['CJ por despachar', n0(cjPorDespachar)],
+              ...(variasAg && resumenAg.some((a) => a.porAsig > 0)
+                ? ([['Más por asignar', [...resumenAg].sort((a, b) => b.porAsig - a.porAsig).filter((a) => a.porAsig > 0).slice(0, 2).map((a) => `${a.ag} (${a.porAsig})`).join(', ')]] as Lineas)
+                : []),
+            ],
+            sparkPorAsig,
+            'der'
+          )}
+          {tile(
+            'En ruta',
+            n0(enOperacion),
+            `${n0(stats.transito)} en tránsito · ${n0(stats.abiertas)} abiertas`,
+            PD.azul,
+            <TruckIcon className="w-4 h-4" />,
+            [
+              ['En tránsito', n0(stats.transito)],
+              ['Abiertas', n0(stats.abiertas)],
+              ['CJ en ruta', n0(cjEnRuta)],
+              ['Ya liquidadas', n0(stats.liquidadas)],
+            ]
+          )}
+          {tile(
+            'Flota en ruta',
+            `${Math.round(utilFlota * 100)}%`,
+            `${n0(truckEnRuta)}/${n0(truckActivos.length)} camiones · ${n0(staffEnRuta)} personas`,
+            PD.violeta,
+            <Users className="w-4 h-4" />,
+            [
+              ['Camiones en ruta', `${n0(truckEnRuta)} de ${n0(truckActivos.length)}`],
+              ['Camiones disponibles', n0(truckDisp)],
+              ['Disponibles sin motivo', n0(truckSinMotivo)],
+              ['Personal en ruta', `${n0(staffEnRuta)} de ${n0(staffActivos.length)}`],
+              ['Dato', 'estado actual del tablero'],
+            ],
+            [],
+            'der'
+          )}
         </div>
 
         {/* Estado de las rutas + atención */}
@@ -1201,11 +1781,21 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
               <div className="flex justify-center">
                 <Dona
                   segs={estadosDona}
+                  activo={estadoActivo}
+                  onActivo={setEstadoActivo}
                   centro={
-                    <>
-                      <div className="text-3xl font-black text-slate-900 leading-none tabular-nums">{n0(totalEstados)}</div>
-                      <div className="text-[11px] text-slate-500 mt-1">rutas</div>
-                    </>
+                    estAct ? (
+                      <>
+                        <div className="text-3xl font-black leading-none tabular-nums" style={{ color: estAct.color === PD.oro ? PD.oroTexto : estAct.color }}>{n0(estAct.value)}</div>
+                        <div className="text-[11px] font-semibold text-slate-700 mt-1">{estAct.label}</div>
+                        <div className="text-[10.5px] text-slate-500">{pctTxt(estAct.value, totalEstados)} · {n0(estAct.cj)} CJ</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-3xl font-black text-slate-900 leading-none tabular-nums">{n0(totalEstados)}</div>
+                        <div className="text-[11px] text-slate-500 mt-1">rutas</div>
+                      </>
+                    )
                   }
                 />
               </div>
@@ -1221,7 +1811,13 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {estadosDona.map((e) => (
-                      <tr key={e.k} className={e.value ? '' : 'text-slate-400'}>
+                      <tr
+                        key={e.k}
+                        className={`transition-opacity ${e.value ? '' : 'text-slate-400'} ${estadoActivo === e.label ? 'bg-slate-50' : ''}`}
+                        style={{ opacity: estadoActivo && estadoActivo !== e.label ? 0.5 : 1 }}
+                        onMouseEnter={() => e.value && setEstadoActivo(e.label)}
+                        onMouseLeave={() => setEstadoActivo(null)}
+                      >
                         <td className="py-2 px-1.5">
                           <span className="inline-flex items-center gap-2 font-semibold" style={{ color: e.value ? '#1f2937' : undefined }}>
                             <span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ backgroundColor: e.color, opacity: e.value ? 1 : 0.35 }} />
@@ -1294,6 +1890,37 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
                 </li>
               ))}
             </ul>
+            {variasAg && masAtrasadas.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-slate-100">
+                <div className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500 mb-2">Agencias con menor avance</div>
+                <div className="space-y-1">
+                  {masAtrasadas.map((a) => {
+                    const p = a.desp / a.rutas;
+                    return (
+                      <ConTip
+                        key={a.ag}
+                        titulo={a.ag}
+                        alinear="der"
+                        lineas={[
+                          ['Rutas despachadas', `${n0(a.desp)} de ${n0(a.rutas)}`],
+                          ['Por asignar', n0(a.porAsig)],
+                          ['A piso', n0(a.piso)],
+                          ['CJ por despachar', n0(a.cj - a.cjDesp)],
+                        ]}
+                        className="grid items-center gap-2 rounded-lg px-1 py-1 hover:bg-slate-50 cursor-default"
+                        style={{ gridTemplateColumns: 'minmax(0, 7rem) 1fr 2.75rem' }}
+                      >
+                        <span className="text-xs font-semibold text-slate-800 truncate">{a.ag}</span>
+                        <span className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: PD.pista }}>
+                          <span className="block h-full rounded-full" style={{ width: `${p * 100}%`, backgroundColor: p < 0.6 ? PD.rojo : PD.oro }} />
+                        </span>
+                        <span className="text-right text-xs font-bold tabular-nums" style={{ color: p < 0.6 ? PD.rojo : PD.oroTexto }}>{Math.round(p * 100)}%</span>
+                      </ConTip>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </Card>
         </div>
 
@@ -1301,28 +1928,113 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
         <div className={`grid grid-cols-1 gap-4 ${!unDia ? 'lg:grid-cols-2' : ''}`}>
           <Card
             title="Hora de asignación"
-            sub={salidasPorHora.length ? `Rutas según la hora en que se les asignó camión y tripulación${horaPico ? ` · pico ${horaPico.label} (${n0(horaPico.value)} rutas)` : ''}` : 'Aún no hay rutas asignadas en el periodo'}
+            sub={
+              barrasHora.length
+                ? `Rutas según la hora en que se les asignó camión y tripulación${unDia ? '' : ` · suma de los ${n0(periodDays.length)} días`}${horaPico ? ` · pico ${horaPico.label} (${n0(horaPico.value)} rutas)` : ''}${sinHoraAct ? ` · ${n0(sinHoraAct)} despachada(s) sin hora registrada` : ''}`
+                : 'Aún no hay rutas asignadas en el periodo'
+            }
             icon={<Clock className="w-4 h-4 text-slate-500" />}
           >
-            {salidasPorHora.length ? <Columns data={salidasPorHora} color={PD.azul} /> : <p className="py-6 text-center text-xs text-slate-400">Sin asignaciones registradas en el periodo.</p>}
+            {barrasHora.length ? <ComboHoras data={barrasHora} nombrePrev={nombrePrev} /> : <p className="py-6 text-center text-xs text-slate-400">Sin asignaciones registradas en el periodo.</p>}
           </Card>
           {!unDia && (
-            <Card title={`CJ planificadas ${porSemana ? 'por semana' : 'por día'}`} sub={`${n0(stats.cajasFisicasHoy)} CJ en ${n0(totalPlan)} rutas · por fecha de ruta`} icon={<Layers className="w-4 h-4 text-slate-500" />}>
-              <Columns data={trendPlan} color={PD.azul} fmt={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : n0(v))} />
+            <Card
+              title={`CJ ${porSemana ? 'por semana' : 'por día'}`}
+              sub={`${n0(stats.cajasFisicasHoy)} CJ planificadas en ${n0(totalPlan)} rutas · ${n0(cjDesp)} despachadas (${pctTxt(cjDesp, stats.cajasFisicasHoy)}) · por fecha de ruta`}
+              icon={<Layers className="w-4 h-4 text-slate-500" />}
+            >
+              <ColApiladas data={colsDia} fmt={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : n0(v))} />
             </Card>
           )}
         </div>
+
+        {/* Asignación por agencia y hora */}
+        {variasAg && mapaAg.lista.length > 0 && asignHoras.act.mins.length > 0 && (
+          <Card
+            title="Asignación por agencia y hora"
+            sub={`Rutas asignadas en cada hora${unDia ? '' : ` (suma de los ${n0(periodDays.length)} días)`} · más oscuro = más rutas · ordenadas de menor a mayor avance`}
+            icon={<Clock className="w-4 h-4 text-slate-500" />}
+            right={
+              <div className="hidden sm:flex items-center gap-1 text-[10px] text-slate-500 shrink-0">
+                <span>0</span>
+                {[PD.pista, PD.cieloSuave, '#8fb3e6', PD.azul, PD.marino].map((c) => (
+                  <span key={c} className="w-4 h-2.5 rounded-[3px]" style={{ backgroundColor: c }} />
+                ))}
+                <span>más</span>
+              </div>
+            }
+          >
+            <div className="space-y-1">
+              <div className="grid gap-1 text-[10px] font-bold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: `minmax(4.5rem, 9rem) repeat(${mapaAg.lista.length}, minmax(0, 1fr)) 2.75rem` }}>
+                <span>Agencia</span>
+                {mapaAg.lista.map((h) => (
+                  <span key={h} className="text-center truncate">{etiquetaHora(h).replace(':00', '')}</span>
+                ))}
+                <span className="text-right">Avance</span>
+              </div>
+              {mapaAg.filas.map((f) => {
+                const p = f.rutas ? f.desp / f.rutas : 0;
+                const N = mapaAg.lista.length;
+                return (
+                  <div key={f.ag} className="grid gap-1 items-center" style={{ gridTemplateColumns: `minmax(4.5rem, 9rem) repeat(${N}, minmax(0, 1fr)) 2.75rem` }}>
+                    <span className="text-xs font-semibold text-slate-800 truncate">{f.ag}</span>
+                    {f.celdas.map((c, i) => (
+                      <ConTip
+                        key={c.h}
+                        titulo={`${f.ag} · ${c.h < 0 ? 'asignadas el día anterior' : c.h >= 24 ? 'asignadas después' : `${etiquetaHora(c.h)} – ${etiquetaHora(c.h).replace(':00', ':59')}`}`}
+                        alinear={i > N / 2 ? 'der' : 'izq'}
+                        lineas={[
+                          ['Rutas asignadas', n0(c.n)],
+                          ['CJ de esas rutas', n0(c.cj)],
+                          ['Acumulado de la agencia', `${n0(c.acum)} de ${n0(f.rutas)} (${pctTxt(c.acum, f.rutas)})`],
+                          ['Todas las agencias en esa hora', `${n0(mapaAg.totHora.get(c.h) || 0)} rutas`],
+                        ]}
+                        className="cursor-default"
+                      >
+                        <div
+                          className="h-7 rounded-md flex items-center justify-center text-[10.5px] font-bold tabular-nums hover:ring-2 hover:ring-slate-800 hover:ring-inset"
+                          style={{ backgroundColor: tonoCelda(c.n), color: c.n / mapaAg.max >= 0.5 ? '#fff' : '#0f172a' }}
+                        >
+                          {c.n || ''}
+                        </div>
+                      </ConTip>
+                    ))}
+                    <span className="text-right text-xs font-bold tabular-nums" style={{ color: p >= 0.9 ? PD.verde : p >= 0.6 ? PD.oroTexto : PD.rojo }}>{Math.round(p * 100)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
 
         {/* Agencias y segmentos: largo de la barra = CJ planificadas; relleno = despachado */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <Card
             title="Avance por agencia"
-            sub="Largo = CJ planificadas · relleno = % despachado"
+            sub={`Largo = ${medidaAg === 'cj' ? 'CJ planificadas' : 'rutas planificadas'} · azul = despachado · ámbar = pendiente`}
             icon={<Building2 className="w-4 h-4 text-slate-500" />}
             right={
-              <button type="button" onClick={() => setVerTablaAg((v) => !v)} className="min-h-[32px] px-2.5 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer shrink-0">
-                {verTablaAg ? 'Ver gráfica' : 'Ver tabla'}
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {!verTablaAg && (
+                  <div className="flex rounded-lg bg-slate-100 p-0.5" role="tablist" aria-label="Medida">
+                    {(['cj', 'rutas'] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        role="tab"
+                        aria-selected={medidaAg === m}
+                        onClick={() => setMedidaAg(m)}
+                        className={`min-h-[28px] px-2.5 rounded-md text-[11px] font-semibold cursor-pointer ${medidaAg === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+                      >
+                        {m === 'cj' ? 'CJ' : 'Rutas'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button type="button" onClick={() => setVerTablaAg((v) => !v)} className="min-h-[32px] px-2.5 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer">
+                  {verTablaAg ? 'Ver gráfica' : 'Ver tabla'}
+                </button>
+              </div>
             }
           >
             {resumenAg.length === 0 ? (
@@ -1330,13 +2042,23 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
             ) : !verTablaAg ? (
               <div className="divide-y divide-slate-50">
                 {resumenAg.map((a) => (
-                  <AvanceFila
+                  <ApiladaFila
                     key={a.ag}
                     label={a.ag}
                     sub={`${n0(a.rutas)} rutas${variasAg ? ` · ${pctTxt(a.cj, partTotCj)} de las CJ` : ''}${a.porAsig ? ` · ${a.porAsig} por asignar` : ''}`}
-                    plan={a.cj}
-                    hecho={a.cjDesp}
-                    maxPlan={maxCjAg}
+                    plan={medidaAg === 'cj' ? a.cj : a.rutas}
+                    hecho={medidaAg === 'cj' ? a.cjDesp : a.desp}
+                    maxPlan={maxAg}
+                    titulo={`${a.ag} · ${a.rutas ? (a.desp / a.rutas >= 0.9 ? 'al día' : a.desp / a.rutas >= 0.6 ? 'en curso' : 'atrasada') : ''}`}
+                    lineas={[
+                      ['Rutas despachadas', `${n0(a.desp)} de ${n0(a.rutas)} (${pctTxt(a.desp, a.rutas)})`],
+                      ['CJ despachadas', `${n0(a.cjDesp)} de ${n0(a.cj)} (${pctTxt(a.cjDesp, a.cj)})`],
+                      ['CJ por despachar', n0(a.cj - a.cjDesp)],
+                      ...(variasAg ? ([['Participación', `${pctTxt(a.rutas, partTotRutas)} rutas · ${pctTxt(a.cj, partTotCj)} CJ`]] as Lineas) : []),
+                      ['Por asignar · a piso', `${n0(a.porAsig)} · ${n0(a.piso)}`],
+                      ['Hora pico de asignación', picoAg.get(a.ag) || '—'],
+                      ...(a.atras ? ([['Con más de 24 h', n0(a.atras)]] as Lineas) : []),
+                    ]}
                   />
                 ))}
               </div>
@@ -1390,21 +2112,111 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
               </div>
             )}
           </Card>
-          <Card title="Avance por segmento" sub="Largo = CJ planificadas · relleno = % despachado" icon={<Layers className="w-4 h-4 text-slate-500" />}>
+          <Card title="Avance por segmento" sub="Dona = parte de las CJ de cada segmento · barras: azul = despachado, ámbar = pendiente" icon={<Layers className="w-4 h-4 text-slate-500" />}>
             {segDespacho.length === 0 ? (
               <p className="py-6 text-center text-xs text-slate-400">Sin rutas en el periodo.</p>
             ) : (
-              <div className="divide-y divide-slate-50">
-                {segDespacho.map((s) => (
-                  <AvanceFila key={s.seg} label={s.seg} sub={`${n0(s.rutas)} rutas · ${pctTxt(s.cj, segTotCj)} de las CJ`} plan={s.cj} hecho={s.cjDesp} maxPlan={maxCjSeg} />
-                ))}
+              <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-4 sm:gap-5 items-center">
+                <div className="flex justify-center">
+                  <Dona
+                    size={150}
+                    grosor={20}
+                    unidad=" CJ"
+                    segs={segDona}
+                    activo={segActivo}
+                    onActivo={setSegActivo}
+                    centro={
+                      segAct ? (
+                        <>
+                          <div className="text-xl font-black text-slate-900 leading-none tabular-nums">{pctTxt(segAct.cj, segTotCj)}</div>
+                          <div className="text-[10.5px] font-semibold text-slate-600 mt-1 max-w-[6.5rem] truncate">{segAct.seg}</div>
+                          <div className="text-[10px] text-slate-500">{n0(segAct.cj)} CJ</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-xl font-black text-slate-900 leading-none tabular-nums">{n0(segTotCj)}</div>
+                          <div className="text-[10.5px] text-slate-500 mt-1">CJ planificadas</div>
+                        </>
+                      )
+                    }
+                  />
+                </div>
+                <div className="divide-y divide-slate-50 min-w-0">
+                  {segDespacho.map((s, i) => (
+                    <div
+                      key={s.seg}
+                      className="transition-opacity"
+                      style={{ opacity: segActivo && segActivo !== s.seg ? 0.45 : 1 }}
+                      onMouseEnter={() => setSegActivo(s.seg)}
+                      onMouseLeave={() => setSegActivo(null)}
+                    >
+                      <ApiladaFila
+                        label={s.seg}
+                        sub={`${n0(s.rutas)} rutas · ${pctTxt(s.cj, segTotCj)} de las CJ`}
+                        plan={s.cj}
+                        hecho={s.cjDesp}
+                        maxPlan={maxCjSeg}
+                        titulo={s.seg}
+                        punto={segColores[i % segColores.length]}
+                        lineas={[
+                          ['CJ planificadas', `${n0(s.cj)} (${pctTxt(s.cj, segTotCj)} del total)`],
+                          ['CJ despachadas', `${n0(s.cjDesp)} (${pctTxt(s.cjDesp, s.cj)})`],
+                          ['CJ por despachar', n0(s.cj - s.cjDesp)],
+                          ['Rutas despachadas', `${n0(s.desp)} de ${n0(s.rutas)}`],
+                        ]}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </Card>
         </div>
 
         {/* Rutas parciales y camiones de apoyo */}
-        <div className={`grid grid-cols-1 gap-4 ${apoyosPeriodo.total > 0 ? 'xl:grid-cols-2' : ''}`}>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <Card title="Flota del día" sub="Camiones y personal · estado actual del tablero" icon={<TruckIcon className="w-4 h-4 text-slate-500" />}>
+            <div className="space-y-4">
+              {flota.map((f) => (
+                <div key={f.nombre}>
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className="font-semibold text-slate-800">{f.nombre}</span>
+                    <span className="text-slate-500 tabular-nums">{n0(f.tot)} activos</span>
+                  </div>
+                  {f.tot === 0 ? (
+                    <p className="text-[11px] text-slate-400">Sin registros.</p>
+                  ) : (
+                    <div className="flex h-7 rounded-lg" style={{ backgroundColor: PD.pista }}>
+                      {f.partes.map((x, i) => (
+                        <ConTip
+                          key={x.l}
+                          titulo={`${f.nombre} · ${x.l}`}
+                          alinear={i === 0 ? 'izq' : i === f.partes.length - 1 ? 'der' : 'centro'}
+                          lineas={[
+                            ['Cantidad', n0(x.n)],
+                            ['% de los activos', pctTxt(x.n, f.tot)],
+                            ...x.extra,
+                          ]}
+                          className={`h-full flex items-center justify-center text-[11px] font-bold tabular-nums cursor-default hover:brightness-95 ${i === 0 ? 'rounded-l-lg' : ''} ${i === f.partes.length - 1 ? 'rounded-r-lg' : ''}`}
+                          style={{ width: `${x.p * 100}%`, backgroundColor: x.c, color: x.txt, minWidth: 6 }}
+                        >
+                          {x.p >= 0.08 ? n0(x.n) : ''}
+                        </ConTip>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[10.5px] text-slate-500">
+                    {f.partes.map((x) => (
+                      <span key={x.l} className="inline-flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-[2px]" style={{ backgroundColor: x.c }} />
+                        {x.l} {n0(x.n)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
           <Card
             title="Rutas parciales"
             sub="Entregadas en parte, con cajas aún por entregar"
@@ -1427,15 +2239,29 @@ export const DashboardExecutive: React.FC<Props> = ({ routes, liquidatedRoutes, 
             ) : (
               <div className="divide-y divide-slate-50">
                 {parciales.slice(0, 12).map((x) => (
-                  <AvanceFila
+                  <ConTip
                     key={x.key}
-                    label={`Ruta ${x.id}`}
-                    sub={`${x.ag} · ${x.tipo} · ${n0(x.pend)} CJ pendientes`}
-                    plan={x.ent + x.pend}
-                    hecho={x.ent}
-                    maxPlan={Math.max(1, ...parciales.map((y) => y.ent + y.pend))}
-                    color={PD.verde}
-                  />
+                    titulo={`Ruta ${x.id} · ${x.ag}`}
+                    alinear="der"
+                    lineas={[
+                      ['Tipo', x.tipo],
+                      ['Estado', x.estado],
+                      ['CJ entregadas', n0(x.ent)],
+                      ['CJ pendientes', n0(x.pend)],
+                      ['Avance', pctTxt(x.ent, x.ent + x.pend)],
+                    ]}
+                    className="rounded-lg hover:bg-slate-50 px-1 -mx-1 cursor-default"
+                  >
+                    <AvanceFila
+                      label={`Ruta ${x.id}`}
+                      sub={`${x.ag} · ${x.tipo} · ${n0(x.pend)} CJ pendientes`}
+                      plan={x.ent + x.pend}
+                      hecho={x.ent}
+                      maxPlan={Math.max(1, ...parciales.map((y) => y.ent + y.pend))}
+                      color={PD.verde}
+                      nativo={false}
+                    />
+                  </ConTip>
                 ))}
                 {parciales.length > 12 && <p className="pt-2 text-[11px] text-slate-400">y {parciales.length - 12} más (todas salen en el PDF).</p>}
               </div>
