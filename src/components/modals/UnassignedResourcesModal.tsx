@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Truck, Staff, Route, TruckUnavailableReason, StaffUnavailableReason } from '../../types';
 import {
   TRUCK_REASON_OPTIONS,
@@ -14,6 +14,37 @@ import { asignadosEnFecha, camionesSinAsignar, personalSinAsignar } from '../../
 import { formatDateToGuatemala } from '../../utils/date';
 
 const TRUCK_REASONS = TRUCK_REASON_OPTIONS;
+
+// Campo de comentario opcional: se guarda al salir del campo o con Enter (no
+// en cada tecla, para no sincronizar mientras se escribe).
+const ComentarioInput: React.FC<{ valor?: string | null; onGuardar?: (txt: string) => void; etiqueta: string }> = ({ valor, onGuardar, etiqueta }) => {
+  const [txt, setTxt] = useState(valor || '');
+  useEffect(() => setTxt(valor || ''), [valor]);
+  const guardar = () => {
+    if (onGuardar && txt.trim() !== (valor || '').trim()) onGuardar(txt);
+  };
+  return (
+    <input
+      type="text"
+      value={txt}
+      maxLength={300}
+      disabled={!onGuardar}
+      aria-label={etiqueta}
+      placeholder="Opcional"
+      onChange={(e) => setTxt(e.target.value)}
+      onBlur={guardar}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Escape') {
+          setTxt(valor || '');
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      title={txt || undefined}
+      className="w-full min-w-[160px] p-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-300 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+    />
+  );
+};
 const STAFF_REASONS = STAFF_REASON_OPTIONS;
 
 // Insignia de solo lectura que muestra la clasificación de Remunera calculada
@@ -44,6 +75,9 @@ interface UnassignedResourcesModalProps {
   routes?: Route[];
   onSetTruckReason: (truckId: string, reason: TruckUnavailableReason | null) => void;
   onSetStaffReason: (staffId: string, reason: StaffUnavailableReason | null) => void;
+  // Comentario opcional por camión / persona (se guarda al salir del campo).
+  onSetTruckComment?: (truckId: string, comentario: string) => void;
+  onSetStaffComment?: (staffId: string, comentario: string) => void;
   // Resumen de Fin de Asignación (solo lectura): rutas visibles para el usuario,
   // fecha de la jornada y agencias para filtrar.
   summaryRoutes?: Route[];
@@ -60,6 +94,8 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
   routes = [],
   onSetTruckReason,
   onSetStaffReason,
+  onSetTruckComment,
+  onSetStaffComment,
   summaryRoutes,
   fechaOperacion,
   agencies = [],
@@ -124,7 +160,7 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
                 No hay camiones disponibles sin asignar en este momento.
               </p>
             ) : (
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="border border-slate-200 rounded-xl overflow-x-auto">
                 <table className="min-w-full text-left">
                   <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-[10px]">
                     <tr>
@@ -133,6 +169,7 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
                       <th className="py-2 px-3">Capacidad</th>
                       <th className="py-2 px-3">Motivo</th>
                       <th className="py-2 px-3">Remunera</th>
+                      <th className="py-2 px-3">Comentario <span className="normal-case font-normal text-slate-400">(opcional)</span></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -172,6 +209,13 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
                             value={t.motivoNoAsignado ? TRUCK_REASON_REMUNERA[t.motivoNoAsignado] : null}
                           />
                         </td>
+                        <td className="py-2 px-3">
+                          <ComentarioInput
+                            valor={t.comentarioNoAsignado}
+                            etiqueta={`Comentario del camión ${t.placa}`}
+                            onGuardar={onSetTruckComment ? (txt) => onSetTruckComment(t.id, txt) : undefined}
+                          />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -200,7 +244,7 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
                 No hay personal disponible sin asignar en este momento.
               </p>
             ) : (
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="border border-slate-200 rounded-xl overflow-x-auto">
                 <table className="min-w-full text-left">
                   <thead className="bg-slate-50 text-slate-500 font-semibold uppercase text-[10px]">
                     <tr>
@@ -209,6 +253,7 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
                       <th className="py-2 px-3">Puesto</th>
                       <th className="py-2 px-3">Motivo</th>
                       <th className="py-2 px-3">Remunera</th>
+                      <th className="py-2 px-3">Comentario <span className="normal-case font-normal text-slate-400">(opcional)</span></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -246,6 +291,13 @@ export const UnassignedResourcesModal: React.FC<UnassignedResourcesModalProps> =
                         <td className="py-2 px-3">
                           <RemuneraBadge
                             value={s.motivoNoAsignado ? STAFF_REASON_REMUNERA[s.motivoNoAsignado] : null}
+                          />
+                        </td>
+                        <td className="py-2 px-3">
+                          <ComentarioInput
+                            valor={s.comentarioNoAsignado}
+                            etiqueta={`Comentario de ${s.nombre}`}
+                            onGuardar={onSetStaffComment ? (txt) => onSetStaffComment(s.id, txt) : undefined}
                           />
                         </td>
                       </tr>
