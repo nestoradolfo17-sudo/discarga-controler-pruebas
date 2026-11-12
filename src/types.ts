@@ -138,6 +138,8 @@ export interface Truck {
   rutaActual: string | null;
   motivoNoAsignado?: TruckUnavailableReason | null;
   motivoNoAsignadoFecha?: string | null;
+  // Comentario opcional del Fin de Asignación (por qué no salió, detalle libre).
+  comentarioNoAsignado?: string | null;
   remuneraNoAsignado?: RemuneraStatus | null;
   // Estatus puesto a mano para el día indicado (Disponible / En Ruta): manda
   // sobre el cálculo automático por rutas solo ese día. "Baja" no lo usa
@@ -172,6 +174,8 @@ export interface Staff {
   estatus?: StaffEstatus;
   motivoNoAsignado?: StaffUnavailableReason | null;
   motivoNoAsignadoFecha?: string | null;
+  // Comentario opcional del Fin de Asignación (por qué no salió, detalle libre).
+  comentarioNoAsignado?: string | null;
   remuneraNoAsignado?: RemuneraStatus | null;
   // Solo en pantalla: préstamo a otra agencia vigente hoy (no se guarda).
   prestamoInfo?: PrestamoInfo;
