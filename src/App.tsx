@@ -87,6 +87,7 @@ import { ZRView } from './components/ZRView';
 import { NotificationBell, DestinoNotificacion } from './components/NotificationBell';
 import { AssignModal } from './components/modals/AssignModal';
 import { LiquidateModal } from './components/modals/LiquidateModal';
+import { BulkLiquidateModal, motivoNoLiquidableEnLote, paradasDeRuta, cajasDeRuta } from './components/modals/BulkLiquidateModal';
 import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiertaModal';
 import { AbonosCajaModal, totalAbonado } from './components/modals/AbonosCajaModal';
 import { ReceiptModal } from './components/modals/ReceiptModal';
@@ -1319,6 +1320,8 @@ export default function App() {
   const [repartirCajasTarget, setRepartirCajasTarget] = useState<Route | null>(null);
   const [assignTarget, setAssignTarget] = useState<Route | null>(null);
   const [liquidateTarget, setLiquidateTarget] = useState<Route | null>(null);
+  // Liquidación en lote (al 100%): claves de las rutas seleccionadas en el Tablero.
+  const [bulkLiquidarKeys, setBulkLiquidarKeys] = useState<string[] | null>(null);
   // Ruta seleccionada para registrar su "Liquidación Final" (cierre del pendiente
   // de validar caja/boleta de una liquidación previa en estado Caja Abierta).
   const [finalizeCajaAbiertaTarget, setFinalizeCajaAbiertaTarget] = useState<Route | null>(null);
@@ -3677,6 +3680,96 @@ export default function App() {
     handleViewSettlementReceipt(routeId, updatedRoute);
   };
 
+  // Liquidación en lote: varias rutas entregadas al 100% (todas las paradas
+  // exitosas, todas las cajas entregadas, sin devoluciones). Arma cada
+  // liquidación igual que el formulario individual cuando no hay rechazos y
+  // libera camiones y tripulación considerando TODAS las rutas del lote (si dos
+  // rutas del lote comparten camión, el camión queda libre al final).
+  const handleBulkLiquidation = (keys: string[], datos: { auditor: string; comentario?: string }) => {
+    const keySet = new Set(keys);
+    const targets = routes.filter((r) => keySet.has(getRouteKey(r)) && !motivoNoLiquidableEnLote(r));
+    if (targets.length === 0) {
+      showToast('Ninguna de las rutas seleccionadas se puede liquidar en lote.', 'error');
+      return;
+    }
+    const tKeys = new Set(targets.map(getRouteKey));
+    const fechaHora = formatDateTimeToGuatemala(new Date());
+    targets.forEach((r) => registrarRecargaDelViaje(r, true));
+
+    const actualizadas = new Map<string, Route>();
+    targets.forEach((t) => {
+      const cajas = parseFloat(cajasDeRuta(t).toFixed(3));
+      actualizadas.set(getRouteKey(t), {
+        ...t,
+        estado: 'Liquidada',
+        apoyos: cerrarApoyos(t, fechaHora).apoyos,
+        fechaLiquidacion: fechaHora,
+        motivoDevolucion: '',
+        liquidacion: {
+          guiasExitosas: paradasDeRuta(t),
+          guiasRechazadas: 0,
+          cajasEntregadas: cajas,
+          cajasDevueltas: 0,
+          motivoDevolucion: '',
+          motivosSeleccionados: [],
+          auditor: datos.auditor || 'Auditor de Agencia',
+          liquidadoPorUsuario: currentUser?.username,
+          fechaLiquidacion: fechaHora,
+          comentario: datos.comentario,
+          cajaAbierta: false,
+          liquidacionEnLote: true,
+          historialEstados: [{ estado: 'Liquidada', fecha: fechaHora }],
+        },
+      });
+    });
+
+    // Camiones y tripulación: quedan libres salvo que sigan en otra ruta activa
+    // que NO es parte del lote.
+    const otrasActivas = routes.filter((r) => !tKeys.has(getRouteKey(r)) && r.estado === 'En Tránsito' && r.asignacion);
+    const camiones = new Set(targets.map((r) => r.asignacion?.camionId).filter(Boolean) as string[]);
+    if (camiones.size) {
+      setTrucks((prev) =>
+        prev.map((t) => {
+          if (!camiones.has(t.id)) return t;
+          const siguen = otrasActivas.filter((r) => r.asignacion?.camionId === t.id);
+          return siguen.length > 0 ? { ...t, estado: 'En Ruta', rutaActual: siguen.map((r) => r.id).join(', ') } : { ...t, estado: 'Disponible', rutaActual: null };
+        })
+      );
+    }
+    const tripulacionDe = (r: Route) =>
+      [r.asignacion?.conductor, r.asignacion?.auxiliar1, r.asignacion?.auxiliar2, r.asignacion?.auxiliar3, r.asignacion?.auxiliar4].filter(Boolean) as string[];
+    const nombres = new Set(targets.flatMap(tripulacionDe));
+    if (nombres.size) {
+      const enOtra = new Set(otrasActivas.flatMap(tripulacionDe));
+      setStaff((prev) =>
+        prev.map((st) => {
+          if (!nombres.has(st.nombre) || st.estado === 'Baja') return st;
+          return enOtra.has(st.nombre) ? { ...st, estado: 'En Ruta' } : { ...st, estado: 'Disponible' };
+        })
+      );
+    }
+
+    setRoutes((prev) => prev.map((r) => actualizadas.get(getRouteKey(r)) || r));
+    setHistoricalRoutes((prev) => {
+      const nuevos = new Map(actualizadas);
+      const copia = prev.map((hr) => {
+        const k = getRouteKey(hr);
+        const u = nuevos.get(k);
+        if (!u) return hr;
+        nuevos.delete(k);
+        return u;
+      });
+      return [...nuevos.values(), ...copia];
+    });
+
+    setBulkLiquidarKeys(null);
+    const cajasTot = targets.reduce((a, r) => a + cajasDeRuta(r), 0);
+    showToast(
+      `${fmtNum(targets.length)} ${targets.length === 1 ? 'ruta liquidada' : 'rutas liquidadas'} al 100% (${fmtNum(cajasTot)} cajas entregadas) y transferidas a Rutas Liquidadas.`,
+      'success'
+    );
+  };
+
   // Registra la "Liquidación Final" de una ruta que había quedado en Caja
   // Abierta (pendiente de validar la caja/boleta del punto de venta). No toca
   // ningún dato operativo ya liquidado (cajas, paradas, motivo, auditor, etc.):
@@ -5051,6 +5144,7 @@ export default function App() {
               if (r) setSegmentTarget(r);
             }}
             onBulkMoveToFloor={handleBulkMoveToFloor}
+            onBulkLiquidate={puedeLiquidar ? (keys) => setBulkLiquidarKeys(keys) : undefined}
             onOpenDeleteModal={canDeleteData ? (ids) => setDeleteRoutesTargetIds(ids) : undefined}
             puedeEliminarRuta={(r) => puedeEliminarEn(r.agencia)}
           />
@@ -5368,6 +5462,14 @@ export default function App() {
         onConfirmLiquidation={handleConfirmLiquidation}
         viajesPendientesGrupo={liquidateTarget ? viajesQueRecibenCajas(routes, liquidateTarget) : []}
         resumenGrupo={liquidateTarget ? resumenGrupo([...historicalRoutes, ...routes], liquidateTarget) : null}
+      />
+
+      <BulkLiquidateModal
+        isOpen={!!bulkLiquidarKeys}
+        onClose={() => setBulkLiquidarKeys(null)}
+        routes={bulkLiquidarKeys ? routes.filter((r) => bulkLiquidarKeys.includes(getRouteKey(r))) : []}
+        defaultAuditor={currentUser?.nombre || currentUser?.username || ''}
+        onConfirm={handleBulkLiquidation}
       />
 
       <AbonosCajaModal
