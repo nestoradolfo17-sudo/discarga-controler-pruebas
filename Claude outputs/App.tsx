@@ -1,0 +1,5679 @@
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense, useTransition } from 'react';
+import * as ReactTodo from 'react';
+import type { ReactNode } from 'react';
+import {
+  Route,
+  Truck,
+  Staff,
+  ToastMessage,
+  StaffPuesto,
+  ResourceStatus,
+  AssignmentType,
+  TruckUnavailableReason,
+  StaffUnavailableReason,
+  StaffEstatus,
+  TipoUnidad,
+  AppUser,
+  TablePermissions,
+  MotivoDevolucionReason,
+  CajaAbiertaReason,
+  ClientePendiente,
+  RouteClientEntry,
+  Prestamo,
+  ApoyoRuta,
+} from './types';
+import { INITIAL_ROUTES, INITIAL_TRUCKS, INITIAL_STAFF, INITIAL_USERS } from './data/initialData';
+import { supabase } from './services/supabaseClient';
+import {
+  isSupabaseConfigured,
+  fetchSharedCollection,
+  pushSharedCollection,
+  subscribeToSharedCollection,
+  soportaFiltroAgencia,
+  deleteSharedRecords,
+  setSyncErrorHandler,
+  fetchSharedRowsByKeys,
+  fetchDatabaseSpace,
+  SyncKeyFn,
+  SyncedRow,
+  SyncableTable,
+} from './services/sync';
+import { TRUCK_REASON_REMUNERA, STAFF_REASON_REMUNERA } from './data/unavailableReasons';
+import { exportRoutesToExcel, exportRutasPrioridadesToExcel } from './utils/excel';
+import { formatDateToGuatemala, formatDateTimeToGuatemala, getTomorrowGuatemalaDate, parseFlexibleDate, getGuatemalaDateForInput } from './utils/date';
+import { getRouteKey, routeMatchesKey, isSameSplitGroup, clavesDuplicado } from './utils/routeKey';
+import { esJornadaFutura } from './utils/jornada';
+import { normBusqueda, clientesQueCoinciden } from './utils/busqueda';
+import { asignadosEnFecha, camionesSinAsignar, personalSinAsignar } from './utils/recursosSinAsignar';
+import { isDemoMode, setSoloConsulta } from './services/demoMode';
+import {
+  getSessionUserId,
+  touchLastLogin,
+  onAuthChange,
+  signIn,
+  signOut,
+  verifyOwnPassword,
+  verifyAdminCredentials,
+  fetchProfiles,
+  subscribeToProfiles,
+  adminCreateUser,
+  adminSetPassword,
+  adminRenameUser,
+  adminDeleteUser,
+  adminUpdateProfile,
+  normalizeUsername,
+} from './services/auth';
+import { Navbar } from './components/Navbar';
+import { StatsCards, LiquidatedStatsStrip, StatPills, StatPill } from './components/StatsCards';
+import { TabNav, ActiveTab, DayReportButtons, NewRouteButton } from './components/TabNav';
+import { RoutesTable } from './components/RoutesTable';
+import { ResourcesView } from './components/ResourcesView';
+import { BatchImportView, BatchImportTarget } from './components/BatchImportView';
+import { ContingenciaImportView } from './components/ContingenciaImportView';
+import { buildContingenciaPlan, ContParsed, ContPlan } from './utils/contingencia';
+import { AGENCIA_LOCATION_OPTIONS } from './data/agencies';
+import { SEGMENTO_OPTIONS } from './data/segmentos';
+import { ClientesImportView } from './components/ClientesImportView';
+import { LiquidatedBoardView, LiquidatedKpis } from './components/LiquidatedBoardView';
+import { NewRouteModal } from './components/modals/NewRouteModal';
+import { NewTrasladoRouteModal } from './components/modals/NewTrasladoRouteModal';
+import { RouteTypeSelectModal } from './components/modals/RouteTypeSelectModal';
+import { SplitRouteModal } from './components/modals/SplitRouteModal';
+import { ChangeSegmentModal } from './components/modals/ChangeSegmentModal';
+import { ChangeTruckStatusModal } from './components/modals/ChangeTruckStatusModal';
+import { RevertSplitModal } from './components/modals/RevertSplitModal';
+import { RepartirCajasModal, type CambioRepartoCajas } from './components/modals/RepartirCajasModal';
+import { ZRView } from './components/ZRView';
+import { NotificationBell, DestinoNotificacion } from './components/NotificationBell';
+import { AssignModal } from './components/modals/AssignModal';
+import { LiquidateModal } from './components/modals/LiquidateModal';
+import { BulkLiquidateModal, motivoNoLiquidableEnLote, paradasDeRuta, cajasDeRuta } from './components/modals/BulkLiquidateModal';
+import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiertaModal';
+import { AbonosCajaModal, totalAbonado } from './components/modals/AbonosCajaModal';
+import { ReceiptModal } from './components/modals/ReceiptModal';
+import { NewTruckModal } from './components/modals/NewTruckModal';
+import { AsignarIdRentadoModal } from './components/modals/AsignarIdRentadoModal';
+import { siguienteIdRentado, type Proveedor } from './services/proveedores';
+import { NewStaffModal } from './components/modals/NewStaffModal';
+// <Activity> (React 19.2+) deja una pantalla oculta sin desmontarla. Si la versión
+// de React no lo trae, se comporta como antes (se muestra solo la pestaña activa).
+const Activity: (p: { mode: 'visible' | 'hidden'; children: ReactNode }) => ReactNode =
+  (ReactTodo as unknown as { Activity?: (p: { mode: 'visible' | 'hidden'; children: ReactNode }) => ReactNode }).Activity ||
+  ((p) => (p.mode === 'visible' ? p.children : null));
+
+// Optimización (análisis, punto 13): el Resumen Diario (y su generador de PDF)
+// es la pantalla más pesada; se descarga solo la primera vez que se abre.
+const DailySummaryModal = lazy(() =>
+  import('./components/modals/DailySummaryModal').then((m) => ({ default: m.DailySummaryModal }))
+);
+import { ClosingActaModal } from './components/modals/ClosingActaModal';
+import { DeleteRoutesModal } from './components/modals/DeleteRoutesModal';
+import { SaveIndicator } from './components/ui/SaveIndicator';
+import { Button } from './components/ui/Button';
+import { ACTION_ICONS } from './components/ui/actionIcons';
+import { UnassignedResourcesModal } from './components/modals/UnassignedResourcesModal';
+import { ToastContainer } from './components/ToastContainer';
+import { LoginScreen } from './components/auth/LoginScreen';
+import { UsersView } from './components/UsersView';
+import { DashboardView } from './components/DashboardView';
+import { RecargasView } from './components/RecargasView';
+import { PrestamosView } from './components/PrestamosView';
+import { leerPrestamos, suscribirPrestamos } from './services/prestamos';
+import { prestamosVigentes, infoDePrestamo } from './utils/prestamos';
+import { registrarRecargaAuto, idRecargaAuto, crearSituacionRecargas } from './services/recargas';
+import { apoyosActivos, cerrarApoyos } from './utils/apoyos';
+import { ApoyoModal } from './components/modals/ApoyoModal';
+import { toNum, fmtNum } from './utils/number';
+import { viajesQueRecibenCajas, resumenGrupo, repartirParejo } from './utils/splitGroup';
+
+const STORAGE_KEY_ROUTES = 'rutamaster_routes_v6';
+const STORAGE_KEY_TRUCKS = 'rutamaster_trucks_v6';
+const STORAGE_KEY_STAFF = 'rutamaster_staff_v6';
+const STORAGE_KEY_HISTORY = 'rutamaster_history_v6';
+const STORAGE_KEY_USERS = 'rutamaster_users_v1';
+const STORAGE_KEY_SESSION = 'rutamaster_session_v1';
+
+// Corrección de seguridad (análisis, punto 3): con la base de datos compartida
+// (Supabase) la app ya NO guarda copias de rutas, camiones, personal ni
+// historial en el navegador. Antes esa copia (con DPI y teléfonos del personal)
+// quedaba en la tablet aunque se cerrara sesión, y con miles de registros podía
+// llenar el almacenamiento del navegador sin avisar. Solo en modo local (sin
+// Supabase) se sigue usando, igual que antes.
+// Punto 15 del análisis: al abrir la app solo se descargan las liquidadas de
+// los últimos 45 días (el historial crece todos los días y cargarlo completo
+// cada vez volvía lenta la entrada). El resto se trae a pedido desde
+// "Rutas Liquidadas" → "Cargar historial completo".
+const HISTORY_INITIAL_DAYS = 45;
+
+// Filtro por segmento del Tablero: compara sin importar mayúsculas/espacios;
+// '__SIN__' = rutas que no tienen segmento.
+// Buscador del Tablero (ruta, agencia, mercado, segmento, fecha, camión,
+// tripulación y CLIENTES de la ruta: código o nombre). No distingue tildes ni
+// mayúsculas. Se usa para la tabla y para los indicadores de arriba.
+function coincideBusqueda(r: Route, q: string): boolean {
+  if (!q) return true;
+  const t = normBusqueda(q);
+  const asig = r.asignacion;
+  const has = (v: unknown) => !!v && normBusqueda(v).includes(t);
+  return (
+    has(r.id) ||
+    has(r.agencia) ||
+    has(r.mercado) ||
+    has(r.segmento) ||
+    has(r.fecha) ||
+    (!!asig && (has(asig.camionPlaca) || has(asig.conductor) || has(asig.auxiliar1) || has(asig.auxiliar2) || has(asig.auxiliar3) || has(asig.auxiliar4))) ||
+    clientesQueCoinciden(r, q).length > 0
+  );
+}
+
+// Filtro de segmento con uno o más segmentos: la ruta entra si coincide con
+// cualquiera de los elegidos (lista vacía = todos).
+function coincideSegmento(r: { segmento?: string }, filtro: string | string[]): boolean {
+  const lista = Array.isArray(filtro) ? filtro : [filtro];
+  if (lista.length === 0) return true;
+  const sg = String(r.segmento || '').trim().toUpperCase();
+  return lista.some((f) => (f === '__SIN__' ? !sg : sg === f.trim().toUpperCase()));
+}
+
+const LOCAL_DATA_KEYS = [STORAGE_KEY_ROUTES, STORAGE_KEY_TRUCKS, STORAGE_KEY_STAFF, STORAGE_KEY_HISTORY, STORAGE_KEY_USERS];
+if (isSupabaseConfigured) {
+  try {
+    LOCAL_DATA_KEYS.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* almacenamiento no disponible */
+  }
+}
+function readLocal<T>(key: string, fallback: T): T {
+  if (isSupabaseConfigured) return fallback;
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? (JSON.parse(saved) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writeLocal(key: string, value: unknown) {
+  if (isSupabaseConfigured) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+export default function App() {
+  // Con Supabase se arranca vacío (los datos llegan de la base al iniciar
+  // sesión); los datos de ejemplo solo existen en modo local.
+  const [routes, setRoutes] = useState<Route[]>(() =>
+    readLocal<Route[]>(STORAGE_KEY_ROUTES, isSupabaseConfigured ? [] : INITIAL_ROUTES)
+  );
+
+  const [trucks, setTrucks] = useState<Truck[]>(() =>
+    readLocal<Truck[]>(STORAGE_KEY_TRUCKS, isSupabaseConfigured ? [] : INITIAL_TRUCKS)
+  );
+
+  const [staff, setStaff] = useState<Staff[]>(() =>
+    readLocal<Staff[]>(STORAGE_KEY_STAFF, isSupabaseConfigured ? [] : INITIAL_STAFF)
+  );
+
+  const [historicalRoutes, setHistoricalRoutes] = useState<Route[]>(() => {
+    if (isSupabaseConfigured) return [];
+    try {
+      const list: Route[] = readLocal<Route[]>(STORAGE_KEY_HISTORY, []);
+      // Ensure initial liquidated routes exist in history
+      INITIAL_ROUTES.filter((r) => r.estado === 'Liquidada').forEach((r) => {
+        if (!list.some((hr) => String(hr.id) === String(r.id))) {
+          list.unshift(JSON.parse(JSON.stringify(r)));
+        }
+      });
+      return list;
+    } catch {
+      return [];
+    }
+  });
+
+  // --- Control de acceso (usuarios y sesión) ---
+  // Con Supabase configurado, los usuarios vienen de la tabla de perfiles
+  // "app_users" DESPUÉS de iniciar sesión (ver services/auth.ts); nunca se
+  // guardan en el navegador ni se precargan con usuarios de ejemplo.
+  const [users, setUsers] = useState<AppUser[]>(() => {
+    if (isSupabaseConfigured) return [];
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_USERS);
+      return saved ? JSON.parse(saved) : INITIAL_USERS;
+    } catch {
+      return INITIAL_USERS;
+    }
+  });
+
+  const [currentUsername, setCurrentUsername] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY_SESSION);
+    } catch {
+      return null;
+    }
+  });
+
+  // --- Sesión con Supabase Auth ---
+  // authUserId: id del usuario autenticado en Supabase (null = sin sesión).
+  // authChecked: ya se revisó si había una sesión guardada en este navegador.
+  // profilesLoaded: ya se leyó la tabla de perfiles tras iniciar sesión.
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(!isSupabaseConfigured);
+  // Blindaje: si la sesión se cae SOLA (token vencido que no se pudo renovar),
+  // ya no se manda a la pantalla de inicio — eso cerraba cualquier ventana
+  // abierta (p. ej. una liquidación a medio llenar) y se perdía lo escrito.
+  // Ahora la app se queda tal cual y aparece encima un recuadro para volver a
+  // ingresar la contraseña; los cambios pendientes se guardan al reingresar.
+  const [sessionLost, setSessionLost] = useState(false);
+  const sessionLostRef = useRef(false);
+  const intentionalSignOutRef = useRef(false);
+  const authUserIdRef = useRef<string | null>(null);
+  // Solo se usa el recuadro de reingreso si la app ya estaba cargada y en uso;
+  // en cualquier otro momento (arranque, carga de perfil) se va al inicio normal.
+  const appInUseRef = useRef(false);
+  // Cierre de sesión pedido por la app o el usuario (no es una caída de sesión).
+  const signOutIntentionally = useCallback(() => {
+    intentionalSignOutRef.current = true;
+    return signOut();
+  }, []);
+  const [profilesLoaded, setProfilesLoaded] = useState(false);
+  const [loginNotice, setLoginNotice] = useState<string>(() => {
+    // Aviso que sobrevive a la recarga tras un cierre de sesión automático.
+    try {
+      const reason = sessionStorage.getItem('dc_logout_reason') || '';
+      sessionStorage.removeItem('dc_logout_reason');
+      return reason;
+    } catch {
+      return '';
+    }
+  });
+
+  const currentUser = useMemo(() => {
+    if (isSupabaseConfigured) {
+      return users.find((u) => u.id === authUserId && u.activo !== false) || null;
+    }
+    return users.find((u) => u.username.toLowerCase() === (currentUsername || '').toLowerCase()) || null;
+  }, [users, currentUsername, authUserId]);
+  // Usuario de SOLO CONSULTA: la conexión deja de enviar cambios (como el DEMO).
+  // Se fija aquí mismo para que aplique antes de cualquier guardado.
+  const esSoloConsulta = !!currentUser && !currentUser.isAdmin && currentUser.permissions?.soloLectura === true;
+  setSoloConsulta(esSoloConsulta);
+
+  // Última conexión: además del inicio de sesión, se registra al abrir la app
+  // con una sesión guardada y cada 10 minutos mientras la pestaña está visible,
+  // para que el administrador vea en "Usuarios" cuándo se usó la app por última vez.
+  const currentUserIdForPresence = currentUser?.id;
+  useEffect(() => {
+    if (!isSupabaseConfigured || !currentUserIdForPresence) return;
+    void touchLastLogin();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void touchLastLogin();
+    }, 10 * 60 * 1000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void touchLastLogin();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [currentUserIdForPresence]);
+
+  // Recuperar la sesión guardada y escuchar inicios/cierres de sesión.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let active = true;
+    getSessionUserId().then((id) => {
+      if (!active) return;
+      authUserIdRef.current = id;
+      setAuthUserId(id);
+      setAuthChecked(true);
+    });
+    const unsubscribe = onAuthChange((id) => {
+      if (!active) return;
+      const prev = authUserIdRef.current;
+      if (!id && prev && !intentionalSignOutRef.current && appInUseRef.current) {
+        // Caída de sesión no pedida: se conserva la pantalla y se pide reingresar.
+        sessionLostRef.current = true;
+        setSessionLost(true);
+        return;
+      }
+      if (id && prev && id !== prev) {
+        // Entró un usuario distinto en esta pestaña: se recarga limpio.
+        window.location.reload();
+        return;
+      }
+      if (id) intentionalSignOutRef.current = false;
+      if (id && sessionLostRef.current) {
+        sessionLostRef.current = false;
+        setSessionLost(false);
+        // Se reenvían los cambios que quedaron pendientes mientras no había sesión.
+        setResyncTick((t) => t + 1);
+      }
+      authUserIdRef.current = id;
+      setAuthUserId(id);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Cargar perfiles al iniciar sesión. La base de datos decide qué se ve: el
+  // administrador recibe todos los perfiles, un usuario normal solo el suyo.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !authUserId) {
+      setProfilesLoaded(false);
+      return;
+    }
+    let active = true;
+    setProfilesLoaded(false);
+    fetchProfiles().then((list) => {
+      if (!active) return;
+      if (list) setUsers(list);
+      else setLoginNotice('No se pudo leer tu perfil de usuario. Revisa tu conexión e intenta de nuevo.');
+      setProfilesLoaded(true);
+    });
+    const unsubscribe = subscribeToProfiles((updater) => setUsers((prev) => updater(prev)));
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [authUserId]);
+
+  // Sesión válida pero sin perfil ACTIVO (usuario eliminado o desactivado por
+  // el administrador, incluso mientras estaba conectado): se cierra la sesión.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !authUserId || !profilesLoaded || currentUser) return;
+    setLoginNotice((prev) => prev || 'Tu usuario no tiene acceso activo. Consulta con el administrador.');
+    void signOutIntentionally();
+  }, [authUserId, profilesLoaded, currentUser]);
+
+  // --- Sincronización compartida (Supabase) — fase de pruebas ---
+  // Corrección/diseño intencional: si VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
+  // no están configuradas (ver src/services/supabaseClient.ts), todo este bloque
+  // queda inactivo y la aplicación funciona exactamente igual que antes (solo
+  // localStorage, un usuario por navegador). Esto evita que agregar la base de
+  // datos compartida cambie el comportamiento de nadie que siga sin configurarla.
+  const [isRemoteReady, setIsRemoteReady] = useState(!isSupabaseConfigured);
+  // Estado de conexión y contador para reenviar cambios al volver la señal
+  // (ver punto 11 más abajo, junto a los avisos de sincronización).
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine
+  );
+  const [resyncTick, setResyncTick] = useState(0);
+  // Indicador de guardado (barra superior): cuántas subidas a la base están en
+  // curso y si la última falló. Así el usuario ve "Guardando… / Guardado".
+  const [pendingSaves, setPendingSaves] = useState(0);
+  const [lastSaveFailed, setLastSaveFailed] = useState(false);
+  // Blindaje: cuántos guardados seguidos han fallado (para reintentar solos).
+  const [saveFailStreak, setSaveFailStreak] = useState(0);
+  // Corrección: este ref ya NO guarda un set de "ids anteriores" — ver la nota
+  // de seguridad en pushSharedCollection (services/sync.ts): el borrado en
+  // Supabase ya nunca se infiere comparando snapshots, así que ya no hace
+  // falta rastrear qué claves había "antes" solo para poder borrar por
+  // diferencia. Solo se usa para detectar si la colección realmente cambió
+  // (comparando el JSON) antes de molestarse en subirla de nuevo.
+  //
+  // Mejora: además del JSON completo, se guarda el JSON de CADA registro
+  // (byKey) tal como quedó la última vez que se sincronizó. Así, cuando cambia
+  // una colección, solo se suben a Supabase los registros que realmente
+  // cambiaron — antes se subía la colección COMPLETA en cada cambio (miles de
+  // colaboradores por un solo clic), lo que además de lento era peligroso:
+  // si otro usuario había modificado un registro distinto hace un segundo,
+  // esa subida completa podía pisar su cambio con la copia vieja local.
+  //
+  // `blocked`: la lectura inicial de esa tabla falló. En ese caso NO se sube
+  // nada de esa tabla (la copia local puede estar desactualizada y pisaría
+  // los datos reales de todos) hasta que el usuario recargue la página.
+  type SyncRef = { json: string; byKey: Map<string, string>; blocked: boolean };
+  const emptySyncRef = (): SyncRef => ({ json: '', byKey: new Map(), blocked: false });
+  const routesSyncRef = useRef<SyncRef>(emptySyncRef());
+  const historySyncRef = useRef<SyncRef>(emptySyncRef());
+  const trucksSyncRef = useRef<SyncRef>(emptySyncRef());
+  const staffSyncRef = useRef<SyncRef>(emptySyncRef());
+  const usersSyncRef = useRef<SyncRef>(emptySyncRef());
+
+  // Construye el mapa clave → JSON de una colección completa.
+  const buildSyncedMap = <T,>(items: T[], getKey: SyncKeyFn<T>) => {
+    const map = new Map<string, string>();
+    items.forEach((item) => map.set(getKey(item), JSON.stringify(item)));
+    return map;
+  };
+
+  // Marca como "ya sincronizado" el resultado de aplicar un cambio recibido
+  // por tiempo real (para no volver a subir lo que otro usuario acaba de
+  // guardar). Solo recalcula los registros que cambiaron de referencia.
+  const markRemoteApplied = <T,>(
+    ref: { current: SyncRef },
+    prev: T[],
+    next: T[],
+    getKey: SyncKeyFn<T>
+  ) => {
+    const prevByKey = new Map<string, T>();
+    prev.forEach((item) => prevByKey.set(getKey(item), item));
+    const byKey = new Map(ref.current.byKey);
+    const nextKeys = new Set<string>();
+    next.forEach((item) => {
+      const k = getKey(item);
+      nextKeys.add(k);
+      if (prevByKey.get(k) !== item) byKey.set(k, JSON.stringify(item));
+    });
+    prevByKey.forEach((_, k) => {
+      if (!nextKeys.has(k)) byKey.delete(k);
+    });
+    ref.current = { json: JSON.stringify(next), byKey, blocked: ref.current.blocked };
+  };
+  // Corrección: cada sincronización hacia Supabase de una colección sube (hace
+  // upsert de) los registros actuales — ver pushSharedCollection en
+  // services/sync.ts. Si dos actualizaciones seguidas de la MISMA colección
+  // (por ejemplo, dos acciones en el Tablero de Rutas hechas con pocos
+  // segundos de diferencia) quedaban "en vuelo" al mismo tiempo y la red las
+  // resolvía fuera de orden, la más lenta podía sobrescribir en Supabase el
+  // resultado de la más rápida con datos ya desactualizados. Esta cola (una
+  // por colección) obliga a que cada sincronización espere a que termine la
+  // anterior antes de empezar la siguiente, para que nunca compitan entre sí.
+  const routesPushQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const historyPushQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const trucksPushQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const staffPushQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const usersPushQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  // Sube una colección a Supabase solo si su contenido realmente cambió desde
+  // la última vez que se sincronizó (en cualquier dirección: una edición local
+  // o un cambio recibido por tiempo real de otro usuario). Esta comparación es
+  // lo que evita un ciclo infinito: al recibir por tiempo real un cambio que
+  // este mismo navegador acaba de subir, el contenido ya coincide con lo
+  // último sincronizado y no se vuelve a subir.
+  //
+  // Corrección de seguridad importante: esta función SOLO hace upsert (agregar
+  // o actualizar). Ya NO calcula ni pasa ninguna "clave anterior" para que
+  // pushSharedCollection borre por diferencia — ver la nota de seguridad en
+  // pushSharedCollection (services/sync.ts) sobre por qué ese borrado
+  // implícito se eliminó por completo tras causar pérdidas reales de datos.
+  // Cuando una acción del usuario realmente borra un registro a propósito
+  // (eliminar un camión, una ruta, un colaborador, etc.), esa acción llama
+  // directamente a `deleteSharedRecords` con la clave exacta de lo borrado,
+  // en vez de depender de que este helper "adivine" qué se quitó comparando
+  // el arreglo de antes con el de ahora.
+  const pushIfChanged = useCallback(
+    <T,>(
+      table: SyncableTable,
+      items: T[],
+      getKey: SyncKeyFn<T>,
+      ref: { current: SyncRef },
+      queueRef: { current: Promise<void> },
+      // Si la base rechaza el cambio, recibe las claves afectadas (p. ej. para
+      // restaurar la ruta con lo que realmente quedó guardado).
+      onRejected?: (keys: string[]) => void
+    ) => {
+      if (!isSupabaseConfigured || !isRemoteReady) return;
+      // Sin sesión válida la base rechazaría todo: se espera a que el usuario
+      // reingrese (al hacerlo se dispara un reenvío automático).
+      if (sessionLostRef.current) return;
+      // Lectura inicial fallida: no subir nada de esta tabla (ver `blocked`).
+      if (ref.current.blocked) return;
+      const json = JSON.stringify(items);
+      if (json === ref.current.json) return;
+
+      // Solo los registros nuevos o modificados desde la última sincronización.
+      // Si por error hubiera dos registros con la misma clave, se sube solo el
+      // último (Supabase rechaza un lote que toca dos veces la misma fila, y
+      // eso hacía fallar la subida COMPLETA de la colección).
+      const prevByKey = ref.current.byKey;
+      const nextByKey = new Map<string, string>();
+      const changedByKey = new Map<string, T>();
+      items.forEach((item) => {
+        const k = getKey(item);
+        const itemJson = JSON.stringify(item);
+        nextByKey.set(k, itemJson);
+        if (prevByKey.get(k) !== itemJson) changedByKey.set(k, item);
+        else changedByKey.delete(k);
+      });
+      ref.current = { json, byKey: nextByKey, blocked: false };
+      const changed = Array.from(changedByKey.values());
+      if (changed.length === 0) return;
+
+      // Encadenada detrás de la sincronización anterior de esta misma colección
+      // (ver el comentario de las *PushQueueRef arriba) para que nunca se
+      // ejecuten dos en paralelo compitiendo por el mismo registro.
+      queueRef.current = queueRef.current
+        .catch(() => {})
+        .then(async () => {
+          setPendingSaves((n) => n + 1);
+          let ok = false;
+          try {
+            ok = await pushSharedCollection(table, changed, getKey);
+          } finally {
+            setPendingSaves((n) => Math.max(0, n - 1));
+          }
+          setLastSaveFailed(!ok);
+          setSaveFailStreak((n) => (ok ? 0 : n + 1));
+          if (!ok) {
+            // No se guardó: se "olvida" que estaban sincronizados para que el
+            // próximo cambio en esta colección los vuelva a intentar subir.
+            changed.forEach((item) => ref.current.byKey.delete(getKey(item)));
+            ref.current.json = '';
+            onRejected?.(changed.map((item) => getKey(item)));
+          }
+        });
+    },
+    [isRemoteReady]
+  );
+
+  // Punto 1 del análisis: si la base de datos rechaza un cambio de rutas (p. ej.
+  // otra tablet ya asignó ese camión o esa persona), se restauran esas rutas con
+  // lo que realmente quedó guardado, para no mostrar una asignación que no existe.
+  const restoreRoutesFromServer = useCallback((keys: string[]) => {
+    void fetchSharedRowsByKeys<Route>('app_routes', keys).then((serverRows) => {
+      if (!serverRows) return;
+      setRoutes((prev) => {
+        const next = prev.map((r) => {
+          const k = getRouteKey(r);
+          return keys.includes(k) && serverRows.has(k) ? (serverRows.get(k) as Route) : r;
+        });
+        routesSyncRef.current = {
+          json: JSON.stringify(next),
+          byKey: new Map(next.map((r) => [getRouteKey(r), JSON.stringify(r)])),
+          blocked: routesSyncRef.current.blocked,
+        };
+        return next;
+      });
+    });
+  }, []);
+
+  const [historyLimited, setHistoryLimited] = useState<boolean>(isSupabaseConfigured);
+  const [isLoadingFullHistory, setIsLoadingFullHistory] = useState(false);
+  const loadFullHistory = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    setIsLoadingFullHistory(true);
+    const rows = await fetchSharedCollection<Route>('app_historical_routes');
+    setIsLoadingFullHistory(false);
+    if (!rows) return;
+    setHistoricalRoutes((prev) => {
+      const byKey = new Map(prev.map((r) => [getRouteKey(r), r]));
+      rows.forEach((row) => {
+        const k = getRouteKey(row.data);
+        if (!byKey.has(k)) byKey.set(k, row.data);
+      });
+      const next = Array.from(byKey.values());
+      // Lo recién descargado ya está guardado en la base: no se vuelve a subir.
+      historySyncRef.current = {
+        json: JSON.stringify(next),
+        byKey: new Map(next.map((r) => [getRouteKey(r), JSON.stringify(r)])),
+        blocked: historySyncRef.current.blocked,
+      };
+      return next;
+    });
+    setHistoryLimited(false);
+  }, []);
+
+  // Claves de sincronización por tabla (ver SyncKeyFn en services/sync.ts). Todas
+  // usan el "id" del objeto tal cual, EXCEPTO Rutas e Historial: ahí se usa la
+  // clave compuesta id+fecha (getRouteKey) porque el mismo número de ruta puede
+  // repetirse legítimamente en fechas distintas.
+  //
+  // Corrección crítica: antes Rutas/Historial se guardaban en Supabase usando
+  // solo el número de ruta ("id") como clave de la fila. Como ese número se
+  // repite día a día (rutas recurrentes cargadas por Excel), dos rutas activas
+  // el mismo momento pero de fechas distintas competían por la MISMA fila en
+  // Supabase: guardar una sobrescribía silenciosamente a la otra, y al
+  // eliminarla/depurarla (por ejemplo, al importar el Excel del día siguiente)
+  // se borraba la fila compartida, afectando a la ruta de la OTRA fecha también.
+  // Esto ocurría aunque el resto de la aplicación ya identificara cada ruta
+  // correctamente por id+fecha en memoria — el problema estaba únicamente en
+  // cómo se guardaba/borraba en la base de datos compartida.
+  const routeSyncKey: SyncKeyFn<Route> = getRouteKey;
+  const defaultSyncKey = <T extends { id: string }>(item: T) => item.id;
+
+  // Carga inicial desde Supabase (una sola vez al montar). Si alguna colección
+  // llega vacía (primera vez que esta app se conecta a la base de datos), se
+  // siembra con los mismos datos con los que ya arrancaba en modo local, para
+  // no perder el punto de partida — y se sube esa siembra de una vez.
+  //
+  // Con Supabase Auth, las tablas solo se pueden leer con sesión iniciada (si
+  // se leyeran antes, la base de datos respondería "vacío" y la app creería
+  // que no hay datos). Por eso la carga espera a que exista `authUserId`, y
+  // se hace una sola vez por pestaña (dataLoadStartedRef).
+  const dataLoadStartedRef = useRef(false);
+  useEffect(() => {
+    // Se espera también al perfil ACTIVO: un usuario sin acceso recibiría
+    // tablas "vacías" (por seguridad) y la app las confundiría con datos reales.
+    if (!isSupabaseConfigured || !authUserId || !currentUser || dataLoadStartedRef.current) return;
+    dataLoadStartedRef.current = true;
+    const cancelled = false;
+
+    (async () => {
+      try {
+        const [remoteRoutes, remoteHistory, remoteTrucks, remoteStaff] = await Promise.all([
+          fetchSharedCollection<Route>('app_routes'),
+          fetchSharedCollection<Route>('app_historical_routes', { sinceDays: HISTORY_INITIAL_DAYS }),
+          fetchSharedCollection<Truck>('app_trucks'),
+          fetchSharedCollection<Staff>('app_staff'),
+        ]);
+        if (cancelled) return;
+
+        // Corrección: fetchSharedCollection devuelve `null` cuando la lectura falla
+        // (red/Supabase momentáneamente inalcanzable — algo común justo en una carga
+        // en frío, como un Ctrl+F5 o una ventana de incógnito recién abierta tras un
+        // deploy) y devuelve `[]` cuando la tabla de verdad está vacía. Antes ambos
+        // casos se trataban igual: se sembraba con los datos locales/de ejemplo y esa
+        // siembra se subía a Supabase. El problema es que, si la lectura fallaba
+        // habiendo ya datos reales compartidos, el navegador quedaba "creyendo" que
+        // esa siembra local era el estado real; en cuanto alguien hacía cualquier
+        // cambio después, la sincronización comparaba contra ese set de claves
+        // equivocado y terminaba BORRANDO en Supabase las rutas/camiones/personal
+        // reales que no estuvieran en la siembra accidental. Ahora, si la lectura
+        // falla, no se toca nada: se sigue mostrando lo que ya había en
+        // memoria/localStorage y no se sube ni se borra nada hasta lograr una
+        // lectura real y confiable (en la siguiente recarga).
+        function reconcileInitialLoad<T>(
+          table: SyncableTable,
+          remoteRows: SyncedRow<T>[] | null,
+          localList: T[],
+          setter: (list: T[]) => void,
+          ref: { current: SyncRef },
+          getKey: SyncKeyFn<T>
+        ) {
+          if (remoteRows === null) {
+            // Corrección: antes, aunque esta lectura fallara, en cuanto la app
+            // quedaba "lista" la sincronización normal subía la copia local
+            // (posiblemente vieja o de ejemplo) y PISABA los datos reales en
+            // Supabase. Ahora esta tabla queda bloqueada para escritura.
+            ref.current = { json: '', byKey: new Map(), blocked: true };
+            console.error(
+              `No se pudo leer "${table}" de Supabase; no se subirán cambios de esta tabla hasta recargar la página.`
+            );
+            return;
+          }
+          // Si un mismo registro quedó guardado dos veces (con la clave anterior y
+          // con la nueva — p. ej. al cambiar el formato de clave de rutas para
+          // incluir la agencia), se conserva UNA sola copia: la que ya está
+          // guardada bajo la clave correcta; si ninguna lo está, la última leída.
+          const dedupedByKey = new Map<string, SyncedRow<T>>();
+          remoteRows.forEach((row) => {
+            const k = getKey(row.data);
+            const current = dedupedByKey.get(k);
+            if (!current || (current.key !== k && row.key === k) || (current.key !== k && row.key !== k)) {
+              dedupedByKey.set(k, row);
+            }
+          });
+          const remoteList = Array.from(dedupedByKey.values()).map((row) => row.data);
+          // Corrección (análisis, punto 4): antes, si la tabla de Supabase venía
+          // vacía, se llenaba con los datos de ejemplo del código o con la copia
+          // de esa tablet, y se subían a la base compartida. Ahora la base es la
+          // única fuente: si está vacía, la app arranca vacía.
+          void localList;
+          const finalList = remoteList;
+          setter(finalList);
+          ref.current = {
+            json: JSON.stringify(finalList),
+            byKey: buildSyncedMap(finalList, getKey),
+            blocked: false,
+          };
+          if (remoteList.length === 0) return;
+          // Corrección: limpieza única de filas guardadas con un esquema de clave
+          // anterior (ver el comentario sobre routeSyncKey más arriba). Si una fila
+          // remota fue guardada bajo una clave que ya no coincide con la que hoy se
+          // calcularía para esos mismos datos (por ejemplo, el número de ruta solo,
+          // sin la fecha), se re-sube esa colección bajo la clave correcta y luego
+          // se elimina EXPLÍCITAMENTE (por su clave exacta, nunca por diferencia de
+          // arreglos) la fila vieja. En cargas siguientes esto ya no encuentra nada
+          // que migrar (es una operación segura de repetir).
+          const finalKeys = new Set(finalList.map(getKey));
+          const legacyKeys = remoteRows.filter((row) => !finalKeys.has(row.key)).map((row) => row.key);
+          if (legacyKeys.length > 0) {
+            void pushSharedCollection(table, finalList, getKey).then(() =>
+              deleteSharedRecords(table, legacyKeys)
+            );
+          }
+        }
+
+        reconcileInitialLoad('app_routes', remoteRoutes, routes, setRoutes, routesSyncRef, routeSyncKey);
+        reconcileInitialLoad(
+          'app_historical_routes',
+          remoteHistory,
+          historicalRoutes,
+          setHistoricalRoutes,
+          historySyncRef,
+          routeSyncKey
+        );
+        reconcileInitialLoad('app_trucks', remoteTrucks, trucks, setTrucks, trucksSyncRef, defaultSyncKey);
+        reconcileInitialLoad('app_staff', remoteStaff, staff, setStaff, staffSyncRef, defaultSyncKey);
+      } catch (e) {
+        console.error('Error cargando datos compartidos de Supabase:', e);
+      } finally {
+        if (!cancelled) setIsRemoteReady(true);
+      }
+    })();
+    // Solo debe ejecutarse una vez al montar: intencionalmente no depende de
+    // routes/trucks/staff/etc. (se usan solo como semilla si Supabase está vacío).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUserId, currentUser]);
+
+  // Suscripción en tiempo real: refleja cambios hechos por otros usuarios de
+  // prueba (en otra computadora) sin necesidad de recargar la página.
+  // Tiempo real por agencia: un usuario limitado a ciertas agencias solo recibe
+  // los cambios de esas agencias (si ya se corrió la Fase 7 en Supabase).
+  // Administradores y usuarios con acceso a todas reciben todo, como siempre.
+  const agenciasTiempoReal =
+    currentUser && !currentUser.isAdmin && Array.isArray(currentUser.agencyAccess) && currentUser.agencyAccess.length > 0
+      ? [...currentUser.agencyAccess].sort().join('|')
+      : '';
+  useEffect(() => {
+    if (!isSupabaseConfigured || !isRemoteReady) return;
+    let cancelado = false;
+    let unsubscribers: (() => void)[] = [];
+
+    void (async () => {
+      const usarFiltro = agenciasTiempoReal !== '' && (await soportaFiltroAgencia());
+      if (cancelado) return;
+      const agencias = usarFiltro ? agenciasTiempoReal.split('|') : null;
+      unsubscribers = [
+      subscribeToSharedCollection<Route>('app_routes', (updater) => {
+        setRoutes((prev) => {
+          const next = updater(prev);
+          markRemoteApplied(routesSyncRef, prev, next, routeSyncKey);
+          return next;
+        });
+      }, routeSyncKey, agencias),
+      subscribeToSharedCollection<Route>('app_historical_routes', (updater) => {
+        setHistoricalRoutes((prev) => {
+          const next = updater(prev);
+          markRemoteApplied(historySyncRef, prev, next, routeSyncKey);
+          return next;
+        });
+      }, routeSyncKey, agencias),
+      subscribeToSharedCollection<Truck>('app_trucks', (updater) => {
+        setTrucks((prev) => {
+          const next = updater(prev);
+          markRemoteApplied(trucksSyncRef, prev, next, defaultSyncKey);
+          return next;
+        });
+      }, defaultSyncKey, agencias),
+      subscribeToSharedCollection<Staff>('app_staff', (updater) => {
+        setStaff((prev) => {
+          const next = updater(prev);
+          markRemoteApplied(staffSyncRef, prev, next, defaultSyncKey);
+          return next;
+        });
+      }, defaultSyncKey, agencias),
+      ];
+    })();
+
+    return () => {
+      cancelado = true;
+      unsubscribers.forEach((unsub) => unsub());
+    };
+  }, [isRemoteReady, agenciasTiempoReal]);
+
+  useEffect(() => {
+    // Con Supabase, los perfiles se guardan en "app_users" mediante las
+    // acciones de administrador (services/auth.ts), no por sincronización.
+    if (isSupabaseConfigured) return;
+    try {
+      localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
+    } catch (e) {
+      console.error(e);
+    }
+    pushIfChanged('app_users', users, defaultSyncKey, usersSyncRef, usersPushQueueRef);
+  }, [users, pushIfChanged]);
+
+  const handleLogin = async (username: string, password: string): Promise<boolean | string> => {
+    if (isSupabaseConfigured) {
+      setLoginNotice('');
+      const error = await signIn(username, password);
+      return error ?? true;
+    }
+    const match = users.find(
+      (u) => !!u.password && u.username.toLowerCase() === username.toLowerCase() && u.password === password
+    );
+    if (!match) return false;
+    setCurrentUsername(match.username);
+    // Corrección: se registra la fecha/hora del último acceso exitoso, para poder
+    // revisar en Usuarios cuentas inactivas o confirmar cuándo entró alguien.
+    const loginTimestamp = new Date().toISOString();
+    setUsers((prev) =>
+      prev.map((u) => (u.id === match.id ? { ...u, lastLogin: loginTimestamp } : u))
+    );
+    try {
+      localStorage.setItem(STORAGE_KEY_SESSION, match.username);
+    } catch (e) {
+      console.error(e);
+    }
+    return true;
+  };
+
+  const handleLogout = () => {
+    if (isSupabaseConfigured) {
+      // Recargar deja la aplicación limpia (sin datos en memoria del usuario anterior).
+      void signOutIntentionally().finally(() => window.location.reload());
+      return;
+    }
+    setCurrentUsername(null);
+    try {
+      localStorage.removeItem(STORAGE_KEY_SESSION);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCreateUser = (data: {
+    username: string;
+    password: string;
+    nombre?: string;
+    isAdmin: boolean;
+    permissions: TablePermissions;
+    canDelete: boolean;
+    agencyAccess: 'all' | string[];
+    adminAgencies?: string[];
+  }): boolean | Promise<boolean> => {
+    if (isSupabaseConfigured) {
+      return adminCreateUser(data)
+        .then((created) => {
+          setUsers((prev) => (prev.some((u) => u.id === created.id) ? prev : [...prev, created]));
+          showToast(`Usuario "${created.username}" creado exitosamente.`, 'success');
+          return true;
+        })
+        .catch((e: Error) => {
+          showToast(e.message, 'error');
+          return false;
+        });
+    }
+    const newUser: AppUser = {
+      id: `U-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      username: data.username,
+      nombre: data.nombre,
+      password: data.password,
+      adminAgencies: data.adminAgencies || [],
+      isAdmin: data.isAdmin,
+      permissions: data.permissions,
+      canDelete: data.canDelete,
+      agencyAccess: data.agencyAccess,
+      createdAt: new Date().toISOString(),
+      // Corrección: se registra quién dio de alta la cuenta (siempre un
+      // administrador, ya que solo ellos pueden crear usuarios).
+      createdBy: currentUser?.nombre || currentUser?.username || 'Sistema',
+    };
+    setUsers((prev) => [...prev, newUser]);
+    showToast(`Usuario "${data.username}" creado exitosamente.`, 'success');
+    return true;
+  };
+
+  const handleUpdateUser = (
+    userId: string,
+    updates: Partial<
+      Pick<AppUser, 'permissions' | 'canDelete' | 'isAdmin' | 'agencyAccess' | 'username' | 'nombre' | 'adminAgencies'>
+    >
+  ) => {
+    if (isSupabaseConfigured) {
+      void (async () => {
+        try {
+          const target = users.find((u) => u.id === userId);
+          const { username: requestedUsername, ...profilePatch } = updates;
+          if ('nombre' in updates) profilePatch.nombre = updates.nombre?.trim() || undefined;
+          const newUsername =
+            requestedUsername !== undefined && target && requestedUsername.trim() !== target.username
+              ? normalizeUsername(requestedUsername)
+              : undefined;
+          if (newUsername) await adminRenameUser(userId, newUsername);
+          await adminUpdateProfile(userId, profilePatch);
+          setUsers((prev) =>
+            prev.map((u) =>
+              u.id === userId ? { ...u, ...profilePatch, ...(newUsername ? { username: newUsername } : {}) } : u
+            )
+          );
+          if (requestedUsername !== undefined || 'nombre' in updates || updates.adminAgencies !== undefined) {
+            showToast('Datos de usuario actualizados.', 'success');
+          }
+        } catch (e) {
+          showToast(`No se pudo actualizar el usuario: ${(e as Error).message}`, 'error');
+        }
+      })();
+      return;
+    }
+    let finalUpdates: typeof updates = updates;
+
+    if (updates.username !== undefined) {
+      const trimmed = updates.username.trim();
+      if (!trimmed) {
+        showToast('El nombre de usuario no puede quedar vacío.', 'error');
+        return;
+      }
+      const duplicate = users.some(
+        (u) => u.id !== userId && u.username.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (duplicate) {
+        showToast('Ya existe un usuario con ese nombre.', 'error');
+        return;
+      }
+      finalUpdates = { ...finalUpdates, username: trimmed };
+    }
+    if (updates.nombre !== undefined) {
+      finalUpdates = { ...finalUpdates, nombre: updates.nombre.trim() || undefined };
+    }
+
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...finalUpdates } : u)));
+
+    // Si el usuario en sesión cambió su propio nombre de usuario, se actualiza la
+    // sesión activa para que no quede desincronizada (evita un "logout" implícito).
+    if (finalUpdates.username && currentUser && userId === currentUser.id) {
+      setCurrentUsername(finalUpdates.username);
+      try {
+        localStorage.setItem(STORAGE_KEY_SESSION, finalUpdates.username);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    if (finalUpdates.username || finalUpdates.nombre !== undefined || updates.adminAgencies !== undefined) {
+      showToast('Datos de usuario actualizados.', 'success');
+    }
+  };
+
+  const handleResetPassword = (userId: string, newPassword: string) => {
+    if (isSupabaseConfigured) {
+      adminSetPassword(userId, newPassword)
+        .then(() => showToast('Contraseña actualizada.', 'success'))
+        .catch((e: Error) => showToast(e.message, 'error'));
+      return;
+    }
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, password: newPassword } : u)));
+    showToast('Contraseña actualizada.', 'success');
+  };
+
+  const handleDeleteUser = (userId: string) => {
+    if (isSupabaseConfigured) {
+      const target = users.find((u) => u.id === userId);
+      if (userId === currentUser?.id) {
+        showToast('No puedes eliminar tu propio usuario.', 'error');
+        return;
+      }
+      adminDeleteUser(userId)
+        .then(() => {
+          setUsers((prev) => prev.filter((u) => u.id !== userId));
+          showToast(`Usuario "${target?.username || ''}" eliminado.`, 'info');
+        })
+        .catch((e: Error) => showToast(e.message, 'error'));
+      return;
+    }
+    let didDelete = false;
+    setUsers((prev) => {
+      const target = prev.find((u) => u.id === userId);
+      if (!target) return prev;
+      const remainingAdmins = prev.filter((u) => u.isAdmin && u.id !== userId).length;
+      if (target.isAdmin && remainingAdmins === 0) {
+        showToast('Debe existir al menos un usuario administrador.', 'error');
+        return prev;
+      }
+      showToast(`Usuario "${target.username}" eliminado.`, 'info');
+      didDelete = true;
+      return prev.filter((u) => u.id !== userId);
+    });
+    // Borrado explícito en Supabase (ver la nota de seguridad en
+    // pushSharedCollection): la sincronización normal ya nunca borra por su
+    // cuenta, así que cada acción que realmente elimina algo debe pedirlo
+    // directamente, con la clave exacta de lo que se quitó.
+    if (didDelete) {
+      void deleteSharedRecords('app_users', [userId]);
+    }
+  };
+
+  // Punto 19 del análisis: respaldo manual descargable (solo administrador).
+  // Se lee todo directamente de la base compartida (incluido el historial
+  // completo) y se descarga como archivo .json con fecha y hora.
+  const handleDownloadBackup = async () => {
+    const tables: SyncableTable[] = ['app_routes', 'app_historical_routes', 'app_trucks', 'app_staff'];
+    const result: Record<string, unknown> = { generado: new Date().toISOString(), por: currentUser?.username };
+    for (const t of tables) {
+      const rows = await fetchSharedCollection(t);
+      if (!rows) {
+        showToast(`No se pudo leer "${t}". Revisa tu conexión e intenta de nuevo.`, 'error');
+        return;
+      }
+      result[t] = rows.map((r) => ({ id: r.key, data: r.data }));
+    }
+    // Fase 14: también recargas, préstamos, ZR y perfiles de usuarios (sin
+    // contraseñas: esas solo las tiene Supabase Auth). Si una tabla no existe
+    // o no se puede leer, se anota y el respaldo sigue con las demás.
+    const extras = ['app_recargas', 'app_prestamos', 'app_zr', 'app_users', 'app_proveedores'];
+    const omitidas: string[] = [];
+    for (const t of extras) {
+      if (!supabase) break;
+      const filas: unknown[] = [];
+      let fallo = false;
+      for (let desde = 0; ; desde += 1000) {
+        const { data, error } = await supabase.from(t).select('*').range(desde, desde + 999);
+        if (error) {
+          fallo = true;
+          break;
+        }
+        filas.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+      if (fallo) omitidas.push(t);
+      else result[t] = filas;
+    }
+    if (omitidas.length) result.omitidas = omitidas;
+    const blob = new Blob([JSON.stringify(result)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    a.href = url;
+    a.download = `respaldo_discarga_${stamp}.json`;
+    try {
+      localStorage.setItem('dc-ultimo-respaldo', new Date().toISOString());
+    } catch {
+      /* sin almacenamiento local */
+    }
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('Respaldo descargado.', 'success');
+  };
+
+  // Punto 20 del análisis: en tablets compartidas la sesión quedaba abierta
+  // indefinidamente. Ahora se cierra sola tras 30 minutos sin tocar la pantalla
+  // (con aviso 1 minuto antes). Cualquier toque o tecla reinicia el conteo.
+  const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
+  const lastActivityRef = useRef(Date.now());
+  const inactivityWarnedRef = useRef(false);
+  useEffect(() => {
+    if (!isSupabaseConfigured || !currentUser) return;
+    const touch = () => {
+      lastActivityRef.current = Date.now();
+      inactivityWarnedRef.current = false;
+    };
+    const events: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'wheel'];
+    events.forEach((ev) => window.addEventListener(ev, touch, { passive: true }));
+    lastActivityRef.current = Date.now();
+    const timer = window.setInterval(() => {
+      const idle = Date.now() - lastActivityRef.current;
+      if (idle >= INACTIVITY_LIMIT_MS) {
+        try {
+          sessionStorage.setItem('dc_logout_reason', 'Tu sesión se cerró por 30 minutos de inactividad. Vuelve a ingresar.');
+        } catch {
+          /* sin almacenamiento */
+        }
+        void signOutIntentionally().finally(() => window.location.reload());
+      } else if (idle >= INACTIVITY_LIMIT_MS - 60 * 1000 && !inactivityWarnedRef.current) {
+        inactivityWarnedRef.current = true;
+        showToast('Tu sesión se cerrará en 1 minuto por inactividad. Toca la pantalla para continuar.', 'info');
+      }
+    }, 15 * 1000);
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, touch));
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
+  // Confirmación de acciones delicadas en Usuarios con la contraseña del admin.
+  const handleVerifyPassword = async (password: string): Promise<boolean> => {
+    if (!currentUser) return false;
+    if (isSupabaseConfigured) return verifyOwnPassword(currentUser.username, password);
+    return password === currentUser.password;
+  };
+
+  // Permisos efectivos del usuario en sesión (un administrador siempre tiene acceso total)
+  const canView = (key: keyof TablePermissions) => !!currentUser && (currentUser.isAdmin || !!currentUser.permissions[key]);
+  // Módulo ZR: administrador general, administrador de agencia o permiso "ZR".
+  const canViewZr =
+    !!currentUser && (currentUser.isAdmin || !!currentUser.permissions.zr || (currentUser.adminAgencies || []).length > 0);
+  // Pantalla Usuarios: administradores, o usuarios con el permiso "Crear usuarios"
+  // (estos solo ven el formulario de creación, con permisos limitados a los suyos).
+  const canManageUsers = !!currentUser && (currentUser.isAdmin || currentUser.permissions.canCreateUsers === true);
+  // Administrador de agencias: en SUS agencias puede eliminar, revertir y
+  // aprobar (recargas, préstamos, segmento, estatus de camión).
+  const adminAgenciasSesion = currentUser && !currentUser.isAdmin ? currentUser.adminAgencies || [] : [];
+  const esAdminDe = (agencia?: string | null) =>
+    !!currentUser && (currentUser.isAdmin || (!!agencia && adminAgenciasSesion.includes(agencia)));
+  const esAdminDeAlguna = !!currentUser && (currentUser.isAdmin || adminAgenciasSesion.length > 0);
+  const canDeleteData = !!currentUser && (currentUser.isAdmin || currentUser.canDelete || adminAgenciasSesion.length > 0);
+  // ¿Puede eliminar un registro de esta agencia? (admin, "Puede eliminar" o admin de esa agencia)
+  const puedeEliminarEn = (agencia?: string | null) =>
+    !!currentUser && (currentUser.isAdmin || currentUser.canDelete || esAdminDe(agencia));
+  // Corrección: la carga masiva de Excel (Camiones/Personal) se controla con un
+  // permiso independiente, pero AGREGAR MANUALMENTE ya no es un permiso aparte:
+  // si el usuario puede visualizar Camiones/Personal (permiso "trucks"/"staff"),
+  // automáticamente puede agregar manualmente en esa tabla — la única pregunta
+  // adicional que se le hace al administrador es si además puede cargar Excel
+  // masivo. Se usa "!== false" (no "=== true") para el permiso de Excel a
+  // propósito: los usuarios creados antes de este cambio no tienen este campo
+  // guardado todavía (queda undefined), y así se les sigue permitiendo lo que ya
+  // podían hacer hasta que un administrador los restrinja explícitamente en
+  // "Usuarios".
+  const canManualAddTrucks = canView('trucks');
+  const canManualAddStaff = canView('staff');
+  const canBulkUploadTrucks =
+    !!currentUser &&
+    (currentUser.isAdmin || (canView('trucks') && currentUser.permissions.canBulkUploadTrucks !== false));
+  // Rol LIQUIDADOR (permiso "liquidar"): solo quien lo tenga liquida rutas.
+  // Cuentas anteriores sin el permiso guardado: permitido hasta que se quite.
+  const puedeLiquidar = !!currentUser && (currentUser.isAdmin || currentUser.permissions.liquidar !== false);
+  const avisoSinRolLiquidador = () =>
+    showToast('Tu usuario no tiene el rol Liquidador. Pide a un administrador que te lo asigne en Usuarios.', 'error');
+  const canBulkUploadStaff =
+    !!currentUser &&
+    (currentUser.isAdmin || (canView('staff') && currentUser.permissions.canBulkUploadStaff !== false));
+
+  // Control de acceso por agencia: un usuario sin acceso "all" (o sin el campo,
+  // por compatibilidad con datos previos) solo puede ver rutas de las agencias
+  // que el administrador le haya asignado en el apartado "Usuarios".
+  const canViewAgency = (agencyName: string) => {
+    if (!currentUser) return true;
+    if (currentUser.isAdmin) return true;
+    const access = currentUser.agencyAccess;
+    if (!access || access === 'all') return true;
+    return Array.isArray(access) && access.includes(agencyName);
+  };
+
+  // Agencias a las que el usuario en sesión puede CARGAR rutas por Excel: todas
+  // para un administrador o un usuario con acceso "all"; si no, solo las que
+  // tiene asignadas en Usuarios.
+  const importAgencyOptions = useMemo(() => {
+    if (!currentUser) return [] as string[];
+    const access = currentUser.agencyAccess;
+    if (currentUser.isAdmin || !access || access === 'all') return AGENCIA_LOCATION_OPTIONS;
+    return AGENCIA_LOCATION_OPTIONS.filter((ag) => Array.isArray(access) && access.includes(ag)).concat(
+      (Array.isArray(access) ? access : []).filter((ag) => !AGENCIA_LOCATION_OPTIONS.includes(ag))
+    );
+  }, [currentUser]);
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>('board');
+  // Velocidad al cambiar de pestaña: el menú marca la pestaña al instante y la
+  // pantalla nueva se dibuja "en segundo plano" (sin congelar los clics).
+  const [tabPedida, setTabPedida] = useState<ActiveTab>('board');
+  const [cambiandoTab, startTabTransition] = useTransition();
+  const cambiarTab = useCallback((t: ActiveTab) => {
+    setTabPedida(t);
+    startTabTransition(() => setActiveTab(t));
+  }, []);
+  useEffect(() => {
+    setTabPedida(activeTab);
+  }, [activeTab]);
+  // Menú lateral oculto/visible (se recuerda en este navegador).
+  const [railCollapsed, setRailCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dc_rail_collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleRail = () => {
+    setRailCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('dc_rail_collapsed', next ? '1' : '0');
+      } catch {
+        /* sin almacenamiento: solo dura esta sesión */
+      }
+      return next;
+    });
+  };
+  // Tablero de Rutas a pantalla completa (sin barra superior, menú ni filas
+  // de arriba). También pide pantalla completa al navegador cuando es posible.
+  const [boardFullscreen, setBoardFullscreen] = useState(false);
+  const enterBoardFullscreen = () => {
+    setBoardFullscreen(true);
+    try {
+      const el = document.documentElement as any;
+      if (!document.fullscreenElement && el.requestFullscreen) void el.requestFullscreen().catch(() => {});
+    } catch {
+      /* algunos navegadores de tablet no lo permiten: queda el modo dentro de la página */
+    }
+  };
+  const exitBoardFullscreen = () => {
+    setBoardFullscreen(false);
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) void document.exitFullscreen().catch(() => {});
+    } catch {
+      /* nada */
+    }
+  };
+  useEffect(() => {
+    // Si el usuario sale de la pantalla completa del navegador (tecla Esc o gesto),
+    // también se sale del modo pantalla completa del tablero.
+    const onFsChange = () => {
+      if (!document.fullscreenElement) setBoardFullscreen(false);
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+  useEffect(() => {
+    if (activeTab !== 'board' && boardFullscreen) exitBoardFullscreen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+  // Indicadores del módulo de Rutas Liquidadas (los calcula esa vista según sus filtros).
+  const [liqKpis, setLiqKpis] = useState<LiquidatedKpis | null>(null);
+  // Dashboard y Rutas Liquidadas se quedan "dormidas" (ocultas, no se desmontan)
+  // después de abrirlas una vez: al volver aparecen al instante, con sus filtros.
+  const tabsVivas = useRef<{ de: string; tabs: Set<ActiveTab> }>({ de: '', tabs: new Set() });
+  if (tabsVivas.current.de !== (currentUser?.id || '')) tabsVivas.current = { de: currentUser?.id || '', tabs: new Set() };
+  if (activeTab === 'dashboard' || activeTab === 'liquidated') tabsVivas.current.tabs.add(activeTab);
+  const mantenerTab = (t: 'dashboard' | 'liquidated') => activeTab === t || (tabsVivas.current.tabs.has(t) && canView(t));
+
+  // Si el usuario en sesión no tiene permiso para ver la pestaña activa (por ejemplo,
+  // justo después de iniciar sesión o si el administrador le quitó un permiso),
+  // se redirige automáticamente a la primera pestaña a la que sí tenga acceso.
+  useEffect(() => {
+    if (!currentUser) return;
+    const tabPermissionKey: Partial<Record<ActiveTab, keyof TablePermissions>> = {
+      dashboard: 'dashboard',
+      board: 'board',
+      liquidated: 'liquidated',
+      trucks: 'trucks',
+      staff: 'staff',
+      batch: 'batch',
+    };
+    if (activeTab === 'users') {
+      if (!canManageUsers) setActiveTab('board');
+      return;
+    }
+    if (activeTab === 'zr') {
+      if (!canViewZr) setActiveTab('board');
+      return;
+    }
+    const key = tabPermissionKey[activeTab];
+    if (key && !canView(key)) {
+      const fallback = (['dashboard', 'board', 'liquidated', 'trucks', 'staff', 'batch'] as ActiveTab[]).find(
+        (t) => canView(tabPermissionKey[t] as keyof TablePermissions)
+      );
+      setActiveTab(fallback || (currentUser.isAdmin ? 'users' : 'board'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, activeTab]);
+
+  // Filtro de agencia de la barra superior: una, varias o ninguna (= todas).
+  // "selectedAgency" se conserva para las pantallas que trabajan con UNA
+  // agencia: es esa agencia si hay una sola elegida; con varias es 'TODAS' y
+  // los datos ya llegan filtrados con enAgenciaSel.
+  const [agenciasSel, setAgenciasSel] = useState<string[]>([]);
+  const selectedAgency = agenciasSel.length === 1 ? agenciasSel[0] : 'TODAS';
+  const setSelectedAgency = (ag: string) => setAgenciasSel(!ag || ag === 'TODAS' ? [] : [ag]);
+  const enAgenciaSel = (ag?: string | null) => agenciasSel.length === 0 || (!!ag && agenciasSel.includes(ag));
+  // Cómo se nombra el filtro en encabezados y PDF cuando no es una sola agencia.
+  const etiquetaAgencias = agenciasSel.length > 1 ? agenciasSel.join(', ') : 'Todas';
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // Modals state
+  const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
+  const [isRouteTypeSelectModalOpen, setIsRouteTypeSelectModalOpen] = useState(false);
+  const [isTrasladoRouteModalOpen, setIsTrasladoRouteModalOpen] = useState(false);
+  const [splitRouteTarget, setSplitRouteTarget] = useState<Route | null>(null);
+  // Filtro de fecha del Tablero ('' = todas las fechas).
+  const [boardFecha, setBoardFecha] = useState<string>('');
+  // Filtro de SEGMENTO del Tablero ('' = todos; '__SIN__' = rutas sin segmento).
+  // Uno o varios segmentos (lista vacía = todos).
+  const [boardSegmento, setBoardSegmento] = useState<string[]>([]);
+  // Menú del filtro de segmentos: dónde se abrió y su posición en pantalla.
+  const [segmentoMenu, setSegmentoMenu] = useState<{ donde: string; top: number; left: number } | null>(null);
+  // Cambio de segmento (con autorización de administrador).
+  const [segmentTarget, setSegmentTarget] = useState<Route | null>(null);
+  // Camión de apoyo: ruta en tránsito a la que se le agregan camiones de apoyo.
+  const [apoyoTarget, setApoyoTarget] = useState<Route | null>(null);
+  const [revertSplitTarget, setRevertSplitTarget] = useState<Route | null>(null);
+  // Repartir cajas entre los viajes de una ruta partida (un solo cliente).
+  const [repartirCajasTarget, setRepartirCajasTarget] = useState<Route | null>(null);
+  const [assignTarget, setAssignTarget] = useState<Route | null>(null);
+  const [liquidateTarget, setLiquidateTarget] = useState<Route | null>(null);
+  // Liquidación en lote (al 100%): claves de las rutas seleccionadas en el Tablero.
+  const [bulkLiquidarKeys, setBulkLiquidarKeys] = useState<string[] | null>(null);
+  // Ruta seleccionada para registrar su "Liquidación Final" (cierre del pendiente
+  // de validar caja/boleta de una liquidación previa en estado Caja Abierta).
+  const [finalizeCajaAbiertaTarget, setFinalizeCajaAbiertaTarget] = useState<Route | null>(null);
+  // Abonos diarios de Caja Abierta.
+  const [abonosCajaTarget, setAbonosCajaTarget] = useState<Route | null>(null);
+  const [receiptTarget, setReceiptTarget] = useState<Route | null>(null);
+  const [receiptConsolidatedSiblings, setReceiptConsolidatedSiblings] = useState<Route[] | undefined>(undefined);
+  const [isNewTruckModalOpen, setIsNewTruckModalOpen] = useState(false);
+  const [isNewStaffModalOpen, setIsNewStaffModalOpen] = useState(false);
+  const [isDailySummaryModalOpen, setIsDailySummaryModalOpen] = useState(false);
+  const [dailySummaryMode, setDailySummaryMode] = useState<'inicio' | 'fin'>('inicio');
+  const [isClosingActaModalOpen, setIsClosingActaModalOpen] = useState(false);
+  const [deleteRoutesTargetIds, setDeleteRoutesTargetIds] = useState<string[] | null>(null);
+  // Rutas que puede mostrar la ventana de eliminar: las del tablero y también las
+  // del historial de liquidadas (para eliminar varias liquidadas a la vez).
+  const deleteModalRoutes = useMemo(() => {
+    if (!deleteRoutesTargetIds || !deleteRoutesTargetIds.length) return routes;
+    const seen = new Set(routes.map((r) => getRouteKey(r)));
+    return [...routes, ...historicalRoutes.filter((r) => !seen.has(getRouteKey(r)))];
+  }, [deleteRoutesTargetIds, routes, historicalRoutes]);
+  const [isUnassignedResourcesModalOpen, setIsUnassignedResourcesModalOpen] = useState(false);
+
+  const handleOpenDailySummary = (mode: 'inicio' | 'fin' = 'inicio') => {
+    setDailySummaryMode(mode);
+    setIsDailySummaryModalOpen(true);
+  };
+
+  // Sync to localStorage
+  useEffect(() => {
+    writeLocal(STORAGE_KEY_ROUTES, routes);
+    pushIfChanged('app_routes', routes, routeSyncKey, routesSyncRef, routesPushQueueRef, restoreRoutesFromServer);
+  }, [routes, pushIfChanged, resyncTick]);
+
+  useEffect(() => {
+    writeLocal(STORAGE_KEY_TRUCKS, trucks);
+    pushIfChanged('app_trucks', trucks, defaultSyncKey, trucksSyncRef, trucksPushQueueRef);
+  }, [trucks, pushIfChanged, resyncTick]);
+
+  useEffect(() => {
+    writeLocal(STORAGE_KEY_STAFF, staff);
+    pushIfChanged('app_staff', staff, defaultSyncKey, staffSyncRef, staffPushQueueRef);
+  }, [staff, pushIfChanged, resyncTick]);
+
+  useEffect(() => {
+    writeLocal(STORAGE_KEY_HISTORY, historicalRoutes);
+    pushIfChanged('app_historical_routes', historicalRoutes, routeSyncKey, historySyncRef, historyPushQueueRef);
+  }, [historicalRoutes, pushIfChanged, resyncTick]);
+
+  const showToast = useCallback(
+    (
+      message: string,
+      type: 'success' | 'error' | 'info' = 'info',
+      action?: { label: string; onClick: () => void }
+    ) => {
+      const id = `${Date.now()}-${Math.random()}`;
+      setToasts((prev) => [...prev, { id, message, type, action }]);
+      // Los avisos con "Deshacer" duran más para dar tiempo de reaccionar.
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, action ? 8000 : 4000);
+    },
+    []
+  );
+
+  // Punto 11 del análisis: aviso de conexión. Sin señal, los cambios no se
+  // pueden guardar en la base compartida; se muestra un aviso fijo y, al volver
+  // la señal, se reenvían automáticamente los cambios que quedaron pendientes.
+  useEffect(() => {
+    const goOnline = () => {
+      setIsOnline(true);
+      setResyncTick((t) => t + 1);
+      if (isSupabaseConfigured) showToast('Conexión recuperada. Guardando los cambios pendientes...', 'info');
+    };
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Avisos en pantalla cuando falla la lectura/escritura en la base de datos
+  // compartida (ver setSyncErrorHandler en services/sync.ts). Se limita a un
+  // aviso cada 10 segundos para no llenar la pantalla si la red se cae.
+  const lastSyncToastRef = useRef(0);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    setSyncErrorHandler((message) => {
+      // Sin señal ya se muestra el aviso fijo de conexión; no se repite en avisos.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+      const now = Date.now();
+      if (message.startsWith('No se guardó la asignación')) {
+        showToast(`⚠ ${message}`, 'error');
+        return;
+      }
+      // Con la sesión caída ya se muestra el recuadro para reingresar.
+      if (sessionLostRef.current) return;
+      if (now - lastSyncToastRef.current < 10000) return;
+      lastSyncToastRef.current = now;
+      showToast(`⚠ ${message}`, 'error');
+    });
+    return () => setSyncErrorHandler(null);
+  }, [showToast]);
+
+  useEffect(() => {
+    appInUseRef.current = !!currentUser && isRemoteReady;
+    // Si con la sesión caída ya no hay perfil visible, se vuelve al inicio normal
+    // (nunca quedarse atascado entre el recuadro y la pantalla de ingreso).
+    if (sessionLost && !currentUser) {
+      sessionLostRef.current = false;
+      setSessionLost(false);
+      authUserIdRef.current = null;
+      setAuthUserId(null);
+    }
+  }, [currentUser, isRemoteReady, sessionLost]);
+
+  // Blindaje: reintento automático de guardado. Si un guardado falla, la app
+  // vuelve a intentarlo sola (a los 15 s, 30 s, 45 s… hasta 2 min entre
+  // intentos) sin esperar a que el usuario haga otro cambio. Solo reenvía lo
+  // que quedó pendiente; lo ya guardado no se vuelve a subir.
+  useEffect(() => {
+    if (!isSupabaseConfigured || saveFailStreak === 0 || !isOnline || sessionLost) return;
+    if (saveFailStreak > 12) return; // tras ~15 min fallando se deja de insistir (queda el aviso rojo)
+    const delay = Math.min(15000 * saveFailStreak, 120000);
+    const t = window.setTimeout(() => setResyncTick((n) => n + 1), delay);
+    return () => window.clearTimeout(t);
+  }, [saveFailStreak, isOnline, sessionLost]);
+
+  // Blindaje: al volver a la app tras tenerla en segundo plano (tablet
+  // bloqueada, otra aplicación), se confirma la sesión y se reenvía lo
+  // pendiente, para no trabajar sobre una sesión que ya venció.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || !authUserIdRef.current) return;
+      void getSessionUserId().then(() => {
+        if (!sessionLostRef.current) setResyncTick((t) => t + 1);
+      });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
+  // Blindaje: aviso de espacio en la base de datos (solo administradores).
+  // Usa la función estado_espacio() de supabase/fase4_blindaje.sql; si aún no
+  // se ha ejecutado ese archivo, simplemente no se muestra nada.
+  const [spaceAlert, setSpaceAlert] = useState<{ mb: number; pct: number; alerta: string } | null>(null);
+  const [spaceAlertDismissed, setSpaceAlertDismissed] = useState(false);
+  const isAdminUser = !!currentUser?.isAdmin;
+  useEffect(() => {
+    if (!isSupabaseConfigured || !isRemoteReady || !isAdminUser) return;
+    let active = true;
+    const check = () =>
+      void fetchDatabaseSpace().then((r) => {
+        if (active && r) setSpaceAlert(r.alerta && r.alerta !== 'OK' ? r : null);
+      });
+    check();
+    const timer = window.setInterval(check, 6 * 60 * 60 * 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [isRemoteReady, isAdminUser]);
+
+  // Recuadro para reingresar la contraseña cuando la sesión se cayó sola.
+  const [reloginPassword, setReloginPassword] = useState('');
+  const [reloginError, setReloginError] = useState('');
+  const [reloginBusy, setReloginBusy] = useState(false);
+  const handleRelogin = async () => {
+    if (!currentUser || !reloginPassword || reloginBusy) return;
+    setReloginBusy(true);
+    setReloginError('');
+    const err = await signIn(currentUser.username, reloginPassword);
+    setReloginBusy(false);
+    if (err) {
+      setReloginError(err);
+      return;
+    }
+    setReloginPassword('');
+  };
+
+  const dismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Distinct agencies (solo las que el usuario en sesión tiene permiso de ver)
+  // Corrección: antes solo aparecían agencias que ya tuvieran rutas cargadas, así
+  // que una agencia nueva (p. ej. Barberena) no se podía elegir en el filtro
+  // superior, el Resumen Diario ni el Acta de Cierre hasta tener datos. Ahora
+  // se parte de la lista oficial (data/agencies.ts) y se agregan las que
+  // aparezcan en los datos con otro nombre.
+  const agencies = useMemo(() => {
+    const set = new Set<string>(AGENCIA_LOCATION_OPTIONS);
+    routes.forEach((r) => {
+      if (r.agencia) set.add(r.agencia);
+    });
+    historicalRoutes.forEach((r) => {
+      if (r.agencia) set.add(r.agencia);
+    });
+    return Array.from(set).filter((ag) => canViewAgency(ag));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routes, historicalRoutes, currentUser]);
+
+  // Filtro superior de Agencia: solo las agencias que tienen rutas ACTIVAS en el
+  // Tablero (todo lo que no está Liquidada) y que el usuario en sesión tiene
+  // permiso de ver. El Resumen Diario y el Acta de Cierre siguen usando la lista
+  // completa (`agencies`).
+  const boardAgencies = useMemo(() => {
+    const set = new Set<string>();
+    routes.forEach((r) => {
+      if (r.agencia && r.estado !== 'Liquidada' && canViewAgency(r.agencia)) set.add(r.agencia);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routes, currentUser]);
+  // Campana de pendientes: abre la pantalla correspondiente en la agencia del aviso.
+  const [zrAgenciaPedida, setZrAgenciaPedida] = useState('');
+  const irANotificacion = (tipo: DestinoNotificacion, agencia: string) => {
+    if (tipo === 'zr') {
+      if (agencia) setZrAgenciaPedida(agencia);
+    } else if (agencia && boardAgencies.includes(agencia)) {
+      setSelectedAgency(agencia);
+    }
+    setActiveTab(tipo);
+  };
+
+
+  // Si la agencia elegida en el filtro superior ya no tiene rutas activas (o el
+  // usuario perdió el permiso), se vuelve a "Todas las Agencias".
+  useEffect(() => {
+    if (agenciasSel.some((ag) => !boardAgencies.includes(ag))) {
+      setAgenciasSel((prev) => prev.filter((ag) => boardAgencies.includes(ag)));
+    }
+  }, [boardAgencies, agenciasSel]);
+
+  // Unified collection of all liquidated routes (including each completed trip: Primer Viaje and Revisita)
+  const allLiquidatedRoutes = useMemo(() => {
+    const list: Route[] = [];
+    const map = new Map<string, Route>();
+
+    // Cada registro se identifica por su ID de ruta MÁS su fecha de liquidación (o un
+    // marcador "activa" cuando aún no se ha liquidado). Esto evita que una ruta nueva
+    // del día de hoy que reutiliza el mismo número/ID que una ruta ya liquidada y
+    // archivada de un día anterior "tape" ese registro histórico en el tablero de
+    // Rutas Liquidadas (los números de ruta del Excel suelen repetirse día a día).
+    const keyFor = (r: Route) => {
+      const liqDate = r.fechaLiquidacion || r.liquidacion?.fechaLiquidacion;
+      return liqDate ? `${r.id}__${liqDate}__${r.agencia || ''}` : `${r.id}__activa__${r.agencia || ''}`;
+    };
+
+    // Merge historicalRoutes and routes (active state takes precedence if updated)
+    historicalRoutes.forEach((r) => {
+      map.set(keyFor(r), r);
+    });
+    routes.forEach((r) => {
+      map.set(keyFor(r), r);
+    });
+
+    map.forEach((r) => {
+      const pastDispatches = r.historialDespachos || [];
+
+      if (pastDispatches.length > 0) {
+        // Output each previous completed dispatch as an individual liquidated trip record
+        pastDispatches.forEach((d) => {
+          const isFirstTrip = d.intento === 1;
+          const wasRecarga =
+            d.tipoAsignacion === 'Recarga' ||
+            (isFirstTrip && (r.esRecarga || r.tipoAsignacion === 'Recarga'));
+          const priorTripTipo: AssignmentType =
+            wasRecarga ? 'Recarga' : isFirstTrip ? 'Primer Viaje' : 'Revisita';
+          const priorTripRoute: Route = {
+            ...r,
+            id: r.id,
+            estado: 'Liquidada',
+            tipoAsignacion: priorTripTipo,
+            esRecarga: priorTripTipo === 'Recarga',
+            esReasignacion: priorTripTipo === 'Revisita',
+            historialDespachos: [],
+            tripNumber: d.intento,
+            totalTrips: r.totalTrips || (pastDispatches.length + (r.estado === 'Liquidada' ? 1 : 0)),
+            paradas:
+              ((d.guiasExitosas || 0) + (d.guiasRechazadas || 0)) > 0
+                ? (d.guiasExitosas || 0) + (d.guiasRechazadas || 0)
+                : r.paradasOriginales || r.paradas,
+            cajasFisicas:
+              (d.cajasEntregadas + d.cajasDevueltas) > 0
+                ? d.cajasEntregadas + d.cajasDevueltas
+                : r.cajasOriginales || r.cajasFisicas,
+            fecha: r.fecha,
+            fechaOriginalRuta: r.fechaOriginalRuta || r.fecha,
+            fechaAsignacion: d.fechaAsignacion || r.fechaAsignacion || r.asignacion?.fechaAsignacion,
+            fechaLiquidacion: d.fechaRetorno,
+            asignacion: {
+              camionPlaca: d.camionPlaca,
+              camionId: d.camionId || '',
+              conductor: d.conductor,
+              auxiliar1: d.auxiliares?.[0] || null,
+              auxiliar2: d.auxiliares?.[1] || null,
+              auxiliar3: d.auxiliares?.[2] || null,
+              auxiliar4: d.auxiliares?.[3] || null,
+              horaSalida: d.horaSalida || '06:00',
+              fechaAsignacion: d.fechaAsignacion || r.fechaAsignacion || r.asignacion?.fechaAsignacion,
+              tipoAsignacion: priorTripTipo,
+            },
+            ultimoDespacho: {
+              camionPlaca: d.camionPlaca,
+              camionId: d.camionId || '',
+              conductor: d.conductor,
+              auxiliar1: d.auxiliares?.[0] || null,
+              auxiliar2: d.auxiliares?.[1] || null,
+              auxiliar3: d.auxiliares?.[2] || null,
+              auxiliar4: d.auxiliares?.[3] || null,
+              horaSalida: d.horaSalida || '06:00',
+              tipoAsignacion: priorTripTipo,
+            },
+            liquidacion: {
+              guiasExitosas: d.guiasExitosas ?? 0,
+              guiasRechazadas: d.guiasRechazadas ?? 0,
+              cajasEntregadas: d.cajasEntregadas,
+              cajasDevueltas: d.cajasDevueltas,
+              motivoDevolucion: d.motivoDevolucion,
+              auditor: d.auditor,
+              fechaLiquidacion: d.fechaRetorno,
+            },
+            motivoDevolucion: d.motivoDevolucion,
+          };
+          list.push(priorTripRoute);
+        });
+
+        // If the route itself is also liquidated, add the final completed trip
+        if (r.estado === 'Liquidada') {
+          const finalTripLiq = r.liquidacion;
+          const isFullDelivered =
+            (!finalTripLiq?.cajasDevueltas || finalTripLiq.cajasDevueltas === 0) &&
+            (!finalTripLiq?.guiasRechazadas || finalTripLiq.guiasRechazadas === 0);
+          const cleanMotivo = isFullDelivered ? '' : (finalTripLiq?.motivoDevolucion || '');
+
+          const finalTripTipo: AssignmentType =
+            r.asignacion?.tipoAsignacion ||
+            r.tipoAsignacion ||
+            (r.esRecarga ? 'Recarga' : r.esReasignacion ? 'Revisita' : 'Primer Viaje');
+
+          const finalTripRoute: Route = {
+            ...r,
+            id: r.id,
+            estado: 'Liquidada',
+            fecha: r.fecha,
+            fechaOriginalRuta: r.fechaOriginalRuta || r.fecha,
+            fechaAsignacion: r.fechaAsignacion || r.asignacion?.fechaAsignacion,
+            fechaLiquidacion: r.fechaLiquidacion || r.liquidacion?.fechaLiquidacion,
+            tipoAsignacion: finalTripTipo,
+            esRecarga: finalTripTipo === 'Recarga',
+            esReasignacion: finalTripTipo === 'Revisita',
+            historialDespachos: [],
+            tripNumber: pastDispatches.length + 1,
+            totalTrips: r.totalTrips || (pastDispatches.length + 1),
+            motivoDevolucion: cleanMotivo,
+            asignacion: r.asignacion
+              ? {
+                  ...r.asignacion,
+                  tipoAsignacion: finalTripTipo,
+                }
+              : null,
+            ultimoDespacho: r.ultimoDespacho
+              ? {
+                  ...r.ultimoDespacho,
+                  tipoAsignacion: finalTripTipo,
+                }
+              : null,
+            liquidacion: finalTripLiq
+              ? {
+                  ...finalTripLiq,
+                  motivoDevolucion: cleanMotivo,
+                }
+              : null,
+          };
+          list.push(finalTripRoute);
+        }
+      } else if (r.estado === 'Liquidada') {
+        // Normal single liquidated route
+        const tipoAsig: AssignmentType =
+          r.esRecarga || r.tipoAsignacion === 'Recarga' || r.asignacion?.tipoAsignacion === 'Recarga'
+            ? 'Recarga'
+            : r.aPiso || r.tipoAsignacion === 'Ruta a Piso'
+            ? 'Ruta a Piso'
+            : r.tipoAsignacion === 'Revisita' || r.esReasignacion || r.asignacion?.tipoAsignacion === 'Revisita'
+            ? 'Revisita'
+            : 'Primer Viaje';
+
+        list.push({
+          ...r,
+          fecha: r.fecha,
+          fechaOriginalRuta: r.fechaOriginalRuta || r.fecha,
+          fechaAsignacion: r.fechaAsignacion || r.asignacion?.fechaAsignacion,
+          fechaLiquidacion: r.fechaLiquidacion || r.liquidacion?.fechaLiquidacion,
+          tipoAsignacion: tipoAsig,
+        });
+      }
+    });
+
+    return list
+      .filter((r) => canViewAgency(r.agencia))
+      .sort((a, b) => {
+        // Si pertenecen a la misma ruta matriz/ID, el primer despacho (Recarga) aparece primero y luego la Revisita
+        if (a.id === b.id && a.tripNumber && b.tripNumber) {
+          return a.tripNumber - b.tripNumber;
+        }
+        // Punto 10 del análisis: la fecha de liquidación se guarda como
+        // "dd/mm/aaaa hh:mm"; new Date() no entiende ese formato (lo lee al revés
+        // o como inválido) y el orden de Liquidadas salía mal. Se usa el lector
+        // de fechas de la app, que sí respeta día/mes/año.
+        const timeA = parseFlexibleDate(a.liquidacion?.fechaLiquidacion || a.fechaLiquidacion)?.getTime() || 0;
+        const timeB = parseFlexibleDate(b.liquidacion?.fechaLiquidacion || b.fechaLiquidacion)?.getTime() || 0;
+        return timeB - timeA;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routes, historicalRoutes, currentUser]);
+
+  // Filtered routes for the active dashboard (Liquidated routes are excluded and moved to Tablero de Rutas Liquidadas)
+  const filteredActiveRoutes = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return routes.filter((r) => {
+      // Liquidated routes disappear from active board
+      if (r.estado === 'Liquidada') return false;
+
+      if (!canViewAgency(r.agencia)) return false;
+
+      const matchesAgency = enAgenciaSel(r.agencia);
+      if (!matchesAgency) return false;
+
+      if (boardFecha && formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) !== boardFecha) return false;
+
+      if (boardSegmento.length > 0 && !coincideSegmento(r, boardSegmento)) return false;
+
+      return coincideBusqueda(r, q);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routes, agenciasSel, searchQuery, currentUser, boardFecha, boardSegmento]);
+
+  // Rutas del día (todos los estados) visibles para el usuario, respetando la
+  // agencia seleccionada en la barra superior y su permiso de acceso por agencia.
+  // Se reutiliza tanto en las estadísticas del tablero como en el Dashboard.
+  const dashboardRoutes = useMemo(
+    () =>
+      routes.filter(
+        (r) => enAgenciaSel(r.agencia) && canViewAgency(r.agencia)
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [routes, agenciasSel, currentUser]
+  );
+
+  // Rutas liquidadas visibles para el usuario, respetando la agencia seleccionada.
+  const dashboardLiquidatedRoutes = useMemo(
+    () => allLiquidatedRoutes.filter((r) => enAgenciaSel(r.agencia)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allLiquidatedRoutes, agenciasSel]
+  );
+
+  // Camiones y Personal visibles según la agencia seleccionada en la barra superior.
+  // Los registros que todavía no tengan agencia asignada (creados antes de este
+  // campo) se mantienen siempre visibles para que se puedan corregir por Carga
+  // Masiva de Excel, sin importar el filtro de agencia activo.
+  //
+  // Corrección: además del filtro de la barra superior, se aplica el permiso de
+  // agencia del usuario (canViewAgency). Antes, un usuario restringido a una sola
+  // agencia podía dejar el selector en "-- Todas las Agencias --" (disponible
+  // para todos) y ver igual los camiones/personal de agencias a las que no tenía
+  // acceso — el permiso solo se aplicaba a las Rutas, no a estos dos módulos.
+  // Punto 9 del análisis: el estado "En Ruta" / "Disponible" de camiones y
+  // personal se CALCULA a partir de las rutas en tránsito, en vez de confiar en
+  // el valor guardado (que podía quedar desactualizado si una acción fallaba a
+  // medias). "Baja" se respeta tal cual. Las pantallas usan estas listas; el
+  // estado guardado solo se sigue actualizando por compatibilidad.
+  // --- Préstamos de personal y camiones entre agencias ---
+  // Se cargan al entrar (y en vivo). Mientras un préstamo está vigente, el
+  // camión o la persona trabaja para la agencia destino: ahí se puede asignar
+  // y en los reportes del día cuenta para esa agencia (no para la de origen).
+  const [prestamos, setPrestamos] = useState<Prestamo[]>([]);
+  const [prestamosCargando, setPrestamosCargando] = useState(false);
+  const [prestamosTablaFalta, setPrestamosTablaFalta] = useState(false);
+  const cargarPrestamos = useCallback(async () => {
+    setPrestamosCargando(true);
+    const res = await leerPrestamos();
+    setPrestamosCargando(false);
+    if (res.ok) {
+      setPrestamos(res.data);
+      setPrestamosTablaFalta(false);
+    } else {
+      setPrestamosTablaFalta(res.tablaFalta);
+    }
+  }, []);
+  const prestamosUserId = currentUser?.id;
+  useEffect(() => {
+    if (!prestamosUserId) return;
+    void cargarPrestamos();
+    return suscribirPrestamos((updater) => setPrestamos(updater));
+  }, [prestamosUserId, cargarPrestamos]);
+  const hoyISO = getGuatemalaDateForInput();
+  const prestamosHoy = useMemo(() => prestamosVigentes(prestamos, hoyISO), [prestamos, hoyISO]);
+
+  const busyResources = useMemo(() => {
+    const truckIds = new Set<string>();
+    const people = new Set<string>();
+    // Por código de persona: así una persona prestada en ruta en otra agencia
+    // también aparece "En Ruta" en su agencia de origen.
+    const personIds = new Set<string>();
+    routes.forEach((r) => {
+      if (r.estado !== 'En Tránsito' || !r.asignacion) return;
+      // Rutas de fechas futuras ya asignadas (p. ej. las de mañana, asignadas a
+      // las 21:00) no ponen "En Ruta" hoy al camión ni a la tripulación.
+      if (esJornadaFutura(r.fecha)) return;
+      const a = r.asignacion;
+      if (a.camionId) truckIds.add(a.camionId);
+      [a.conductor, a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].forEach((n) => {
+        if (n) people.add(`${r.agencia || ''}|${n.trim().toLowerCase()}`);
+      });
+      [a.conductorId, ...(a.auxiliarIds || [])].forEach((id) => id && personIds.add(id));
+      // Camiones de apoyo de la ruta: también quedan "En Ruta".
+      apoyosActivos(r).forEach((ap) => {
+        if (ap.camionId) truckIds.add(ap.camionId);
+        [ap.conductor, ...(ap.auxiliares || [])].forEach((n) => {
+          if (n) people.add(`${r.agencia || ''}|${n.trim().toLowerCase()}`);
+        });
+        [ap.conductorId, ...(ap.auxiliarIds || [])].forEach((id) => id && personIds.add(id));
+      });
+    });
+    return { truckIds, people, personIds };
+  }, [routes]);
+  // Día de hoy (Guatemala), para los estatus de camión puestos a mano.
+  const hoyGT = formatDateToGuatemala(new Date());
+  const trucksLive = useMemo(
+    () =>
+      trucks.map((t) => {
+        if (t.estado === 'Baja') return t;
+        // Estatus puesto a mano (con autorización) para HOY: manda sobre el cálculo.
+        const manual = t.estadoManual && t.estadoManual.fecha === hoyGT ? t.estadoManual.estado : null;
+        const estado = manual || (busyResources.truckIds.has(t.id) ? 'En Ruta' : 'Disponible');
+        return t.estado === estado ? t : { ...t, estado };
+      }),
+    [trucks, busyResources, hoyGT]
+  );
+  const staffLive = useMemo(
+    () =>
+      staff.map((s) => {
+        if (s.estado === 'Baja') return s;
+        const prestada = prestamosHoy.get(`s:${s.id}`);
+        const estado: ResourceStatus =
+          busyResources.people.has(`${s.agencia || ''}|${(s.nombre || '').trim().toLowerCase()}`) ||
+          (prestada && busyResources.people.has(`${prestada.agenciaDestino}|${(s.nombre || '').trim().toLowerCase()}`)) ||
+          busyResources.personIds.has(s.id)
+            ? 'En Ruta'
+            : 'Disponible';
+        return s.estado === estado ? s : { ...s, estado };
+      }),
+    [staff, busyResources, prestamosHoy]
+  );
+
+  // Préstamos vigentes hoy: cada camión/persona lleva el dato del préstamo y,
+  // para la operación del día (asignar, reportes, recursos sin asignar), su
+  // agencia pasa a ser la que lo recibe. En Personal/Camiones se conserva su
+  // agencia real.
+  const trucksInfo = useMemo(
+    () =>
+      trucksLive.map((t) => {
+        const p = prestamosHoy.get(`t:${t.id}`);
+        return p ? { ...t, prestamoInfo: infoDePrestamo(p) } : t;
+      }),
+    [trucksLive, prestamosHoy]
+  );
+  const staffInfo = useMemo(
+    () =>
+      staffLive.map((x) => {
+        const p = prestamosHoy.get(`s:${x.id}`);
+        return p ? { ...x, prestamoInfo: infoDePrestamo(p) } : x;
+      }),
+    [staffLive, prestamosHoy]
+  );
+  const trucksOp = useMemo(() => trucksInfo.map((t) => (t.prestamoInfo ? { ...t, agencia: t.prestamoInfo.destino } : t)), [trucksInfo]);
+  const staffOp = useMemo(() => staffInfo.map((x) => (x.prestamoInfo ? { ...x, agencia: x.prestamoInfo.destino } : x)), [staffInfo]);
+
+  const visibleTrucks = useMemo(
+    () =>
+      trucksOp.filter(
+        (t) =>
+          enAgenciaSel(t.agencia) &&
+          (!t.agencia || canViewAgency(t.agencia))
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [trucksOp, agenciasSel, currentUser]
+  );
+  const visibleStaff = useMemo(
+    () =>
+      staffOp.filter(
+        (s) =>
+          enAgenciaSel(s.agencia) &&
+          (!s.agencia || canViewAgency(s.agencia))
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [staffOp, agenciasSel, currentUser]
+  );
+  // Listas de las pantallas Camiones / Personal: su agencia real, más los que
+  // hoy están prestados A una agencia del filtro (con su etiqueta de préstamo).
+  const coincideAgenciaLista = (ag?: string) =>
+    !!ag && enAgenciaSel(ag) && canViewAgency(ag);
+  const listaTrucks = useMemo(
+    () => trucksInfo.filter((t) => !t.agencia ? agenciasSel.length === 0 : coincideAgenciaLista(t.agencia) || coincideAgenciaLista(t.prestamoInfo?.destino)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [trucksInfo, agenciasSel, currentUser]
+  );
+  const listaStaff = useMemo(
+    () => staffInfo.filter((x) => !x.agencia ? agenciasSel.length === 0 : coincideAgenciaLista(x.agencia) || coincideAgenciaLista(x.prestamoInfo?.destino)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [staffInfo, agenciasSel, currentUser]
+  );
+
+  // Módulo de Recargas: rutas (activas y liquidadas) y personal de las agencias
+  // que el usuario puede ver, para buscar la ruta y elegir la tripulación.
+  const rutasParaRecargas = useMemo(
+    () => [...routes, ...historicalRoutes].filter((r) => !r.agencia || canViewAgency(r.agencia)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [routes, historicalRoutes, currentUser]
+  );
+  // ¿El viaje de cada recarga automática ya se liquidó? (solo lectura)
+  const situacionRecargas = useMemo(() => crearSituacionRecargas(rutasParaRecargas), [rutasParaRecargas]);
+  const staffParaRecargas = useMemo(
+    () =>
+      staffLive.filter(
+        (s) =>
+          !s.agencia ||
+          canViewAgency(s.agencia) ||
+          prestamos.some((p) => canViewAgency(p.agenciaDestino) && p.recursos.some((r) => r.tipo !== 'camion' && r.id === s.id))
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [staffLive, currentUser, prestamos]
+  );
+
+  // Indicadores de Personal: activos por puesto (VPP / VPPB / APP). Respetan el
+  // filtro de agencia y los permisos del usuario (visibleStaff).
+  const staffPills = useMemo<StatPill[]>(() => {
+    const activos = listaStaff.filter((s) => s.estado !== 'Baja' && s.estatus !== 'BAJA');
+    const bajas = listaStaff.length - activos.length;
+    const by = (p: string) => activos.filter((s) => (s.puesto || '').toUpperCase() === p).length;
+    const otros = activos.length - by('VPP') - by('VPPB') - by('APP');
+    const pills: StatPill[] = [
+      { label: 'Activos', value: activos.length, cls: 'bg-slate-50 border-slate-200 text-slate-700', title: 'Personal activo (sin bajas)' },
+      { label: 'VPP', value: by('VPP'), cls: 'bg-indigo-50 border-indigo-200 text-indigo-700', title: 'Pilotos VPP' },
+      { label: 'VPPB', value: by('VPPB'), cls: 'bg-violet-50 border-violet-200 text-violet-700', title: 'Pilotos VPPB' },
+      { label: 'APP', value: by('APP'), cls: 'bg-sky-50 border-sky-200 text-sky-700', title: 'Auxiliares APP' },
+      { label: 'Disponibles', value: activos.filter((s) => s.estado === 'Disponible').length, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700', title: 'Activos disponibles para asignar' },
+      { label: 'En ruta', value: activos.filter((s) => s.estado === 'En Ruta').length, cls: 'bg-blue-50 border-blue-200 text-blue-700', title: 'Activos actualmente en ruta' },
+    ];
+    if (otros > 0) pills.push({ label: 'Otro puesto', value: otros, cls: 'bg-slate-50 border-slate-200 text-slate-600', title: 'Activos sin puesto VPP/VPPB/APP' });
+    if (bajas > 0) pills.push({ label: 'Baja', value: bajas, cls: 'bg-slate-100 border-slate-300 text-slate-500', title: 'Personal de baja (no se asigna)' });
+    return pills;
+  }, [listaStaff]);
+
+  // Indicadores de Camiones: total activo y cantidad por capacidad (de menor a
+  // mayor). Si hay muchas capacidades distintas, se muestran las 8 más comunes
+  // y el resto se agrupa en "Otras".
+  const truckPills = useMemo<StatPill[]>(() => {
+    const activos = listaTrucks.filter((t) => t.estado !== 'Baja');
+    const bajas = listaTrucks.length - activos.length;
+    const counts = new Map<string, number>();
+    activos.forEach((t) => {
+      const raw = String(t.capacidad ?? '').trim();
+      const key = raw && raw !== '0' ? raw : 'Sin capacidad';
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    const byFreq = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    const shown = byFreq.slice(0, 8);
+    const rest = byFreq.slice(8);
+    const num = (k: string) => {
+      const n = parseFloat(k.replace(',', '.'));
+      return Number.isFinite(n) ? n : Number.MAX_VALUE;
+    };
+    shown.sort((a, b) => num(a[0]) - num(b[0]) || a[0].localeCompare(b[0], 'es'));
+    const pills: StatPill[] = [
+      { label: 'Activos', value: activos.length, cls: 'bg-slate-50 border-slate-200 text-slate-700', title: 'Camiones activos (sin bajas)' },
+      ...shown.map(([cap, n]) => ({
+        label: cap === 'Sin capacidad' ? cap : `Cap. ${cap}`,
+        value: n,
+        cls: 'bg-blue-50 border-blue-200 text-blue-700',
+        title: cap === 'Sin capacidad' ? 'Camiones sin capacidad registrada' : `Camiones con capacidad ${cap}`,
+      })),
+    ];
+    if (rest.length > 0) {
+      pills.push({
+        label: 'Otras cap.',
+        value: rest.reduce((acc, [, n]) => acc + n, 0),
+        cls: 'bg-slate-50 border-slate-200 text-slate-600',
+        title: rest.map(([cap, n]) => `Cap. ${cap}: ${n}`).join(' · '),
+      });
+    }
+    pills.push({ label: 'En ruta', value: activos.filter((t) => t.estado === 'En Ruta').length, cls: 'bg-emerald-50 border-emerald-200 text-emerald-700', title: 'Camiones en ruta ahora' });
+    if (bajas > 0) pills.push({ label: 'Baja', value: bajas, cls: 'bg-slate-100 border-slate-300 text-slate-500', title: 'Camiones de baja' });
+    return pills;
+  }, [listaTrucks]);
+
+  // Rutas activas (no liquidadas) visibles para el usuario SIN aplicar el filtro de
+  // agencia seleccionada arriba, usadas para mostrar la distribución entre agencias
+  // en el Dashboard.
+  const activeRoutesVisibleAllAgencies = useMemo(
+    () => routes.filter((r) => r.estado !== 'Liquidada' && canViewAgency(r.agencia)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [routes, currentUser]
+  );
+
+  // Dashboard KPI stats. buildStats se reutiliza para el filtro de fecha del
+  // Tablero: con fixedDate, "hoy" y la jornada operativa pasan a ser esa fecha.
+  const buildStats = (scoped0: Route[], liqScoped0: Route[], fixedDate?: string) => {
+    const todayDateStr = fixedDate || formatDateToGuatemala(new Date());
+
+    // Identificar la fecha operativa activa de la jornada (detectando la fecha predominante en las rutas)
+    const dateCounts: Record<string, number> = {};
+    routes.forEach((r) => {
+      const d = r.fecha ? formatDateToGuatemala(r.fecha) : null;
+      if (d) dateCounts[d] = (dateCounts[d] || 0) + 1;
+    });
+    const predominantDate = Object.entries(dateCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const activeOperationDate = fixedDate || predominantDate || todayDateStr;
+
+    const scoped = scoped0;
+    const liqScoped = liqScoped0;
+
+    // Identificador de ruta trasladada a piso (queda en bodega para mañana)
+    const isFloor = (r: Route) =>
+      Boolean(
+        r.aPiso ||
+        r.tipoAsignacion === 'Ruta a Piso' ||
+        r.asignacion?.tipoAsignacion === 'Ruta a Piso'
+      );
+
+    // 1. Rutas Pendientes estrictamente por asignar camión y tripulación para salir a reparto hoy
+    // Las rutas trasladadas a piso NO se cuentan como pendientes por asignar hoy
+    // Ruta Bolsón (enviada a rechazo, sin asignación ni salida) NO es pendiente de asignar.
+    const isBolsonRoute = (r: Route) => Boolean(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
+    const isSelfServiceRoute = (r: Route) => Boolean(r.esSelfService || r.tipoAsignacion === 'Self Service');
+    const pendientesCount = scoped.filter(
+      (r) => r.estado === 'Pendiente' && !isFloor(r) && !isBolsonRoute(r) && !isSelfServiceRoute(r)
+    ).length;
+    const selfServiceCount = scoped.filter((r) => r.estado !== 'Liquidada' && isSelfServiceRoute(r)).length;
+    const bolsonCount = scoped.filter((r) => r.estado !== 'Liquidada' && isBolsonRoute(r)).length;
+
+    // 2. Rutas en Tránsito en la jornada
+    const transitoCount = scoped.filter((r) => r.estado === 'En Tránsito').length;
+    // Recargas (2° viaje) en tránsito: se muestran aparte de "Tránsito" en el tablero.
+    const isRecargaRoute = (r: Route) =>
+      Boolean(r.esRecarga || r.tipoAsignacion === 'Recarga' || r.asignacion?.tipoAsignacion === 'Recarga');
+    const recargasTransitoCount = scoped.filter((r) => r.estado === 'En Tránsito' && isRecargaRoute(r)).length;
+
+    // 3. Rutas Abiertas / Con Devolución en la jornada
+    const abiertasCount = scoped.filter((r) => r.estado === 'Abierta').length;
+
+    // 4. Rutas a Piso del Día:
+    // Rutas activas del tablero que fueron enviadas a piso en la jornada actual
+    const isFloorOfToday = (r: Route) => {
+      if (!isFloor(r)) return false;
+      const pDate = r.fechaPiso ? formatDateToGuatemala(r.fechaPiso) : null;
+      const rDate = r.fecha ? formatDateToGuatemala(r.fecha) : null;
+      const origDate = r.fechaOriginalRuta ? formatDateToGuatemala(r.fechaOriginalRuta) : null;
+      return (
+        pDate === todayDateStr ||
+        pDate === activeOperationDate ||
+        rDate === todayDateStr ||
+        rDate === activeOperationDate ||
+        origDate === todayDateStr ||
+        origDate === activeOperationDate
+      );
+    };
+
+    const pisoHoyCount = scoped.filter((r) => isFloorOfToday(r)).length;
+
+    // 5. Liquidadas en el día (lo realizado efectivamente en la jornada de hoy)
+    const liqHoy = liqScoped.filter((r) => {
+      const liqDateStr = r.liquidacion?.fechaLiquidacion
+        ? formatDateToGuatemala(r.liquidacion.fechaLiquidacion)
+        : r.fechaLiquidacion
+        ? formatDateToGuatemala(r.fechaLiquidacion)
+        : null;
+
+      const rDateStr = r.fecha ? formatDateToGuatemala(r.fecha) : null;
+      const origDateStr = r.fechaOriginalRuta ? formatDateToGuatemala(r.fechaOriginalRuta) : null;
+
+      return (
+        liqDateStr === todayDateStr ||
+        liqDateStr === activeOperationDate ||
+        rDateStr === todayDateStr ||
+        rDateStr === activeOperationDate ||
+        origDateStr === todayDateStr ||
+        origDateStr === activeOperationDate
+      );
+    });
+
+    // Consolidación de todas las rutas de la jornada para el cálculo de Cajas Físicas del Día
+    const allDayMap = new Map<string, Route>();
+    // Clave ID+fecha (getRouteKey): la misma ruta en dos fechas distintas son
+    // dos cargas diferentes y antes se contaba solo una.
+    scoped.forEach((r) => allDayMap.set(getRouteKey(r), r));
+    liqHoy.forEach((r) => {
+      if (!allDayMap.has(getRouteKey(r))) {
+        allDayMap.set(getRouteKey(r), r);
+      }
+    });
+
+    const dayRoutesList = Array.from(allDayMap.values());
+    const cajasFisicasTotalHoy = dayRoutesList.reduce((acc, r) => {
+      const c = toNum(r.cajasFisicas || r.cajasOriginales);
+      return acc + (isNaN(c) ? 0 : c);
+    }, 0);
+
+    const cajasEntregadasTotalHoy = liqHoy.reduce((acc, r) => {
+      const c = toNum(r.liquidacion?.cajasEntregadas ?? r.cajasFisicas);
+      return acc + (isNaN(c) ? 0 : c);
+    }, 0);
+
+    return {
+      pendientes: pendientesCount,
+      transito: transitoCount,
+      recargasTransito: recargasTransitoCount,
+      bolson: bolsonCount,
+      selfService: selfServiceCount,
+      abiertas: abiertasCount,
+      liquidadas: liqHoy.length,
+      liquidadasTotal: liqScoped.length,
+      pisoHoy: pisoHoyCount,
+      fechaHoy: activeOperationDate,
+      cajasFisicasHoy: cajasFisicasTotalHoy,
+      cajasEntregadasHoy: cajasEntregadasTotalHoy,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  };
+  const stats = useMemo(
+    () => buildStats(dashboardRoutes, dashboardLiquidatedRoutes),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [routes, dashboardRoutes, dashboardLiquidatedRoutes]
+  );
+
+  // --- Filtro de FECHA del Tablero de Rutas ---
+  // "Todas" = como siempre. Al elegir una fecha, la tabla y los indicadores
+  // (Pendientes, Tránsito, Recargas, Abiertas, A Piso, Liquidadas, Cajas) se
+  // calculan solo con las rutas de esa fecha de ruta.
+  const rutaDia = (r: Route) => formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) || '';
+  const boardDateOptions = useMemo(() => {
+    const set = new Set<string>();
+    routes.forEach((r) => {
+      if (r.estado !== 'Liquidada' && canViewAgency(r.agencia)) {
+        const d = rutaDia(r);
+        if (d) set.add(d);
+      }
+    });
+    set.add(formatDateToGuatemala(new Date()));
+    if (boardFecha) set.add(boardFecha);
+    const num = (d: string) => {
+      const [dd, mm, yy] = d.split('/');
+      return Number(yy) * 10000 + Number(mm) * 100 + Number(dd);
+    };
+    return Array.from(set).sort((a, b) => num(a) - num(b));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routes, currentUser, boardFecha]);
+  // Segmentos para el filtro del Tablero: los de la lista oficial más
+  // cualquier otro que traigan las rutas cargadas.
+  const boardSegmentOptions = useMemo(() => {
+    const set = new Set<string>(SEGMENTO_OPTIONS);
+    dashboardRoutes.forEach((r) => {
+      const sg = String(r.segmento || '').trim().toUpperCase();
+      if (sg) set.add(sg);
+    });
+    return Array.from(set);
+  }, [dashboardRoutes]);
+
+  // Indicadores de arriba del Tablero: siguen TODOS los filtros de la tabla
+  // (agencia, fecha, segmento y buscador).
+  const boardStats = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!boardFecha && boardSegmento.length === 0 && !q) return stats;
+    const enSeg = (r: Route) => coincideSegmento(r, boardSegmento) && coincideBusqueda(r, q);
+    if (!boardFecha) {
+      return buildStats(dashboardRoutes.filter(enSeg), dashboardLiquidatedRoutes.filter(enSeg));
+    }
+    const liqDia = (r: Route) =>
+      formatDateToGuatemala(r.liquidacion?.fechaLiquidacion || r.fechaLiquidacion) === boardFecha || rutaDia(r) === boardFecha;
+    return buildStats(
+      dashboardRoutes.filter((r) => rutaDia(r) === boardFecha && enSeg(r)),
+      dashboardLiquidatedRoutes.filter((r) => liqDia(r) && enSeg(r)),
+      boardFecha
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardFecha, boardSegmento, searchQuery, stats, dashboardRoutes, dashboardLiquidatedRoutes]);
+
+  // Actions
+  const handleCreateRoute = (newRouteData: Partial<Route>) => {
+    const id = String(newRouteData.id);
+    if (routes.some((r) => String(r.id) === id)) {
+      showToast(`El ID de ruta ${id} ya está registrado`, 'error');
+      return;
+    }
+
+    const routeDate = formatDateToGuatemala(newRouteData.fecha || new Date());
+    const created: Route = {
+      id,
+      agencia: newRouteData.agencia || 'Mercado Abierto',
+      mercado: newRouteData.mercado || 'Mercado Abierto',
+      fecha: routeDate,
+      fechaOriginalRuta: routeDate,
+      viaje: newRouteData.viaje || '02:00',
+      servicio: newRouteData.servicio || '08:00',
+      descanso: newRouteData.descanso || '00:45',
+      total: newRouteData.total || '10:45',
+      distancia: newRouteData.distancia || 30.0,
+      paradas: newRouteData.paradas || 1,
+      equipoFrio: newRouteData.equipoFrio || 0,
+      capacidadPorc: newRouteData.capacidadPorc || '100%',
+      cajas12Oz: newRouteData.cajas12Oz || 0,
+      pesoKg: newRouteData.pesoKg || 0,
+      cajasFisicas: newRouteData.cajasFisicas || 0,
+      estado: 'Pendiente',
+      asignacion: null,
+      liquidacion: null,
+      fechaCarga: formatDateTimeToGuatemala(new Date()),
+      fechaCreacion: formatDateTimeToGuatemala(new Date()),
+      tipoRuta: newRouteData.tipoRuta || 'Entrega',
+      segmento: newRouteData.segmento,
+      origen: newRouteData.origen,
+      destino: newRouteData.destino,
+      razonTraslado: newRouteData.razonTraslado,
+      razonTrasladoDetalle: newRouteData.razonTrasladoDetalle,
+    };
+
+    setRoutes((prev) => [created, ...prev]);
+    setIsNewRouteModalOpen(false);
+    setIsTrasladoRouteModalOpen(false);
+    showToast(`Ruta ${created.id} creada en estado Pendiente`, 'success');
+  };
+
+  // --- Cambio de segmento con contraseña de administrador ---
+  const segmentSplitGroup = (r: Route | null): Route[] =>
+    r && r.isSplitRoute && r.parentRouteId
+      ? routes.filter((x) => x.estado !== 'Liquidada' && isSameSplitGroup(x, String(r.parentRouteId), r))
+      : r
+      ? [r]
+      : [];
+
+  // Cambio manual del estatus de un camión (con autorización de administrador).
+  const [truckStatusTarget, setTruckStatusTarget] = useState<Truck | null>(null);
+  const handleConfirmTruckStatus = (truckId: string, nuevo: ResourceStatus, motivo: string, autorizadoPor: string) => {
+    const fecha = formatDateTimeToGuatemala(new Date());
+    const por = currentUser?.nombre || currentUser?.username || '';
+    const tr = trucks.find((t) => t.id === truckId);
+    const placa = tr ? `${tr.idCamion ? tr.idCamion + ' · ' : ''}${tr.placa}` : truckId;
+    setTrucks((prev) =>
+      prev.map((t) => {
+        if (t.id !== truckId) return t;
+        // Disponible / En Ruta se calculan solos con las rutas activas; si lo que
+        // se pide es distinto de ese cálculo, se deja fijo por HOY.
+        const calculado = busyResources.truckIds.has(t.id) ? 'En Ruta' : 'Disponible';
+        const estadoManual =
+          nuevo === 'Baja' || nuevo === calculado ? null : { estado: nuevo as 'Disponible' | 'En Ruta', fecha: hoyGT };
+        return {
+          ...t,
+          estado: nuevo,
+          estadoManual,
+          // Disponible o Baja: ya no está en ninguna ruta.
+          rutaActual: nuevo === 'En Ruta' ? t.rutaActual : null,
+          historialEstado: [...(t.historialEstado || []), { fecha, de: t.estado, a: nuevo, motivo, por, autorizadoPor }],
+        };
+      })
+    );
+    setTruckStatusTarget(null);
+    showToast(`Camión ${placa}: estatus cambiado a ${nuevo} (autorizó ${autorizadoPor}).`, 'success');
+  };
+
+  // Autorización de administrador: general, o administrador de la agencia
+  // del registro (ruta o camión).
+  const handleVerifyAdminForSegment = async (
+    username: string,
+    password: string,
+    agencia?: string,
+    // Fase 14: la autorización queda registrada en la base para este cambio.
+    aprobacion?: { tipo: 'segmento' | 'estatus_camion'; ref: string }
+  ): Promise<{ ok: boolean; nombre?: string; error?: string }> => {
+    if (isSupabaseConfigured)
+      return verifyAdminCredentials(
+        username,
+        password,
+        agencia,
+        aprobacion ? { ...aprobacion, para: currentUser?.id || null } : undefined
+      );
+    const u = users.find((x) => x.username.toLowerCase() === username.toLowerCase());
+    if (!u || u.password !== password) return { ok: false, error: 'Usuario o contraseña de administrador incorrectos.' };
+    const deAgencia = !!agencia && (u.adminAgencies || []).includes(agencia);
+    if (!(u.isAdmin || deAgencia) || u.activo === false) {
+      return {
+        ok: false,
+        error: agencia
+          ? `Ese usuario no es administrador general ni administrador de la agencia ${agencia}.`
+          : 'Ese usuario no es un administrador activo.',
+      };
+    }
+    return { ok: true, nombre: u.nombre || u.username };
+  };
+
+  const handleConfirmSegmentChange = (segmento: string, applyToGroup: boolean, autorizadoPor: string) => {
+    const target = segmentTarget;
+    if (!target) return;
+    const keys = new Set(
+      (applyToGroup ? segmentSplitGroup(target) : [target]).map((r) => getRouteKey(r))
+    );
+    const ahora = formatDateTimeToGuatemala(new Date());
+    const por = currentUser?.nombre || currentUser?.username || '';
+    // Solo cambia "segmento" (y deja constancia en historialSegmento).
+    setRoutes((prev) =>
+      prev.map((r) =>
+        keys.has(getRouteKey(r))
+          ? {
+              ...r,
+              segmento,
+              historialSegmento: [
+                ...(r.historialSegmento || []),
+                { fecha: ahora, de: r.segmento || '', a: segmento, por, autorizadoPor },
+              ],
+            }
+          : r
+      )
+    );
+    setSegmentTarget(null);
+    showToast(
+      `Segmento cambiado a ${segmento} en ${keys.size} ruta(s). Autorizó: ${autorizadoPor}.`,
+      'success'
+    );
+  };
+
+  // Rutas partidas antes de esta corrección quedaron sin segmento: se completa
+  // con el segmento de la ruta de origen (solo se AGREGA el dato que faltaba).
+  useEffect(() => {
+    if (!isRemoteReady) return;
+    const faltan = routes.some(
+      (r) => r.isSplitRoute && !r.segmento && (r.originalRouteData as Route | undefined)?.segmento
+    );
+    if (!faltan) return;
+    setRoutes((prev) =>
+      prev.map((r) =>
+        r.isSplitRoute && !r.segmento && (r.originalRouteData as Route | undefined)?.segmento
+          ? { ...r, segmento: (r.originalRouteData as Route).segmento }
+          : r
+      )
+    );
+  }, [routes, isRemoteReady]);
+
+  // Rutas ya cargadas (tablero + liquidadas archivadas) para el filtro de
+  // seguridad de la carga de Excel (no repetir ruta + fecha + agencia).
+  const batchExistingRoutes = useMemo(() => [...routes, ...historicalRoutes], [routes, historicalRoutes]);
+
+  // Control de cajas de cada ruta partida (total, entregado, devuelto y
+  // pendiente de entregar), para mostrarlo en el Tablero junto a cada viaje.
+  const resumenGruposSplit = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof resumenGrupo>>();
+    const todas = [...historicalRoutes, ...routes];
+    const splitTodas = todas.filter((r) => r.isSplitRoute);
+    routes.forEach((r) => {
+      if (!r.isSplitRoute) return;
+      const k = `${r.parentRouteId || String(r.id).split('.')[0]}|${r.fecha}|${r.agencia}`;
+      if (!map.has(k)) map.set(k, resumenGrupo(splitTodas, r));
+    });
+    return map;
+  }, [routes, historicalRoutes]);
+  const resumenGrupoDe = useCallback(
+    (r: Route) =>
+      r.isSplitRoute ? resumenGruposSplit.get(`${r.parentRouteId || String(r.id).split('.')[0]}|${r.fecha}|${r.agencia}`) || null : null,
+    [resumenGruposSplit]
+  );
+
+  // Viajes del mismo grupo que todavía se pueden ajustar (no liquidados ni
+  // abiertos) y que llevan a lo sumo un cliente.
+  const repartirCajasTrips = (r: Route | null): Route[] => {
+    if (!r || !r.isSplitRoute) return [];
+    const parent = String(r.parentRouteId || String(r.id).split('.')[0]);
+    return routes.filter(
+      (x) =>
+        isSameSplitGroup(x, parent, r) &&
+        (x.estado === 'Pendiente' || x.estado === 'En Tránsito') &&
+        (x.clientesRuta?.length || 0) <= 1
+    );
+  };
+
+  const openRepartirCajas = (r: Route) => {
+    if (repartirCajasTrips(r).length < 1) {
+      showToast('Esta ruta ya no tiene viajes sin liquidar para confirmar cajas.', 'info');
+      return;
+    }
+    setRepartirCajasTarget(r);
+  };
+
+  // Viajes del mismo grupo ya liquidados (se muestran como entregados).
+  const repartirCajasLiquidados = (r: Route | null): Route[] => {
+    if (!r || !r.isSplitRoute) return [];
+    const parent = String(r.parentRouteId || String(r.id).split('.')[0]);
+    return routes.filter((x) => isSameSplitGroup(x, parent, r) && x.estado === 'Liquidada');
+  };
+
+  const handleConfirmRepartirCajas = (cambios: CambioRepartoCajas[], totalAntes: number, totalNuevo: number) => {
+    const byKey = new Map(cambios.map((c) => [c.key, c]));
+    const fecha = formatDateTimeToGuatemala(new Date());
+    const por = currentUser?.nombre || currentUser?.username || '';
+    const cambioTotal = Math.abs(totalNuevo - totalAntes) >= 0.0005;
+    setRoutes((prev) =>
+      prev.map((r) => {
+        const cambio = byKey.get(getRouteKey(r));
+        if (!cambio) return r;
+        const nuevo = cambio.cajas;
+        const antes = toNum(r.cajasFisicas) || 0;
+        const cambiaCajas = Math.abs(antes - nuevo) >= 0.0005;
+        const yaConfirmada = r.cajasConfirmadas && Math.abs(r.cajasConfirmadas.cajas - nuevo) < 0.0005;
+        const confirmacion = cambio.confirmada ? (yaConfirmada ? r.cajasConfirmadas : { cajas: nuevo, fecha, por }) : null;
+        if (!cambiaCajas && !!confirmacion === !!r.cajasConfirmadas && (!confirmacion || yaConfirmada)) return r;
+        const motivo = cambio.confirmada
+          ? 'Cajas reales confirmadas'
+          : cambioTotal
+          ? `Ajuste proporcional (total por entregar ${totalAntes} → ${totalNuevo})`
+          : 'Ajuste proporcional por cajas confirmadas en otros viajes';
+        return {
+          ...r,
+          cajasFisicas: nuevo,
+          cajasConfirmadas: confirmacion,
+          ...(r.clientesRuta && r.clientesRuta.length === 1
+            ? { clientesRuta: [{ ...r.clientesRuta[0], cajas: nuevo }] }
+            : {}),
+          historialRepartoCajas: cambiaCajas
+            ? [...(r.historialRepartoCajas || []), { fecha, de: antes, a: nuevo, por, motivo }]
+            : r.historialRepartoCajas,
+        };
+      })
+    );
+    const parent = repartirCajasTarget?.parentRouteId || String(repartirCajasTarget?.id || '').split('.')[0];
+    const nConf = cambios.filter((c) => c.confirmada).length;
+    setRepartirCajasTarget(null);
+    showToast(
+      `Ruta ${parent}: ${nConf} de ${cambios.length} viaje(s) con cajas confirmadas; el resto se ajustó en proporción.`,
+      'success'
+    );
+  };
+
+  const handleConfirmSplit = (originalRoute: Route, childRoutes: Route[]) => {
+    setRoutes((prev) => {
+      const idx = prev.findIndex((r) => getRouteKey(r) === getRouteKey(originalRoute));
+      if (idx === -1) return prev;
+      const copy = [...prev];
+      copy.splice(idx, 1, ...childRoutes);
+      return copy;
+    });
+    setSplitRouteTarget(null);
+    // Borrado explícito en Supabase: la ruta original queda reemplazada por sus
+    // viajes hijos bajo IDs distintos, así que su clave compuesta (id+fecha) ya
+    // no aparece en el arreglo — hay que pedir su borrado a propósito en vez de
+    // depender de una sincronización que infiera la diferencia.
+    // Primero se guardan los viajes y después se borra la original: así la base
+    // reconoce el borrado como parte de la división (Fase 14).
+    void pushSharedCollection('app_routes', childRoutes, routeSyncKey).then(() =>
+      deleteSharedRecords('app_routes', [getRouteKey(originalRoute)])
+    );
+    showToast(
+      `Ruta ${originalRoute.id} dividida en ${childRoutes.length} viajes independientes.`,
+      'success'
+    );
+  };
+
+  const handleConfirmRevert = (parentRouteId: string, ref?: Route | null) => {
+    const siblings = routes.filter((r) => isSameSplitGroup(r, parentRouteId, ref));
+
+    if (siblings.length === 0) return;
+
+    if (siblings.some((s) => s.estado === 'Liquidada')) {
+      showToast('No se puede revertir porque al menos uno de los viajes ya fue liquidado.', 'error');
+      setRevertSplitTarget(null);
+      return;
+    }
+
+    // Corrección: antes solo se bloqueaba la reversión si un viaje ya estaba
+    // Liquidado, pero un viaje "En Tránsito" significa que el camión ya salió
+    // físicamente con esa carga — revertir en ese momento reconstruye la ruta
+    // matriz y podía perder el contexto operativo de ese viaje en curso.
+    if (siblings.some((s) => s.estado === 'En Tránsito')) {
+      showToast(
+        'No se puede revertir porque al menos uno de los viajes ya está En Tránsito (el camión ya salió con esa carga).',
+        'error'
+      );
+      setRevertSplitTarget(null);
+      return;
+    }
+
+    // Free resources considering other active routes sharing trucks or staff
+    const otherActiveRoutes = routes.filter(
+      (r) => !siblings.some((s) => String(s.id) === String(r.id)) && r.estado === 'En Tránsito' && r.asignacion
+    );
+
+    siblings.forEach((s) => {
+      if (s.asignacion) {
+        if (s.asignacion.camionId) {
+          const remainingUsingTruck = otherActiveRoutes.filter(
+            (r) => r.asignacion?.camionId === s.asignacion?.camionId
+          );
+          setTrucks((prev) =>
+            prev.map((t) => {
+              if (t.id === s.asignacion?.camionId) {
+                if (remainingUsingTruck.length > 0) {
+                  return {
+                    ...t,
+                    estado: 'En Ruta',
+                    rutaActual: remainingUsingTruck.map((r) => r.id).join(', '),
+                  };
+                }
+                return { ...t, estado: 'Disponible', rutaActual: null };
+              }
+              return t;
+            })
+          );
+        }
+        const crewNames = [
+          s.asignacion.conductor,
+          s.asignacion.auxiliar1,
+          s.asignacion.auxiliar2,
+          s.asignacion.auxiliar3,
+          s.asignacion.auxiliar4,
+        ].filter(Boolean) as string[];
+
+        setStaff((prev) =>
+          prev.map((st) => {
+            if (crewNames.includes(st.nombre)) {
+              if (st.estado === 'Baja') return st;
+              const stillInOther = otherActiveRoutes.some((r) =>
+                [
+                  r.asignacion?.conductor,
+                  r.asignacion?.auxiliar1,
+                  r.asignacion?.auxiliar2,
+                  r.asignacion?.auxiliar3,
+                  r.asignacion?.auxiliar4,
+                ].includes(st.nombre)
+              );
+              return stillInOther ? { ...st, estado: 'En Ruta' } : { ...st, estado: 'Disponible' };
+            }
+            return st;
+          })
+        );
+      }
+    });
+
+    // Corrección: al revertir una partición, cualquier historial de despacho
+    // (entregas/devoluciones ya registradas) que se hubiera acumulado en los
+    // viajes individuales se descartaba silenciosamente al reconstruir la ruta
+    // matriz. Ahora se conserva, combinando el historial de todos los viajes.
+    const combinedHistorial = siblings.reduce<typeof siblings[number]['historialDespachos']>(
+      (acc, s) => (s.historialDespachos && s.historialDespachos.length > 0 ? [...(acc || []), ...s.historialDespachos] : acc),
+      undefined
+    );
+
+    let restoredRoute: Route;
+    if (siblings[0].originalRouteData) {
+      restoredRoute = {
+        ...JSON.parse(JSON.stringify(siblings[0].originalRouteData)),
+        estado: 'Pendiente',
+        asignacion: null,
+        liquidacion: null,
+        ...(combinedHistorial ? { historialDespachos: combinedHistorial } : {}),
+      };
+    } else {
+      const sumParadas = siblings.reduce((acc, s) => acc + (parseInt(String(s.paradas)) || 0), 0);
+      const sumCajas = siblings.reduce(
+        (acc, s) => acc + (toNum(s.cajasFisicas) || 0),
+        0
+      );
+      restoredRoute = {
+        id: parentRouteId,
+        agencia: siblings[0].agencia,
+        mercado: siblings[0].mercado || 'Mercado Abierto',
+        fecha: siblings[0].fecha,
+        viaje: siblings[0].viaje || '02:00',
+        servicio: siblings[0].servicio || '08:00',
+        descanso: siblings[0].descanso || '00:45',
+        total: siblings[0].total || '10:45',
+        distancia: siblings[0].distancia || '30.0',
+        paradas: sumParadas,
+        equipoFrio: siblings[0].equipoFrio || 0,
+        capacidadPorc: siblings[0].capacidadPorc || '100%',
+        cajas12Oz: siblings[0].cajas12Oz || 0,
+        pesoKg: siblings[0].pesoKg || 0,
+        cajasFisicas: sumCajas,
+        estado: 'Pendiente',
+        asignacion: null,
+        liquidacion: null,
+        fechaCarga: siblings[0].fechaCarga || new Date().toISOString().slice(0, 16).replace('T', ' '),
+        fechaCreacion:
+          siblings[0].fechaCreacion || new Date().toISOString().slice(0, 16).replace('T', ' '),
+        ...(combinedHistorial ? { historialDespachos: combinedHistorial } : {}),
+      };
+    }
+
+    setRoutes((prev) => {
+      const firstIdx = prev.findIndex((r) => isSameSplitGroup(r, parentRouteId, ref));
+      const filtered = prev.filter((r) => !isSameSplitGroup(r, parentRouteId, ref));
+      filtered.splice(firstIdx >= 0 ? firstIdx : 0, 0, restoredRoute);
+      return filtered;
+    });
+
+    // Borrado explícito en Supabase: los viajes individuales (hijos) quedan
+    // reemplazados por la ruta matriz restaurada, así que sus claves compuestas
+    // ya no aparecen en el arreglo — se borran a propósito, nunca por diferencia.
+    void deleteSharedRecords('app_routes', siblings.map((s) => getRouteKey(s)));
+
+    setRevertSplitTarget(null);
+    showToast(`Partición revertida con éxito. Restaurada ruta matriz ${parentRouteId}.`, 'success');
+  };
+
+  // Corrección: el mismo ID de ruta puede repetirse en fechas distintas (ruta
+  // recurrente cargada día tras día). Antes esta función buscaba/actualizaba las
+  // rutas comparando solo por "id", así que asignar una fila podía terminar
+  // aplicando la misma asignación también a otra fila con el mismo ID pero de otra
+  // fecha. Ahora se identifica la fila exacta con ID + Fecha (ver
+  // src/utils/routeKey.ts).
+  // Id del colaborador por nombre dentro de la agencia de la ruta (si hay
+  // homónimos en la misma agencia, se toma el primero que no esté de baja).
+  const staffIdByName = (agencia: string, nombre?: string | null): string | undefined => {
+    if (!nombre) return undefined;
+    const clean = nombre.trim().toLowerCase();
+    const candidates = staff.filter((st) => (st.nombre || '').trim().toLowerCase() === clean);
+    const sameAgency = candidates.filter((st) => st.agencia === agencia);
+    const pool = sameAgency.length ? sameAgency : candidates;
+    return (pool.find((st) => st.estado !== 'Baja') || pool[0])?.id;
+  };
+
+  const handleConfirmAssignment = (
+    routeId: string,
+    fecha: string,
+    assignment: {
+      truckId: string;
+      truckPlaca: string;
+      driverName: string;
+      helper1?: string;
+      helper2?: string;
+      helper3?: string;
+      helper4?: string;
+      horaSalida: string;
+      tipoAsignacion: AssignmentType;
+    }
+  ) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    const intentoNum = (targetRoute?.historialDespachos?.length || 0) + 1;
+    const hasPriorAssignment = Boolean(
+      targetRoute?.asignacion ||
+      targetRoute?.ultimoDespacho ||
+      ((targetRoute?.historialDespachos?.length || 0) > 0) ||
+      targetRoute?.estado === 'Abierta' ||
+      targetRoute?.estado === 'En Tránsito' ||
+      targetRoute?.esReasignacion ||
+      ((targetRoute?.retornosCount || 0) > 0) ||
+      Boolean(targetRoute?.fechaAsignacion) ||
+      targetRoute?.tipoAsignacion === 'Revisita'
+    );
+    let effectiveTipo: AssignmentType =
+      assignment.tipoAsignacion ||
+      (targetRoute?.estado === 'Abierta' ? 'Revisita' : 'Primer Viaje');
+    if (effectiveTipo === 'Revisita' && !hasPriorAssignment) {
+      effectiveTipo = 'Primer Viaje';
+    }
+    const isRecarga = effectiveTipo === 'Recarga';
+    const isRevisita = effectiveTipo === 'Revisita';
+    const fechaHoraAsignacion = formatDateTimeToGuatemala(new Date());
+
+    setRoutes((prev) =>
+      prev.map((r) => {
+        if (routeMatchesKey(r, routeId, fecha)) {
+          const originalDate = r.fechaOriginalRuta || r.fecha;
+          return {
+            ...r,
+            // Despacho nuevo: los apoyos que hubieran quedado abiertos se cierran
+            // (al Modificar / Reasignar una ruta en tránsito se conservan).
+            apoyos: r.estado === 'En Tránsito' ? r.apoyos : cerrarApoyos(r, fechaHoraAsignacion).apoyos,
+            fechaOriginalRuta: originalDate,
+            fecha: originalDate,
+            estado: 'En Tránsito',
+            tipoAsignacion: effectiveTipo,
+            esRecarga: isRecarga,
+            esReasignacion: isRevisita,
+            aPiso: effectiveTipo === 'Ruta a Piso',
+            esBolson: false,
+            esSelfService: false,
+            fechaAsignacion: fechaHoraAsignacion,
+            asignacion: {
+              camionId: assignment.truckId,
+              camionPlaca: assignment.truckPlaca,
+              conductor: assignment.driverName,
+              auxiliar1: assignment.helper1 || null,
+              auxiliar2: assignment.helper2 || null,
+              auxiliar3: assignment.helper3 || null,
+              auxiliar4: assignment.helper4 || null,
+              // Punto 7 del análisis: además del nombre se guarda el código
+              // interno (id) del piloto y de cada auxiliar, para no depender
+              // solo del nombre (homónimos, correcciones de ortografía).
+              conductorId: staffIdByName(r.agencia, assignment.driverName),
+              auxiliarIds: [assignment.helper1, assignment.helper2, assignment.helper3, assignment.helper4].map((n) =>
+                n ? staffIdByName(r.agencia, n) || null : null
+              ),
+              horaSalida: assignment.horaSalida,
+              fechaDespacho: formatDateToGuatemala(new Date()),
+              fechaAsignacion: fechaHoraAsignacion,
+              tipoAsignacion: effectiveTipo,
+            },
+          };
+        }
+        return r;
+      })
+    );
+
+    // Recarga: queda en Recargas como "En ruta" (aún no se autoriza); al
+    // liquidar se actualiza la misma, sin duplicar, y pasa a Por autorizar.
+    if (isRecarga && targetRoute && (assignment.driverName || assignment.helper1 || assignment.helper2 || assignment.helper3 || assignment.helper4)) {
+      registrarRecargaDelViaje({
+        ...targetRoute,
+        tipoAsignacion: effectiveTipo,
+        esRecarga: true,
+        fechaAsignacion: fechaHoraAsignacion,
+        asignacion: {
+          camionId: assignment.truckId,
+          camionPlaca: assignment.truckPlaca,
+          conductor: assignment.driverName,
+          auxiliar1: assignment.helper1 || null,
+          auxiliar2: assignment.helper2 || null,
+          auxiliar3: assignment.helper3 || null,
+          auxiliar4: assignment.helper4 || null,
+          conductorId: staffIdByName(targetRoute.agencia, assignment.driverName),
+          horaSalida: assignment.horaSalida,
+          fechaDespacho: formatDateToGuatemala(new Date()),
+          fechaAsignacion: fechaHoraAsignacion,
+          tipoAsignacion: effectiveTipo,
+        },
+      }, false);
+    }
+
+    // Update Truck status - Si el camión ya está cargado con otra ruta activa, conservar todas las rutas asignadas
+    setTrucks((prev) =>
+      prev.map((t) => {
+        if (t.id === assignment.truckId) {
+          const otherActiveUsingTruck = routes
+            .filter(
+              (r) =>
+                r.estado === 'En Tránsito' &&
+                !routeMatchesKey(r, routeId, fecha) &&
+                r.asignacion?.camionId === assignment.truckId
+            )
+            .map((r) => String(r.id));
+          const allAssignedIds = Array.from(new Set([...otherActiveUsingTruck, String(routeId)]));
+          return {
+            ...t,
+            estado: 'En Ruta',
+            rutaActual: allAssignedIds.join(', '),
+            motivoNoAsignado: null,
+            motivoNoAsignadoFecha: null,
+            remuneraNoAsignado: null,
+            comentarioNoAsignado: null,
+          };
+        }
+        return t;
+      })
+    );
+
+    // Update Driver & Helpers status
+    setStaff((prev) =>
+      prev.map((st) => {
+        const isAssignedNow = [
+          assignment.driverName,
+          assignment.helper1,
+          assignment.helper2,
+          assignment.helper3,
+          assignment.helper4,
+        ].includes(st.nombre);
+        if (isAssignedNow) {
+          return {
+            ...st,
+            estado: 'En Ruta',
+            motivoNoAsignado: null,
+            motivoNoAsignadoFecha: null,
+            remuneraNoAsignado: null,
+            comentarioNoAsignado: null,
+          };
+        }
+        return st;
+      })
+    );
+
+    // Verificar si esta asignación comparte camión con otra ruta activa (Optimización de Carga)
+    const otherRoutesWithSameTruck = routes.filter(
+      (r) =>
+        !routeMatchesKey(r, routeId, fecha) &&
+        r.estado === 'En Tránsito' &&
+        r.asignacion?.camionId === assignment.truckId
+    );
+
+    setAssignTarget(null);
+    if (!assignment.driverName) {
+      showToast(`Ruta ${routeId} asignada solo con camión ${assignment.truckPlaca} (tripulación pendiente: complétala con Modificar/Reasignar).`, 'success');
+    } else if (isRecarga) {
+      showToast(
+        `Ruta ${routeId} asignada como RECARGA ${intentoNum > 1 ? `(Despacho #${intentoNum})` : '(Segundo Viaje)'} a la unidad ${assignment.truckPlaca} y tripulación. Quedó en Recargas → Por autorizar.`,
+        'success'
+      );
+    } else if (effectiveTipo === 'Revisita') {
+      showToast(
+        `Ruta ${routeId} despachada como REVISITA (Reasignación despacho #${intentoNum}) con unidad ${assignment.truckPlaca} y piloto ${assignment.driverName}.`,
+        'success'
+      );
+    } else if (otherRoutesWithSameTruck.length > 0) {
+      showToast(
+        `Ruta ${routeId} despachada en unidad ${assignment.truckPlaca} (Optimización de Carga compartida con Ruta ${otherRoutesWithSameTruck.map((r) => r.id).join(', ')}).`,
+        'success'
+      );
+    } else {
+      showToast(`Ruta ${routeId} despachada con unidad ${assignment.truckPlaca} (Primer Viaje).`, 'success');
+    }
+  };
+
+  // "Deshacer" (análisis de botones, punto 8): guarda cómo estaban las rutas,
+  // camiones y personas que toca una acción reversible (p. ej. A Piso) y
+  // devuelve la función que los restaura. Se ofrece en el aviso por 8 segundos.
+  const makeUndo = (affectedRoutes: Route[]) => {
+    const routeSnap = new Map(affectedRoutes.map((r) => [getRouteKey(r), r]));
+    const truckIds = new Set<string>();
+    const crew = new Set<string>();
+    affectedRoutes.forEach((r) => {
+      const a = r.asignacion || r.ultimoDespacho;
+      if (!a) return;
+      if (a.camionId) truckIds.add(a.camionId);
+      [a.conductor, a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].forEach((n) => n && crew.add(n));
+    });
+    const truckSnap = new Map(trucks.filter((t) => truckIds.has(t.id)).map((t) => [t.id, t]));
+    const staffSnap = new Map(staff.filter((st) => crew.has(st.nombre)).map((st) => [st.id, st]));
+    return () => {
+      setRoutes((prev) => prev.map((r) => routeSnap.get(getRouteKey(r)) ?? r));
+      if (truckSnap.size) setTrucks((prev) => prev.map((t) => truckSnap.get(t.id) ?? t));
+      if (staffSnap.size) setStaff((prev) => prev.map((st) => staffSnap.get(st.id) ?? st));
+      showToast('Acción deshecha.', 'info');
+    };
+  };
+
+  // Corrección: mismo motivo que handleConfirmAssignment — se identifica la fila
+  // exacta con ID + Fecha para no afectar otra fila con el mismo ID en otra fecha.
+  // Ruta Bolsón: la ruta se envía a rechazo y NO sale (sin camión ni
+  // tripulación). Queda en el tablero como "Bolsón · por liquidar" con su fecha
+  // y carga originales, y luego se liquida como rechazo.
+  const handleMoveToBolson = (routeId: string, fecha: string, motivo: string) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    if (targetRoute.asignacion) {
+      showToast('La ruta tiene camión y tripulación asignados. Liquídala o pásala a piso antes de enviarla a Bolsón.', 'error');
+      return;
+    }
+    const undo = makeUndo([targetRoute]);
+    setRoutes((prev) =>
+      prev.map((r) =>
+        routeMatchesKey(r, routeId, fecha)
+          ? {
+              ...r,
+              estado: 'Pendiente',
+              asignacion: null,
+              tipoAsignacion: 'Ruta Bolsón',
+              esBolson: true,
+              fechaBolson: formatDateTimeToGuatemala(new Date()),
+              motivoBolson: motivo,
+              aPiso: false,
+            }
+          : r
+      )
+    );
+    setAssignTarget(null);
+    showToast(`Ruta ${routeId} enviada a Bolsón (rechazo). Queda pendiente de liquidar; no lleva camión ni tripulación.`, 'info', {
+      label: 'Deshacer',
+      onClick: undo,
+    });
+  };
+
+  // Self Service: el cliente recoge el pedido; no lleva camión ni tripulación.
+  // Queda en el tablero "Self Service · por liquidar" y se liquida con el
+  // formulario normal (cajas y paradas entregadas).
+  const handleMoveToSelfService = (routeId: string, fecha: string, nota: string) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    const undo = makeUndo([targetRoute]);
+
+    // Si la ruta se asignó por error (camión y tripulación), al pasarla a Self
+    // Service se liberan, salvo que sigan en otra ruta en tránsito.
+    const asigPrevia = targetRoute.asignacion;
+    if (asigPrevia) {
+      const otras = routes.filter(
+        (r) => !routeMatchesKey(r, routeId, fecha) && r.estado === 'En Tránsito' && r.asignacion
+      );
+      if (asigPrevia.camionId) {
+        const siguen = otras.filter((r) => r.asignacion?.camionId === asigPrevia.camionId);
+        setTrucks((prev) =>
+          prev.map((t) =>
+            t.id === asigPrevia.camionId
+              ? siguen.length > 0
+                ? { ...t, estado: 'En Ruta', rutaActual: siguen.map((r) => r.id).join(', ') }
+                : { ...t, estado: 'Disponible', rutaActual: null }
+              : t
+          )
+        );
+      }
+      const crew = [asigPrevia.conductor, asigPrevia.auxiliar1, asigPrevia.auxiliar2, asigPrevia.auxiliar3, asigPrevia.auxiliar4].filter(Boolean) as string[];
+      setStaff((prev) =>
+        prev.map((st) => {
+          if (!crew.includes(st.nombre) || st.estado === 'Baja') return st;
+          const enOtra = otras.some((r) =>
+            [r.asignacion?.conductor, r.asignacion?.auxiliar1, r.asignacion?.auxiliar2, r.asignacion?.auxiliar3, r.asignacion?.auxiliar4].includes(st.nombre)
+          );
+          return enOtra ? { ...st, estado: 'En Ruta' } : { ...st, estado: 'Disponible' };
+        })
+      );
+    }
+
+    setRoutes((prev) =>
+      prev.map((r) =>
+        routeMatchesKey(r, routeId, fecha)
+          ? {
+              ...r,
+              estado: 'Pendiente',
+              asignacion: null,
+              fechaAsignacion: undefined,
+              esRecarga: false,
+              tipoAsignacion: 'Self Service',
+              esSelfService: true,
+              fechaSelfService: formatDateTimeToGuatemala(new Date()),
+              notaSelfService: nota || undefined,
+              esBolson: false,
+              aPiso: false,
+            }
+          : r
+      )
+    );
+    setAssignTarget(null);
+    showToast(
+      asigPrevia
+        ? `Ruta ${routeId} pasó a Self Service: se liberaron el camión ${asigPrevia.camionPlaca} y su tripulación. Queda lista para liquidar.`
+        : `Ruta ${routeId} marcada como Self Service: queda lista para liquidar.`,
+      'success',
+      {
+      label: 'Deshacer',
+      onClick: undo,
+    });
+  };
+
+  const handleRemoveSelfService = (routeId: string, fecha: string) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    const undo = makeUndo([targetRoute]);
+    setRoutes((prev) =>
+      prev.map((r) =>
+        routeMatchesKey(r, routeId, fecha)
+          ? {
+              ...r,
+              esSelfService: false,
+              tipoAsignacion: (r.historialDespachos?.length || 0) > 0 ? 'Revisita' : r.esRecarga ? 'Recarga' : 'Primer Viaje',
+              fechaSelfService: undefined,
+              notaSelfService: undefined,
+            }
+          : r
+      )
+    );
+    showToast(`Ruta ${routeId} ya no es Self Service: vuelve a quedar por asignar.`, 'info', { label: 'Deshacer', onClick: undo });
+  };
+
+  const handleRemoveBolson = (routeId: string, fecha: string) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    const undo = makeUndo([targetRoute]);
+    setRoutes((prev) =>
+      prev.map((r) =>
+        routeMatchesKey(r, routeId, fecha)
+          ? {
+              ...r,
+              esBolson: false,
+              tipoAsignacion: (r.historialDespachos?.length || 0) > 0 ? 'Revisita' : r.esRecarga ? 'Recarga' : 'Primer Viaje',
+              motivoBolson: undefined,
+              fechaBolson: undefined,
+            }
+          : r
+      )
+    );
+    showToast(`Ruta ${routeId} salió del Bolsón: vuelve a quedar por asignar.`, 'info', { label: 'Deshacer', onClick: undo });
+  };
+
+  const handleMoveToFloor = (
+    routeId: string,
+    fecha: string,
+    tomorrowDate: string,
+    motivo: string = 'Ruta a Piso para despacho de mañana'
+  ) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    const undo = makeUndo([targetRoute]);
+
+    // Liberar camión o personal si estaban asignados previamente, verificando si otras rutas activas los siguen usando
+    const asig = targetRoute.asignacion || targetRoute.ultimoDespacho;
+    const otherActiveRoutes = routes.filter(
+      (r) => !routeMatchesKey(r, routeId, fecha) && r.estado === 'En Tránsito' && r.asignacion
+    );
+
+    if (asig) {
+      if (asig.camionId) {
+        const remainingRoutesUsingTruck = otherActiveRoutes.filter(
+          (r) => r.asignacion?.camionId === asig.camionId
+        );
+        setTrucks((prev) =>
+          prev.map((t) => {
+            if (t.id === asig.camionId) {
+              if (remainingRoutesUsingTruck.length > 0) {
+                return {
+                  ...t,
+                  estado: 'En Ruta',
+                  rutaActual: remainingRoutesUsingTruck.map((r) => r.id).join(', '),
+                };
+              }
+              return { ...t, estado: 'Disponible', rutaActual: null };
+            }
+            return t;
+          })
+        );
+      }
+      const crewNames = [asig.conductor, asig.auxiliar1, asig.auxiliar2, asig.auxiliar3, asig.auxiliar4].filter(Boolean) as string[];
+      setStaff((prev) =>
+        prev.map((st) => {
+          if (crewNames.includes(st.nombre)) {
+            if (st.estado === 'Baja') return st;
+            const stillInOtherRoute = otherActiveRoutes.some((r) =>
+              [r.asignacion?.conductor, r.asignacion?.auxiliar1, r.asignacion?.auxiliar2, r.asignacion?.auxiliar3, r.asignacion?.auxiliar4].includes(st.nombre)
+            );
+            return stillInOtherRoute ? { ...st, estado: 'En Ruta' } : { ...st, estado: 'Disponible' };
+          }
+          return st;
+        })
+      );
+    }
+
+    setRoutes((prev) =>
+      prev.map((r) => {
+        if (routeMatchesKey(r, routeId, fecha)) {
+          const originalDate = r.fechaOriginalRuta || r.fecha;
+          return {
+            ...r,
+            fechaOriginalRuta: originalDate,
+            fecha: originalDate, // Permanece siempre la fecha de ruta original
+            fechaReprogramada: tomorrowDate,
+            estado: 'Pendiente',
+            asignacion: null,
+            tipoAsignacion: 'Ruta a Piso',
+            esRecarga: false,
+            aPiso: true,
+            fechaPiso: formatDateTimeToGuatemala(new Date()),
+            motivoPiso: motivo,
+          };
+        }
+        return r;
+      })
+    );
+
+    setAssignTarget(null);
+    const origDate = targetRoute?.fechaOriginalRuta || targetRoute?.fecha || '';
+    showToast(
+      `Ruta ${routeId} guardada a Piso. Permanece con su fecha de ruta original (${origDate}) y reprogramada para mañana (${tomorrowDate}).`,
+      'info',
+      { label: 'Deshacer', onClick: undo }
+    );
+  };
+
+  // Corrección: la selección múltiple del Tablero de Rutas solo permitía eliminar en
+  // lote; se agrega la acción masiva "Enviar a Piso" (guardar varias rutas en bodega
+  // para despacho de mañana) sin tocar el flujo de eliminación existente. Igual que la
+  // acción individual "A Piso" (ver el uso de onMoveToFloor en RoutesTable.tsx), esta
+  // acción NO solicita contraseña — solo "Eliminar" la requiere (ver DeleteAuthModal).
+  // Corrección: routeIds aquí son claves compuestas ID+Fecha (ver
+  // src/utils/routeKey.ts), no solo el ID — el mismo ID de ruta puede repetirse en
+  // fechas distintas, así que filtrar solo por ID podía enviar a Piso también otra
+  // fila con el mismo ID pero de otra fecha.
+  const handleBulkMoveToFloor = (routeIds: string[]) => {
+    const keysSet = new Set(routeIds);
+
+    // Solo se pueden enviar a Piso rutas que no estén ya en Piso ni Liquidadas (para una
+    // ruta ya en Piso existe la opción individual "Modificar / Sacar de Piso").
+    const eligibleRoutes = routes.filter(
+      (r) => keysSet.has(getRouteKey(r)) && r.estado !== 'Liquidada' && !r.aPiso
+    );
+    const skippedCount = keysSet.size - eligibleRoutes.length;
+
+    if (eligibleRoutes.length === 0) {
+      showToast(
+        'Ninguna de las rutas seleccionadas se puede enviar a Piso (ya están a Piso o Liquidadas).',
+        'error'
+      );
+      return;
+    }
+
+    const eligibleKeysSet = new Set(eligibleRoutes.map((r) => getRouteKey(r)));
+    const undo = makeUndo(eligibleRoutes);
+
+    // Rutas activas que permanecen sin cambios, para liberar camión/personal
+    // correctamente (mismo criterio que handleConfirmDeleteRoutes).
+    const remainingActiveRoutes = routes.filter(
+      (r) => !eligibleKeysSet.has(getRouteKey(r)) && r.estado === 'En Tránsito' && r.asignacion
+    );
+
+    eligibleRoutes.forEach((moveRoute) => {
+      const asig = moveRoute.asignacion || moveRoute.ultimoDespacho;
+      if (!asig) return;
+
+      if (asig.camionId) {
+        const remainingUsingTruck = remainingActiveRoutes.filter(
+          (r) => r.asignacion?.camionId === asig.camionId
+        );
+        setTrucks((prev) =>
+          prev.map((t) => {
+            if (t.id === asig.camionId) {
+              if (remainingUsingTruck.length > 0) {
+                return {
+                  ...t,
+                  estado: 'En Ruta',
+                  rutaActual: remainingUsingTruck.map((r) => r.id).join(', '),
+                };
+              }
+              return { ...t, estado: 'Disponible', rutaActual: null };
+            }
+            return t;
+          })
+        );
+      }
+
+      const crewNames = [asig.conductor, asig.auxiliar1, asig.auxiliar2, asig.auxiliar3, asig.auxiliar4].filter(
+        Boolean
+      ) as string[];
+      setStaff((prev) =>
+        prev.map((st) => {
+          if (crewNames.includes(st.nombre)) {
+            if (st.estado === 'Baja') return st;
+            const stillInOtherRoute = remainingActiveRoutes.some((r) =>
+              [
+                r.asignacion?.conductor,
+                r.asignacion?.auxiliar1,
+                r.asignacion?.auxiliar2,
+                r.asignacion?.auxiliar3,
+                r.asignacion?.auxiliar4,
+              ].includes(st.nombre)
+            );
+            return stillInOtherRoute ? { ...st, estado: 'En Ruta' } : { ...st, estado: 'Disponible' };
+          }
+          return st;
+        })
+      );
+    });
+
+    setRoutes((prev) =>
+      prev.map((r) => {
+        if (!eligibleKeysSet.has(getRouteKey(r))) return r;
+        const originalDate = r.fechaOriginalRuta || r.fecha;
+        const tomorrowDate = getTomorrowGuatemalaDate(r.fecha);
+        return {
+          ...r,
+          fechaOriginalRuta: originalDate,
+          fecha: originalDate, // Permanece siempre la fecha de ruta original
+          fechaReprogramada: tomorrowDate,
+          estado: 'Pendiente',
+          asignacion: null,
+          tipoAsignacion: 'Ruta a Piso',
+          esRecarga: false,
+          aPiso: true,
+          fechaPiso: formatDateTimeToGuatemala(new Date()),
+          motivoPiso: 'Ruta a Piso para despacho de mañana (acción masiva)',
+        };
+      })
+    );
+
+    showToast(
+      `${eligibleRoutes.length} ruta(s) enviada(s) a Piso para despacho de mañana` +
+        (skippedCount > 0 ? ` (${fmtNum(skippedCount)} omitida(s): ya estaban a Piso o Liquidadas).` : '.'),
+      'success',
+      { label: 'Deshacer', onClick: undo }
+    );
+  };
+
+  // Corrección: routeIdsToDelete aquí son claves compuestas ID+Fecha (ver
+  // src/utils/routeKey.ts), no solo el ID — el mismo ID de ruta puede repetirse en
+  // fechas distintas, así que filtrar solo por ID podía eliminar también otra fila
+  // con el mismo ID pero de otra fecha.
+  const handleConfirmDeleteRoutes = (routeIdsPedidas: string[]) => {
+    // Un administrador de agencia solo elimina rutas de SUS agencias.
+    const routeIdsToDelete = routeIdsPedidas.filter((k) =>
+      puedeEliminarEn(deleteModalRoutes.find((r) => getRouteKey(r) === k)?.agencia)
+    );
+    if (routeIdsToDelete.length < routeIdsPedidas.length) {
+      showToast(
+        `${routeIdsPedidas.length - routeIdsToDelete.length} ruta(s) no se eliminaron: son de agencias que no administras.`,
+        'error'
+      );
+    }
+    if (routeIdsToDelete.length === 0) {
+      setDeleteRoutesTargetIds(null);
+      return;
+    }
+    const keysSet = new Set(routeIdsToDelete);
+
+    // Rutas que se van a eliminar
+    const deletingRoutes = routes.filter((r) => keysSet.has(getRouteKey(r)));
+
+    // Rutas activas que permanecen sin eliminar
+    const remainingActiveRoutes = routes.filter(
+      (r) => !keysSet.has(getRouteKey(r)) && r.estado === 'En Tránsito' && r.asignacion
+    );
+
+    // Liberar camiones y personal si estaban asignados y ninguna otra ruta activa los retiene
+    deletingRoutes.forEach((delRoute) => {
+      const asig = delRoute.asignacion;
+      if (asig) {
+        if (asig.camionId) {
+          const remainingUsingTruck = remainingActiveRoutes.filter(
+            (r) => r.asignacion?.camionId === asig.camionId
+          );
+          setTrucks((prev) =>
+            prev.map((t) => {
+              if (t.id === asig.camionId) {
+                if (remainingUsingTruck.length > 0) {
+                  return {
+                    ...t,
+                    estado: 'En Ruta',
+                    rutaActual: remainingUsingTruck.map((r) => r.id).join(', '),
+                  };
+                }
+                return { ...t, estado: 'Disponible', rutaActual: null };
+              }
+              return t;
+            })
+          );
+        }
+
+        const crewNames = [asig.conductor, asig.auxiliar1, asig.auxiliar2, asig.auxiliar3, asig.auxiliar4].filter(
+          Boolean
+        ) as string[];
+        setStaff((prev) =>
+          prev.map((st) => {
+            if (crewNames.includes(st.nombre)) {
+              if (st.estado === 'Baja') return st;
+              const stillInOther = remainingActiveRoutes.some((r) =>
+                [
+                  r.asignacion?.conductor,
+                  r.asignacion?.auxiliar1,
+                  r.asignacion?.auxiliar2,
+                  r.asignacion?.auxiliar3,
+                  r.asignacion?.auxiliar4,
+                ].includes(st.nombre)
+              );
+              return stillInOther ? { ...st, estado: 'En Ruta' } : { ...st, estado: 'Disponible' };
+            }
+            return st;
+          })
+        );
+      }
+    });
+
+    // Eliminar de la lista de rutas
+    setRoutes((prev) => prev.filter((r) => !keysSet.has(getRouteKey(r))));
+    // Eliminar del historial si estuviera presente
+    setHistoricalRoutes((prev) => prev.filter((r) => !keysSet.has(getRouteKey(r))));
+
+    // Borrado explícito en Supabase, en ambas tablas (la ruta eliminada puede
+    // estar en cualquiera de las dos, o en ambas) — con las claves exactas que
+    // el usuario confirmó eliminar, nunca por diferencia de arreglos.
+    void deleteSharedRecords('app_routes', routeIdsToDelete);
+    void deleteSharedRecords('app_historical_routes', routeIdsToDelete);
+
+    setDeleteRoutesTargetIds(null);
+    showToast(
+      routeIdsToDelete.length === 1
+        ? `Ruta ${deletingRoutes[0]?.id ?? routeIdsToDelete[0]} eliminada del tablero.`
+        : `Se eliminaron ${routeIdsToDelete.length} rutas del tablero.`,
+      'success'
+    );
+  };
+
+  // Corrección: mismo motivo que handleConfirmAssignment/handleMoveToFloor — el
+  // mismo ID de ruta puede repetirse en fechas distintas, así que se identifica la
+  // fila exacta con ID + Fecha (ver src/utils/routeKey.ts) para no liquidar también
+  // otra fila con el mismo ID pero de otra fecha.
+  // Módulo de Recargas: un viaje "Recarga" se registra en Recargas desde que
+  // se ASIGNA en el Tablero, pero queda "En ruta" (no se puede autorizar). Al
+  // LIQUIDARLO (cualquier modalidad de cierre, también por Contingencia) se
+  // actualiza la misma recarga con la tripulación final y pasa a Por
+  // autorizar (tipo Simple, editable). La
+  // tripulación es la que llevaba el viaje. Una clave por ruta, fecha y número
+  // de despacho evita duplicarlo si se vuelve a guardar.
+  const esViajeRecarga = (r: Route) =>
+    (r.asignacion?.tipoAsignacion || r.tipoAsignacion || (r.esRecarga ? 'Recarga' : '')) === 'Recarga';
+  const registrarRecargaDelViaje = (r: Route, liquidada: boolean) => {
+    const a = r.asignacion;
+    if (!a || !esViajeRecarga(r)) return;
+    const d = parseFlexibleDate(a.fechaDespacho || a.fechaAsignacion || r.fechaAsignacion);
+    const fechaRecarga = getGuatemalaDateForInput(d || new Date());
+    const intento = (r.historialDespachos?.length || 0) + 1;
+    const auxiliares = [a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].filter(Boolean) as string[];
+    if (!a.conductor && auxiliares.length === 0) return;
+    void registrarRecargaAuto({
+      id: `${idRecargaAuto(getRouteKey(r), fechaRecarga)}__${intento}`,
+      fecha: fechaRecarga,
+      rutaId: String(r.id),
+      agencia: r.agencia || '',
+      segmento: r.segmento,
+      conductor: a.conductor || '',
+      conductorId: a.conductorId || (a.conductor ? staffIdByName(r.agencia, a.conductor) : undefined),
+      auxiliares,
+      auxiliarIds: auxiliares.map((n) => staffIdByName(r.agencia, n) || null),
+      camionPlaca: a.camionPlaca,
+      cajas: toNum(r.cajasFisicas) > 0 ? Math.round(toNum(r.cajasFisicas) * 1000) / 1000 : undefined,
+      solicitadoPor: currentUser?.nombre || currentUser?.username || 'Liquidación',
+      creadoPor: currentUser?.nombre || currentUser?.username || 'Liquidación',
+    }, liquidada);
+  };
+
+  // Camiones de apoyo de una ruta en tránsito (agregar / quitar).
+  const handleGuardarApoyos = (ruta: Route, apoyos: ApoyoRuta[]) => {
+    const key = getRouteKey(ruta);
+    setRoutes((prev) => prev.map((r) => (getRouteKey(r) === key ? { ...r, apoyos } : r)));
+    setApoyoTarget((prev) => (prev && getRouteKey(prev) === key ? { ...prev, apoyos } : prev));
+  };
+
+  const handleConfirmLiquidation = (
+    routeId: string,
+    fecha: string,
+    data: {
+      guiasExitosas: number;
+      guiasRechazadas: number;
+      cajasEntregadas: number;
+      cajasDevueltas: number;
+      motivoDevolucion: string;
+      motivosSeleccionados: MotivoDevolucionReason[];
+      motivoDetalle?: string;
+      auditor: string;
+      isRutaAbierta?: boolean;
+      paseSalidaJustificacion?: string;
+      // Nuevo estado "Caja Abierta": la ruta se liquida igual que un cierre
+      // definitivo, pero queda marcada como pendiente de validar la caja/boleta.
+      isCajaAbierta?: boolean;
+      motivoCajaAbierta?: CajaAbiertaReason;
+      montoDiferenciaCaja?: number;
+      // Comentario libre y opcional, disponible para las 3 modalidades de cierre.
+      comentario?: string;
+      // Clientes marcados puntualmente como pendientes (Ruta Abierta / Caja
+      // Abierta), cada uno con su motivo — ver ClientePendiente en types.ts.
+      clientesPendientes?: ClientePendiente[];
+      // Ruta partida: pasar las cajas devueltas a los viajes pendientes del grupo.
+      transferirDevueltas?: boolean;
+    }
+  ) => {
+    const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
+    if (!targetRoute) return;
+    registrarRecargaDelViaje(targetRoute, true);
+
+    // Ruta partida (Cierre Definitivo): las cajas devueltas de este viaje pasan
+    // a los viajes pendientes del grupo, repartidas parejo. Este viaje queda con
+    // lo que entregó (no cuenta como devolución) y cada viaje que recibe deja
+    // constancia en su historial de reparto.
+    const receptores =
+      data.transferirDevueltas && !data.isRutaAbierta && data.cajasDevueltas > 0
+        ? viajesQueRecibenCajas(routes, targetRoute)
+        : [];
+    const cajasTransferidas = receptores.length > 0 ? data.cajasDevueltas : 0;
+    const motivoTransferencia = data.motivoDevolucion || '';
+    if (cajasTransferidas > 0) {
+      const partes = repartirParejo(cajasTransferidas, receptores.length);
+      const porKey = new Map(receptores.map((v, i) => [getRouteKey(v), partes[i]]));
+      const fechaT = formatDateTimeToGuatemala(new Date());
+      const porT = currentUser?.nombre || currentUser?.username || '';
+      setRoutes((prev) =>
+        prev.map((r) => {
+          const extra = porKey.get(getRouteKey(r));
+          if (extra === undefined) return r;
+          const antes = toNum(r.cajasFisicas);
+          const nuevo = Math.round((antes + extra) * 1000) / 1000;
+          return {
+            ...r,
+            cajasFisicas: nuevo,
+            ...(r.clientesRuta && r.clientesRuta.length === 1 ? { clientesRuta: [{ ...r.clientesRuta[0], cajas: nuevo }] } : {}),
+            historialRepartoCajas: [
+              ...(r.historialRepartoCajas || []),
+              { fecha: fechaT, de: antes, a: nuevo, por: porT, motivo: `Devolución del viaje ${targetRoute.id}` },
+            ],
+          };
+        })
+      );
+      data = {
+        ...data,
+        cajasDevueltas: 0,
+        motivoDevolucion: data.guiasRechazadas > 0 ? data.motivoDevolucion : '',
+      };
+      showToast(
+        `${fmtNum(cajasTransferidas)} cajas devueltas del viaje ${targetRoute.id} pasaron a ${receptores.map((v) => v.id).join(', ')}.`,
+        'info'
+      );
+    }
+
+    // Free Truck and Staff, considerando si otras rutas activas siguen utilizando la unidad o tripulación (Optimización / Carga compartida)
+    const otherActiveRoutes = routes.filter(
+      (r) => !routeMatchesKey(r, routeId, fecha) && r.estado === 'En Tránsito' && r.asignacion
+    );
+
+    if (targetRoute.asignacion?.camionId) {
+      const remainingRoutesUsingTruck = otherActiveRoutes.filter(
+        (r) => r.asignacion?.camionId === targetRoute.asignacion?.camionId
+      );
+      setTrucks((prev) =>
+        prev.map((t) => {
+          if (t.id === targetRoute.asignacion?.camionId) {
+            if (remainingRoutesUsingTruck.length > 0) {
+              return {
+                ...t,
+                estado: 'En Ruta',
+                rutaActual: remainingRoutesUsingTruck.map((r) => r.id).join(', '),
+              };
+            }
+            return { ...t, estado: 'Disponible', rutaActual: null };
+          }
+          return t;
+        })
+      );
+    }
+    if (targetRoute.asignacion) {
+      const asig = targetRoute.asignacion;
+      const crewNames = [asig.conductor, asig.auxiliar1, asig.auxiliar2, asig.auxiliar3, asig.auxiliar4].filter(Boolean) as string[];
+      setStaff((prev) =>
+        prev.map((st) => {
+          if (crewNames.includes(st.nombre)) {
+            if (st.estado === 'Baja') return st;
+            const stillInOtherRoute = otherActiveRoutes.some((r) =>
+              [
+                r.asignacion?.conductor,
+                r.asignacion?.auxiliar1,
+                r.asignacion?.auxiliar2,
+                r.asignacion?.auxiliar3,
+                r.asignacion?.auxiliar4,
+              ].includes(st.nombre)
+            );
+            return stillInOtherRoute ? { ...st, estado: 'En Ruta' } : { ...st, estado: 'Disponible' };
+          }
+          return st;
+        })
+      );
+    }
+
+    const isRutaAbierta = !!data.isRutaAbierta;
+
+    if (isRutaAbierta) {
+      const prevDispatches = targetRoute.historialDespachos || [];
+      const intentoNum = prevDispatches.length + 1;
+      const currentTripTipo: AssignmentType =
+        targetRoute.asignacion?.tipoAsignacion ||
+        targetRoute.tipoAsignacion ||
+        (targetRoute.esRecarga ? 'Recarga' : intentoNum === 1 ? 'Primer Viaje' : 'Revisita');
+      const dispatchRecord = {
+        intento: intentoNum,
+        camionPlaca: targetRoute.asignacion?.camionPlaca || 'Sin placa asignada',
+        camionId: targetRoute.asignacion?.camionId,
+        conductor: targetRoute.asignacion?.conductor || 'Sin piloto',
+        auxiliares: [
+          targetRoute.asignacion?.auxiliar1,
+          targetRoute.asignacion?.auxiliar2,
+          targetRoute.asignacion?.auxiliar3,
+          targetRoute.asignacion?.auxiliar4,
+        ].filter(Boolean) as string[],
+        horaSalida: targetRoute.asignacion?.horaSalida,
+        fechaAsignacion: targetRoute.fechaAsignacion || targetRoute.asignacion?.fechaAsignacion,
+        fechaRetorno: formatDateTimeToGuatemala(new Date()),
+        cajasEntregadas: data.cajasEntregadas,
+        cajasDevueltas: data.cajasDevueltas,
+        guiasExitosas: data.guiasExitosas,
+        guiasRechazadas: data.guiasRechazadas,
+        motivoDevolucion: data.motivoDevolucion || 'Devolución (Reasignación)',
+        motivosSeleccionados: data.motivosSeleccionados,
+        motivoDetalle: data.motivoDetalle,
+        auditor: data.auditor,
+        tipoAsignacion: currentTripTipo,
+        comentario: data.comentario,
+        clientesPendientes: data.clientesPendientes,
+        ...(data.paseSalidaJustificacion
+          ? {
+              paseSalida: {
+                justificacion: data.paseSalidaJustificacion,
+                fecha: formatDateTimeToGuatemala(new Date()),
+                por: data.auditor || currentUser?.nombre || currentUser?.username || '',
+              },
+            }
+          : {}),
+      };
+
+      // Corrección: si se marcaron clientes puntuales como pendientes, la ruta
+      // que sigue vigente (para Revisita) debe traer ya solo esos clientes en su
+      // lista de referencia — no la lista completa original, que ya no
+      // corresponde a lo que falta por entregar. Si no se usó el selector de
+      // clientes (data.clientesPendientes vacío), se deja la lista tal cual
+      // estaba, igual que siempre.
+      const clientesRutaRestante =
+        data.clientesPendientes && data.clientesPendientes.length > 0
+          ? data.clientesPendientes.map((cp) => ({ codigo: cp.codigo, nombre: cp.nombre, cajas: cp.cajas || 0 }))
+          : targetRoute.clientesRuta;
+
+      const updatedRoute: Route = {
+        ...targetRoute,
+        estado: 'Abierta',
+        // Camiones de apoyo de este viaje: quedan libres (se conservan en el historial).
+        apoyos: cerrarApoyos(targetRoute, formatDateTimeToGuatemala(new Date())).apoyos,
+        asignacion: null, // Released so it can be reassigned to a new crew
+        ultimoDespacho: targetRoute.asignacion || targetRoute.ultimoDespacho,
+        historialDespachos: [...prevDispatches, dispatchRecord],
+        retornosCount: (targetRoute.retornosCount || 0) + 1,
+        motivoDevolucion: data.motivoDevolucion || 'Devolución (Reasignación)',
+        cajasDevueltasAcumuladas:
+          (targetRoute.cajasDevueltasAcumuladas || 0) + data.cajasDevueltas,
+        cajasOriginales: targetRoute.cajasOriginales || targetRoute.cajasFisicas,
+        cajasFisicas: data.cajasDevueltas > 0 ? data.cajasDevueltas : targetRoute.cajasFisicas,
+        paradasOriginales: targetRoute.paradasOriginales || targetRoute.paradas,
+        paradas: data.guiasRechazadas > 0 ? data.guiasRechazadas : targetRoute.paradas,
+        clientesRuta: clientesRutaRestante,
+        tipoAsignacion: currentTripTipo,
+        esReasignacion: currentTripTipo === 'Revisita',
+        esRecarga: currentTripTipo === 'Recarga',
+        liquidacion: null,
+      };
+
+      setRoutes((prev) =>
+        prev.map((r) => (routeMatchesKey(r, routeId, fecha) ? updatedRoute : r))
+      );
+      setLiquidateTarget(null);
+
+      showToast(
+        `Ruta ${targetRoute.id} registrada como RUTA ABIERTA (Retorno #${intentoNum}). Piloto, auxiliares y unidad quedaron libres. La ruta se mantiene en el tablero para reasignarse.`,
+        'info'
+      );
+      // Con justificación: se abre el pase de salida de Ruta Abierta.
+      if (data.paseSalidaJustificacion) handleViewSettlementReceipt(routeId, updatedRoute);
+      return;
+    }
+
+    const fechaHoraLiquidacion = formatDateTimeToGuatemala(new Date());
+    const isFullDelivered =
+      (data.cajasDevueltas === 0 || !data.cajasDevueltas) &&
+      (data.guiasRechazadas === 0 || !data.guiasRechazadas);
+    const cleanMotivo = isFullDelivered ? '' : (data.motivoDevolucion || '');
+
+    const updatedRoute: Route = {
+      ...targetRoute,
+      estado: 'Liquidada',
+      // Camiones de apoyo: se cierran y quedan libres.
+      apoyos: cerrarApoyos(targetRoute, fechaHoraLiquidacion).apoyos,
+      fechaLiquidacion: fechaHoraLiquidacion,
+      motivoDevolucion: cleanMotivo,
+      // Si sus cajas devueltas pasaron a otros viajes, este viaje queda con lo
+      // que realmente entregó (lo cargado = entregadas + liquidacion.cajasTransferidas);
+      // así el total del grupo no se cuenta doble en reportes y Dashboard.
+      ...(cajasTransferidas > 0
+        ? {
+            cajasFisicas: data.cajasEntregadas,
+            ...(targetRoute.clientesRuta && targetRoute.clientesRuta.length === 1
+              ? { clientesRuta: [{ ...targetRoute.clientesRuta[0], cajas: data.cajasEntregadas }] }
+              : {}),
+          }
+        : {}),
+      liquidacion: {
+        ...(cajasTransferidas > 0
+          ? {
+              cajasTransferidas,
+              transferidasA: receptores.map((v) => String(v.id)),
+              motivoTransferencia: motivoTransferencia || undefined,
+            }
+          : {}),
+        guiasExitosas: data.guiasExitosas,
+        guiasRechazadas: data.guiasRechazadas,
+        cajasEntregadas: data.cajasEntregadas,
+        cajasDevueltas: data.cajasDevueltas,
+        motivoDevolucion: cleanMotivo,
+        motivosSeleccionados: isFullDelivered ? [] : data.motivosSeleccionados,
+        motivoDetalle: isFullDelivered ? undefined : data.motivoDetalle,
+        auditor: data.auditor,
+        // Corrección: se guarda además el usuario real de la sesión que ejecutó la
+        // liquidación (no editable), para trazabilidad, sin restringir el campo
+        // "auditor" (que sigue siendo texto libre a propósito).
+        liquidadoPorUsuario: currentUser?.username,
+        fechaLiquidacion: fechaHoraLiquidacion,
+        comentario: data.comentario,
+        // Nuevo estado "Caja Abierta": la ruta queda liquidada normalmente, pero
+        // marcada como pendiente de validar la caja/boleta del punto de venta.
+        cajaAbierta: !!data.isCajaAbierta,
+        motivoCajaAbierta: data.motivoCajaAbierta,
+        montoDiferenciaCaja: data.montoDiferenciaCaja,
+        clientesPendientes: data.clientesPendientes,
+        // Primer registro del historial de status: se guarda la fecha exacta del
+        // status inicial con el que queda esta liquidación (Liquidada o Caja
+        // Abierta), para poder mostrar más adelante una línea de tiempo completa
+        // en el Tablero de Rutas Liquidadas (ver Liquidación Final más abajo).
+        historialEstados: [
+          {
+            estado: data.isCajaAbierta ? 'Caja Abierta' : 'Liquidada',
+            fecha: fechaHoraLiquidacion,
+          },
+        ],
+      },
+    };
+
+    setRoutes((prev) => prev.map((r) => (routeMatchesKey(r, routeId, fecha) ? updatedRoute : r)));
+
+    // Archive into historicalRoutes
+    setHistoricalRoutes((prev) => {
+      const idx = prev.findIndex((hr) => routeMatchesKey(hr, routeId, fecha));
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = updatedRoute;
+        return copy;
+      }
+      return [updatedRoute, ...prev];
+    });
+
+    setLiquidateTarget(null);
+
+    // Corrección: si la ruta se liquidó con el nuevo estado "Caja Abierta", se
+    // avisa explícitamente el motivo para que quede claro que falta validar la
+    // caja/boleta, en vez del mensaje genérico de liquidación completa.
+    const cajaAbiertaSuffix = data.isCajaAbierta
+      ? ` CAJA ABIERTA: pendiente de validar (${data.motivoCajaAbierta}).`
+      : '';
+
+    // Check if part of split
+    if (targetRoute.isSplitRoute && targetRoute.parentRouteId) {
+      const siblings = routes.filter((r) => isSameSplitGroup(r, targetRoute.parentRouteId!, targetRoute));
+      const allSettled = siblings.every(
+        (s) => String(s.id) === String(routeId) || s.estado === 'Liquidada'
+      );
+      if (allSettled) {
+        showToast(
+          `¡Completados todos los viajes de la ruta ${targetRoute.parentRouteId}!${cajaAbiertaSuffix}`,
+          data.isCajaAbierta ? 'info' : 'success'
+        );
+        handleViewConsolidatedReceipt(targetRoute.parentRouteId, targetRoute);
+        return;
+      } else {
+        showToast(`Línea ${targetRoute.id} liquidada y transferida a Rutas Liquidadas.${cajaAbiertaSuffix}`, 'info');
+      }
+    } else {
+      showToast(
+        `Ruta ${targetRoute.id} completamente liquidada y transferida a Rutas Liquidadas.${cajaAbiertaSuffix}`,
+        data.isCajaAbierta ? 'info' : 'success'
+      );
+    }
+
+    // Open receipt modal
+    handleViewSettlementReceipt(routeId, updatedRoute);
+  };
+
+  // Liquidación en lote: varias rutas entregadas al 100% (todas las paradas
+  // exitosas, todas las cajas entregadas, sin devoluciones). Arma cada
+  // liquidación igual que el formulario individual cuando no hay rechazos y
+  // libera camiones y tripulación considerando TODAS las rutas del lote (si dos
+  // rutas del lote comparten camión, el camión queda libre al final).
+  const handleBulkLiquidation = (keys: string[], datos: { auditor: string; comentario?: string }) => {
+    const keySet = new Set(keys);
+    const targets = routes.filter((r) => keySet.has(getRouteKey(r)) && !motivoNoLiquidableEnLote(r));
+    if (targets.length === 0) {
+      showToast('Ninguna de las rutas seleccionadas se puede liquidar en lote.', 'error');
+      return;
+    }
+    const tKeys = new Set(targets.map(getRouteKey));
+    const fechaHora = formatDateTimeToGuatemala(new Date());
+    targets.forEach((r) => registrarRecargaDelViaje(r, true));
+
+    const actualizadas = new Map<string, Route>();
+    targets.forEach((t) => {
+      const cajas = parseFloat(cajasDeRuta(t).toFixed(3));
+      actualizadas.set(getRouteKey(t), {
+        ...t,
+        estado: 'Liquidada',
+        apoyos: cerrarApoyos(t, fechaHora).apoyos,
+        fechaLiquidacion: fechaHora,
+        motivoDevolucion: '',
+        liquidacion: {
+          guiasExitosas: paradasDeRuta(t),
+          guiasRechazadas: 0,
+          cajasEntregadas: cajas,
+          cajasDevueltas: 0,
+          motivoDevolucion: '',
+          motivosSeleccionados: [],
+          auditor: datos.auditor || 'Auditor de Agencia',
+          liquidadoPorUsuario: currentUser?.username,
+          fechaLiquidacion: fechaHora,
+          comentario: datos.comentario,
+          cajaAbierta: false,
+          liquidacionEnLote: true,
+          historialEstados: [{ estado: 'Liquidada', fecha: fechaHora }],
+        },
+      });
+    });
+
+    // Camiones y tripulación: quedan libres salvo que sigan en otra ruta activa
+    // que NO es parte del lote.
+    const otrasActivas = routes.filter((r) => !tKeys.has(getRouteKey(r)) && r.estado === 'En Tránsito' && r.asignacion);
+    const camiones = new Set(targets.map((r) => r.asignacion?.camionId).filter(Boolean) as string[]);
+    if (camiones.size) {
+      setTrucks((prev) =>
+        prev.map((t) => {
+          if (!camiones.has(t.id)) return t;
+          const siguen = otrasActivas.filter((r) => r.asignacion?.camionId === t.id);
+          return siguen.length > 0 ? { ...t, estado: 'En Ruta', rutaActual: siguen.map((r) => r.id).join(', ') } : { ...t, estado: 'Disponible', rutaActual: null };
+        })
+      );
+    }
+    const tripulacionDe = (r: Route) =>
+      [r.asignacion?.conductor, r.asignacion?.auxiliar1, r.asignacion?.auxiliar2, r.asignacion?.auxiliar3, r.asignacion?.auxiliar4].filter(Boolean) as string[];
+    const nombres = new Set(targets.flatMap(tripulacionDe));
+    if (nombres.size) {
+      const enOtra = new Set(otrasActivas.flatMap(tripulacionDe));
+      setStaff((prev) =>
+        prev.map((st) => {
+          if (!nombres.has(st.nombre) || st.estado === 'Baja') return st;
+          return enOtra.has(st.nombre) ? { ...st, estado: 'En Ruta' } : { ...st, estado: 'Disponible' };
+        })
+      );
+    }
+
+    setRoutes((prev) => prev.map((r) => actualizadas.get(getRouteKey(r)) || r));
+    setHistoricalRoutes((prev) => {
+      const nuevos = new Map(actualizadas);
+      const copia = prev.map((hr) => {
+        const k = getRouteKey(hr);
+        const u = nuevos.get(k);
+        if (!u) return hr;
+        nuevos.delete(k);
+        return u;
+      });
+      return [...nuevos.values(), ...copia];
+    });
+
+    setBulkLiquidarKeys(null);
+    const cajasTot = targets.reduce((a, r) => a + cajasDeRuta(r), 0);
+    showToast(
+      `${fmtNum(targets.length)} ${targets.length === 1 ? 'ruta liquidada' : 'rutas liquidadas'} al 100% (${fmtNum(cajasTot)} cajas entregadas) y transferidas a Rutas Liquidadas.`,
+      'success'
+    );
+  };
+
+  // Registra la "Liquidación Final" de una ruta que había quedado en Caja
+  // Abierta (pendiente de validar la caja/boleta del punto de venta). No toca
+  // ningún dato operativo ya liquidado (cajas, paradas, motivo, auditor, etc.):
+  // solo marca el pendiente como resuelto y agrega la fecha + comentario de
+  // cierre al historial de estados, para trazabilidad en el Tablero de Rutas
+  // Liquidadas. Busca la ruta tanto en "routes" (por si sigue vigente en el
+  // tablero activo) como en "historicalRoutes" (donde vive de forma permanente
+  // una vez que el día se cierra y se archiva), y actualiza ambas listas donde
+  // corresponda para que el cambio se refleje sin importar de cuál venga.
+  const handleFinalizeCajaAbierta = (routeId: string, fecha: string, comentarioFinal?: string) => {
+    const target =
+      routes.find((r) => routeMatchesKey(r, routeId, fecha)) ||
+      historicalRoutes.find((r) => routeMatchesKey(r, routeId, fecha));
+
+    if (!target || !target.liquidacion?.cajaAbierta) {
+      showToast('No se encontró una liquidación en Caja Abierta pendiente para esta ruta', 'error');
+      return;
+    }
+    if (target.liquidacion.cajaAbiertaResuelta) {
+      showToast('Esta ruta ya tiene registrada su Liquidación Final', 'info');
+      setFinalizeCajaAbiertaTarget(null);
+      return;
+    }
+
+    const fechaFinal = formatDateTimeToGuatemala(new Date());
+    const updatedRoute: Route = {
+      ...target,
+      liquidacion: {
+        ...target.liquidacion,
+        cajaAbiertaResuelta: true,
+        fechaLiquidacionFinal: fechaFinal,
+        comentarioLiquidacionFinal: comentarioFinal,
+        historialEstados: [
+          ...(target.liquidacion.historialEstados || []),
+          { estado: 'Liquidación Final', fecha: fechaFinal },
+        ],
+      },
+    };
+
+    setRoutes((prev) => prev.map((r) => (routeMatchesKey(r, routeId, fecha) ? updatedRoute : r)));
+    setHistoricalRoutes((prev) => prev.map((r) => (routeMatchesKey(r, routeId, fecha) ? updatedRoute : r)));
+    setFinalizeCajaAbiertaTarget(null);
+    showToast(`Ruta ${routeId}: Liquidación Final registrada. Caja Abierta resuelta.`, 'success');
+  };
+
+  // Registra un abono contra una Caja Abierta. Si lo abonado llega al 100% del
+  // valor pendiente, la caja se cierra sola (Liquidación Final) y la ruta queda
+  // liquidada. Solo agrega datos a la liquidación; no toca cajas, paradas ni motivos.
+  const handleRegistrarAbonoCaja = (
+    routeId: string,
+    routeKey: string,
+    abono: { fecha: string; monto: number; comentario?: string },
+    montoTotal?: number
+  ) => {
+    const target =
+      routes.find((r) => routeMatchesKey(r, routeId, routeKey)) ||
+      historicalRoutes.find((r) => routeMatchesKey(r, routeId, routeKey));
+    if (!target || !target.liquidacion?.cajaAbierta) {
+      showToast('No se encontró la Caja Abierta de esta ruta.', 'error');
+      return;
+    }
+    if (target.liquidacion.cajaAbiertaResuelta) {
+      showToast('Esta Caja Abierta ya está cerrada.', 'info');
+      return;
+    }
+    const total =
+      typeof target.liquidacion.montoDiferenciaCaja === 'number' && target.liquidacion.montoDiferenciaCaja > 0
+        ? target.liquidacion.montoDiferenciaCaja
+        : montoTotal || 0;
+    if (!(total > 0)) {
+      showToast('Indica el valor total pendiente de la caja.', 'error');
+      return;
+    }
+    const ahora = formatDateTimeToGuatemala(new Date());
+    const abonos = [
+      ...(target.liquidacion.abonosCaja || []),
+      {
+        fecha: abono.fecha,
+        monto: abono.monto,
+        comentario: abono.comentario,
+        registradoPor: currentUser?.nombre || currentUser?.username || '',
+        registradoEl: ahora,
+      },
+    ];
+    const abonado = totalAbonado(abonos);
+    const completo = abonado >= total - 0.005;
+    const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const historial = [
+      ...(target.liquidacion.historialEstados || []),
+      { estado: `Abono Q ${fmt(abono.monto)} (${abono.fecha})`, fecha: ahora },
+      ...(completo ? [{ estado: 'Liquidación Final', fecha: ahora }] : []),
+    ];
+    const updatedRoute: Route = {
+      ...target,
+      liquidacion: {
+        ...target.liquidacion,
+        montoDiferenciaCaja: total,
+        abonosCaja: abonos,
+        historialEstados: historial,
+        ...(completo
+          ? {
+              cajaAbiertaResuelta: true,
+              fechaLiquidacionFinal: ahora,
+              comentarioLiquidacionFinal: `Cerrada por abonos: Q ${fmt(abonado)} de Q ${fmt(total)} (100%).`,
+            }
+          : {}),
+      },
+    };
+    setRoutes((prev) => prev.map((r) => (routeMatchesKey(r, routeId, routeKey) ? updatedRoute : r)));
+    setHistoricalRoutes((prev) => prev.map((r) => (routeMatchesKey(r, routeId, routeKey) ? updatedRoute : r)));
+    setAbonosCajaTarget(updatedRoute);
+    showToast(
+      completo
+        ? `Ruta ${routeId}: pago completo. Caja Abierta cerrada y ruta liquidada.`
+        : `Abono de Q ${fmt(abono.monto)} registrado. Saldo: Q ${fmt(Math.max(0, total - abonado))}.`,
+      'success'
+    );
+  };
+
+  // --- Carga de Contingencia (solo administradores) ---
+  // Revisión previa: arma el plan con el estado actual sin guardar nada.
+  const handlePreviewContingencia = (parsed: ContParsed): ContPlan =>
+    buildContingenciaPlan({
+      routes,
+      historicalRoutes,
+      trucks,
+      staff,
+      parsed,
+      usuario: currentUser?.nombre || currentUser?.username || 'admin',
+    });
+
+  // Aplicar: vuelve a armar el plan con el estado MÁS reciente (por si otro
+  // usuario cambió algo mientras se revisaba) y guarda solo lo que cambia.
+  const handleApplyContingencia = (parsed: ContParsed): ContPlan => {
+    if (!currentUser?.isAdmin) {
+      showToast('Solo un administrador puede aplicar la carga de contingencia.', 'error');
+      return handlePreviewContingencia({ ...parsed, asignaciones: [], liquidaciones: [] });
+    }
+    const plan = handlePreviewContingencia(parsed);
+    if (plan.routeUpdates.length === 0) {
+      showToast('No hay filas válidas para aplicar.', 'error');
+      return plan;
+    }
+    const byBefore = new Map(plan.routeUpdates.filter((u) => u.beforeKey).map((u) => [u.beforeKey as string, u.route]));
+    const nuevas = plan.routeUpdates.filter((u) => !u.beforeKey).map((u) => u.route);
+    // Viajes de Recarga que la contingencia asigna o liquida → al módulo de Recargas.
+    routes.forEach((antes) => {
+      const despues = byBefore.get(getRouteKey(antes));
+      if (despues && despues.estado === 'En Tránsito' && antes.estado !== 'En Tránsito') {
+        registrarRecargaDelViaje(despues, false);
+        return;
+      }
+      if (!despues || despues.estado === 'En Tránsito' || despues.estado === antes.estado) return;
+      const seLiquido = despues.estado === 'Liquidada' || despues.estado === 'Abierta';
+      if (antes.estado === 'En Tránsito') registrarRecargaDelViaje(antes, seLiquido);
+      else if (seLiquido)
+        registrarRecargaDelViaje({ ...despues, asignacion: despues.asignacion || despues.ultimoDespacho || null }, true);
+    });
+    nuevas.filter((r) => r.estado === 'En Tránsito').forEach((r) => registrarRecargaDelViaje(r, false));
+    setRoutes((prev) => {
+      const next = prev.map((r) => byBefore.get(getRouteKey(r)) || r);
+      const keys = new Set(next.map(getRouteKey));
+      return [...nuevas.filter((r) => !keys.has(getRouteKey(r))), ...next];
+    });
+    if (plan.changedHistorical.length) {
+      setHistoricalRoutes((prev) => {
+        const map = new Map(plan.changedHistorical.map((r) => [getRouteKey(r), r]));
+        const next = prev.map((hr) => {
+          const k = getRouteKey(hr);
+          const upd = map.get(k);
+          if (upd) map.delete(k);
+          return upd || hr;
+        });
+        return [...Array.from(map.values()), ...next];
+      });
+    }
+    if (plan.changedTrucks.length) {
+      const m = new Map(plan.changedTrucks.map((t) => [t.id, t]));
+      setTrucks((prev) => prev.map((t) => m.get(t.id) || t));
+    }
+    if (plan.changedStaff.length) {
+      const m = new Map(plan.changedStaff.map((x) => [x.id, x]));
+      setStaff((prev) => prev.map((x) => m.get(x.id) || x));
+    }
+    const { creadas, asignaciones, liquidaciones, errores } = plan.resumen;
+    showToast(
+      `Contingencia aplicada: ${creadas} ruta(s) creada(s), ${asignaciones} asignación(es), ${liquidaciones} liquidación(es).${
+        errores ? ` ${errores} fila(s) con error no se aplicaron.` : ''
+      }`,
+      errores ? 'info' : 'success'
+    );
+    return plan;
+  };
+
+  const handleCommitBatchRoutes = (importedRoutes: Route[], target: BatchImportTarget) => {
+    // Seguridad: la agencia destino debe estar entre las permitidas al usuario.
+    if (!importAgencyOptions.includes(target.agencia)) {
+      showToast(`No tienes permiso para cargar rutas a la agencia "${target.agencia}".`, 'error');
+      return;
+    }
+    // La carga es POR AGENCIA: el archivado de rutas liquidadas y el reemplazo
+    // del tablero solo afectan a la agencia seleccionada; las rutas de las
+    // demás agencias quedan exactamente como estaban.
+    const inScope = (r: Route) => r.agencia === target.agencia;
+
+    // Preservar rutas que sigan vigentes al pasar a un nuevo día:
+    // - En Tránsito o Abierta (con devolución pendiente de reasignar)
+    // - Pendiente (incluye rutas "a Piso" reprogramadas), que deben seguir apareciendo
+    //   en el tablero hasta que se asignen, liquiden o el usuario las elimine manualmente.
+    const activeRunningBacklog = routes.filter(
+      (r) => r.estado === 'En Tránsito' || r.estado === 'Abierta' || r.estado === 'Pendiente'
+    );
+
+    // Archivar rutas liquidadas anteriores.
+    // La comparación de duplicados usa ID + fecha de liquidación (no solo el ID), porque
+    // los números de ruta del Excel suelen repetirse día a día: si solo se comparara por
+    // ID, la liquidación de "hoy" para la ruta 102201 se descartaría en cuanto ya existiera
+    // una liquidación archivada de un día anterior con ese mismo número.
+    routes
+      .filter((r) => r.estado === 'Liquidada' && inScope(r))
+      .forEach((liqR) => {
+        const liqDate = liqR.fechaLiquidacion || liqR.liquidacion?.fechaLiquidacion;
+        setHistoricalRoutes((prev) => {
+          const alreadyArchived = prev.some((hr) => {
+            if (String(hr.id) !== String(liqR.id) || (hr.agencia || '') !== (liqR.agencia || '')) return false;
+            const hrLiqDate = hr.fechaLiquidacion || hr.liquidacion?.fechaLiquidacion;
+            return hrLiqDate === liqDate;
+          });
+          if (!alreadyArchived) {
+            return [liqR, ...prev];
+          }
+          return prev;
+        });
+      });
+
+    // Rutas importadas del archivo del día:
+    // Si no sigue vigente (en tránsito, abierta o pendiente sin resolver), se carga con los datos del Excel
+    //
+    // Corrección: antes esta comparación era SOLO por ID de ruta (sin la fecha), lo
+    // cual asumía que un mismo número de ruta nunca se repetía mientras hubiera una
+    // ruta vigente con ese número. En la práctica el cliente SÍ reutiliza los mismos
+    // números de ruta día tras día (p. ej. "158201" existe en Resumen 19, 20, 21...),
+    // así que en cuanto una ruta con ese ID quedaba "Pendiente" sin asignar, TODA
+    // importación futura con ese mismo número — de cualquier día distinto — se
+    // descartaba en silencio (0 rutas nuevas), porque se trataba como si fuera "la
+    // misma ruta todavía en curso". Ahora se compara por ID + Fecha (ver
+    // getRouteKey): solo se preserva la ruta vigente y se descarta el duplicado del
+    // Excel cuando de verdad es la MISMA ruta del MISMO día (evita perder el avance
+    // de una asignación en curso si se vuelve a subir el archivo de ese día), pero
+    // ya no bloquea la carga de rutas nuevas de otro día que por coincidencia
+    // reutilizan el mismo número.
+    // FILTRO DE SEGURIDAD: no se carga una ruta que ya existe con el mismo
+    // número, fecha y agencia — ni en el Tablero (en cualquier estado, también
+    // liquidada o enviada a piso) ni en las liquidadas archivadas — ni dos veces
+    // la misma ruta dentro del mismo archivo.
+    const clavesExistentes = new Set<string>();
+    [...routes, ...historicalRoutes].forEach((r) => clavesDuplicado(r).forEach((k) => clavesExistentes.add(k)));
+    const clavesArchivo = new Set<string>();
+    const yaExisten: string[] = [];
+    const repetidasArchivo: string[] = [];
+    const freshDailyRoutes = importedRoutes.filter((r) => {
+      const k = clavesDuplicado(r)[0];
+      if (clavesArchivo.has(k)) {
+        repetidasArchivo.push(String(r.id));
+        return false;
+      }
+      clavesArchivo.add(k);
+      if (clavesDuplicado(r).some((c) => clavesExistentes.has(c))) {
+        yaExisten.push(String(r.id));
+        return false;
+      }
+      return true;
+    });
+    const bloqueadasMsg = [
+      yaExisten.length > 0
+        ? `${yaExisten.length} ya existían en el tablero con la misma fecha y no se cargaron (${yaExisten.slice(0, 10).join(', ')}${yaExisten.length > 10 ? '…' : ''})`
+        : '',
+      repetidasArchivo.length > 0
+        ? `${repetidasArchivo.length} venían repetidas en el archivo (${repetidasArchivo.slice(0, 10).join(', ')}${repetidasArchivo.length > 10 ? '…' : ''})`
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    // Claves de las rutas que salen del tablero activo en este import (las ya
+    // Liquidadas, que se acaban de archivar arriba en historicalRoutes). Se
+    // capturan ANTES de reemplazar "routes" para poder pedir su borrado
+    // explícito de "app_routes" — la sincronización normal ya nunca borra por
+    // su cuenta (ver la nota de seguridad en pushSharedCollection).
+    const archivedKeys = routes
+      .filter((r) => r.estado === 'Liquidada' && inScope(r))
+      .map((r) => getRouteKey(r));
+    // Se conserva todo menos las liquidadas de la agencia cargada (que ya se
+    // archivaron arriba): rutas vigentes de todas las agencias y liquidadas de
+    // otras agencias que aún no han hecho su propia carga del día.
+    // Corrección: si el Excel trae rutas que YA estaban cargadas (mismo número,
+    // fecha y agencia — p. ej. se vuelve a subir el archivo del día para
+    // agregar el detalle de clientes), la ruta existente se conserva, pero ahora
+    // se le agrega la lista de clientes del archivo si todavía no tenía. Antes
+    // esa lista se descartaba junto con la fila duplicada. No se reemplaza una
+    // lista que ya existía (en una liquidación parcial queda reducida a los
+    // clientes pendientes y no debe perderse ese avance).
+    const importedClientesByKey = new Map(
+      importedRoutes
+        .filter((r) => r.clientesRuta && r.clientesRuta.length > 0)
+        .map((r) => [getRouteKey(r), r.clientesRuta!] as const)
+    );
+    let clientesAgregados = 0;
+    const keptRoutes = routes
+      .filter((r) => !(r.estado === 'Liquidada' && inScope(r)))
+      .map((r) => {
+        const clientes = importedClientesByKey.get(getRouteKey(r));
+        if (clientes && (!r.clientesRuta || r.clientesRuta.length === 0)) {
+          clientesAgregados++;
+          return { ...r, clientesRuta: clientes };
+        }
+        return r;
+      });
+
+    setRoutes([...freshDailyRoutes, ...keptRoutes]);
+    setActiveTab('board');
+    if (archivedKeys.length > 0) {
+      void deleteSharedRecords('app_routes', archivedKeys);
+    }
+
+    const scopedBacklog = activeRunningBacklog.filter(inScope);
+    const scopedPendientes = scopedBacklog.filter((r) => r.estado === 'Pendiente').length;
+    const destino = `${target.agencia} · ${target.segmento}`;
+    const msg =
+      scopedBacklog.length > 0
+        ? `Se importaron ${freshDailyRoutes.length} rutas a ${destino}. Se preservaron ${scopedBacklog.length} ruta(s) vigente(s) de ${target.agencia}${
+            scopedPendientes > 0 ? ` (${fmtNum(scopedPendientes)} pendiente(s) de días anteriores)` : ''
+          }.`
+        : `Se importaron ${freshDailyRoutes.length} rutas a ${destino}, listas para asignar.`;
+    if (bloqueadasMsg) {
+      showToast(`Filtro de seguridad: ${bloqueadasMsg}.`, freshDailyRoutes.length === 0 ? 'error' : 'info');
+    }
+    showToast(
+      clientesAgregados > 0
+        ? `${msg} Se agregó la lista de clientes a ${clientesAgregados} ruta(s) que ya estaban cargadas.`
+        : msg,
+      freshDailyRoutes.length === 0 ? 'info' : 'success'
+    );
+  };
+
+  // Agrega/actualiza la lista de clientes de referencia (clientesRuta) de rutas
+  // que YA existen en el sistema (activas o ya archivadas en historicalRoutes),
+  // emparejadas por clave ID+Fecha (ver getRouteKey). No crea rutas nuevas, no
+  // toca cajas/paradas/estado/liquidación de ninguna ruta — es puramente
+  // informativo/de referencia (ver ClientesImportView).
+  const handleImportClientesPorRuta = (updates: { routeKey: string; clientesRuta: RouteClientEntry[] }[]) => {
+    if (updates.length === 0) return;
+    const byKey = new Map(updates.map((u) => [u.routeKey, u.clientesRuta]));
+
+    setRoutes((prev) =>
+      prev.map((r) => {
+        const match = byKey.get(getRouteKey(r));
+        return match ? { ...r, clientesRuta: match } : r;
+      })
+    );
+    setHistoricalRoutes((prev) =>
+      prev.map((r) => {
+        const match = byKey.get(getRouteKey(r));
+        return match ? { ...r, clientesRuta: match } : r;
+      })
+    );
+  };
+
+  const handleCreateTruck = async (truckData: {
+    placa: string;
+    agencia: string;
+    proveedor: string;
+    ton: string;
+    bahias: string;
+    capacidad: string;
+    tipo: TipoUnidad;
+    proveedorCodigo?: string;
+  }): Promise<boolean> => {
+    // Corrección: antes el ID interno del camión se generaba como `T-${Date.now()}`,
+    // sin relación visible con el vehículo, y además se pedía escribir un "ID
+    // Camión" aparte a mano. Ahora ya no se pide: el ID se genera solo a partir de
+    // la Placa ("TR-" + Placa) y ese mismo valor se usa también como "ID Camión"
+    // para que se vea en el consolidado de Camiones. Como el ID depende
+    // directamente de la Placa, se valida que no exista ya un camión con esa
+    // misma Placa (evitaría dos registros con el mismo ID).
+    const newTruckId = `TR-${truckData.placa}`;
+    if (trucks.some((t) => t.id === newTruckId || t.placa === truckData.placa)) {
+      showToast(`Ya existe un camión registrado con la placa ${truckData.placa}.`, 'error');
+      return false;
+    }
+
+    // Rentado: el "ID Camión" visible es el correlativo del proveedor en la
+    // agencia (lo entrega la base). La clave interna sigue siendo TR-placa.
+    let idVisible = newTruckId;
+    if (truckData.tipo === 'Rentado' && truckData.proveedorCodigo) {
+      try {
+        idVisible = await siguienteIdRentado(
+          truckData.agencia,
+          truckData.proveedorCodigo,
+          trucks.map((t) => String(t.idCamion || ''))
+        );
+      } catch (e) {
+        showToast(`No se generó el ID del camión rentado: ${(e as Error).message}`, 'error');
+        return false;
+      }
+    }
+
+    const newT: Truck = {
+      id: newTruckId,
+      idCamion: idVisible,
+      placa: truckData.placa,
+      agencia: truckData.agencia,
+      proveedor: truckData.proveedor || undefined,
+      tipo: truckData.tipo,
+      ...(truckData.proveedorCodigo ? { proveedorCodigo: truckData.proveedorCodigo } : {}),
+      capacidad: truckData.capacidad,
+      ton: truckData.ton || undefined,
+      bahias: truckData.bahias || undefined,
+      estado: 'Disponible',
+      rutaActual: null,
+    };
+    setTrucks((prev) => [...prev, newT]);
+    setIsNewTruckModalOpen(false);
+    showToast(
+      `Camión ${newT.placa} agregado a la agencia ${newT.agencia}${idVisible !== newTruckId ? ` con ID ${idVisible}` : ''}`,
+      'success'
+    );
+    return true;
+  };
+
+  // Camión rentado que ya existía: asignarle su ID correlativo.
+  const [asignarIdTarget, setAsignarIdTarget] = useState<Truck | null>(null);
+  const handleAsignarIdRentado = async (truck: Truck, proveedor: Proveedor): Promise<boolean> => {
+    if (!truck.agencia) return false;
+    try {
+      const nuevoId = await siguienteIdRentado(truck.agencia, proveedor.codigo, trucks.map((t) => String(t.idCamion || '')));
+      setTrucks((prev) =>
+        prev.map((t) =>
+          t.id === truck.id ? { ...t, idCamion: nuevoId, proveedor: proveedor.nombre, proveedorCodigo: proveedor.codigo, tipo: 'Rentado' } : t
+        )
+      );
+      showToast(`Camión ${truck.placa}: nuevo ID ${nuevoId}.`, 'success');
+      return true;
+    } catch (e) {
+      showToast(`No se generó el ID: ${(e as Error).message}`, 'error');
+      return false;
+    }
+  };
+
+  const handleCreateStaff = (staffData: {
+    dpi: string;
+    codigo: string;
+    nombre: string;
+    agencia: string;
+    puesto: StaffPuesto;
+    codigoCorto: string;
+    telefono: string;
+    estatus: StaffEstatus;
+    tipo: TipoUnidad;
+  }) => {
+    const newS: Staff = {
+      id: `S-${Date.now()}`,
+      dpi: staffData.dpi || 'N/A',
+      codigo: staffData.codigo || undefined,
+      nombre: staffData.nombre,
+      agencia: staffData.agencia,
+      puesto: staffData.puesto,
+      rol: staffData.puesto === 'APP' ? 'Auxiliar' : 'Conductor',
+      codigoCorto: staffData.codigoCorto || undefined,
+      telefono: staffData.telefono,
+      estado: 'Disponible',
+      estatus: staffData.estatus || 'ALTA',
+      tipo: staffData.tipo,
+    };
+    setStaff((prev) => [...prev, newS]);
+    setIsNewStaffModalOpen(false);
+    showToast(`Colaborador ${newS.nombre} (${newS.puesto}) registrado en ${newS.agencia}`, 'success');
+  };
+
+  // Clasificación Propio / Rentado (camiones y personal).
+  const handleUpdateTruckTipo = (truckId: string, tipo: TipoUnidad) => {
+    setTrucks((prev) => prev.map((t) => (t.id === truckId ? { ...t, tipo } : t)));
+  };
+  const handleUpdateStaffTipo = (staffId: string, tipo: TipoUnidad) => {
+    setStaff((prev) => prev.map((x) => (x.id === staffId ? { ...x, tipo } : x)));
+  };
+
+  const handleUpdateStaffEstatus = (staffId: string, newEstatus: StaffEstatus) => {
+    // Corrección: el estatus de planilla (ALTA/BAJA) y el estado operativo del
+    // día solo deben poder cambiarse desde aquí si el usuario tiene permiso de
+    // carga de Excel de personal (canBulkUploadStaff) — el selector ya se
+    // deshabilita en ResourcesView para ese caso, pero se valida también aquí
+    // para no depender únicamente del control visual.
+    if (!canBulkUploadStaff) {
+      showToast('No tienes permiso para modificar el estatus de personal.', 'error');
+      return;
+    }
+    const target = staff.find((s) => s.id === staffId);
+    if (!target) return;
+    setStaff((prev) => prev.map((s) => (s.id === staffId ? { ...s, estatus: newEstatus } : s)));
+    showToast(
+      `${target.nombre}: estatus de planilla cambiado a ${newEstatus}`,
+      newEstatus === 'BAJA' ? 'info' : 'success'
+    );
+  };
+
+  const handleImportStaffBatch = (importedStaff: Staff[]) => {
+    if (!importedStaff || importedStaff.length === 0) return;
+
+    setStaff((prev) => {
+      const updatedList = [...prev];
+      let newCount = 0;
+      let updatedCount = 0;
+
+      importedStaff.forEach((imp) => {
+        // Find existing by DPI (if valid) or Name
+        const matchIdx = updatedList.findIndex((existing) => {
+          const dpiMatch =
+            existing.dpi &&
+            existing.dpi !== 'N/A' &&
+            imp.dpi &&
+            imp.dpi !== 'N/A' &&
+            existing.dpi.replace(/\s+/g, '') === imp.dpi.replace(/\s+/g, '');
+          const nameMatch =
+            existing.nombre.trim().toLowerCase() === imp.nombre.trim().toLowerCase();
+          return dpiMatch || nameMatch;
+        });
+
+        if (matchIdx >= 0) {
+          // Corrección: la carga masiva de Personal ya NO sobrescribe registros que
+          // ya existían en el sistema (antes actualizaba los campos del colaborador
+          // encontrado). Ahora simplemente se omite esa fila del Excel y se cuenta
+          // como "ya existente", para no borrar/editar datos previamente cargados.
+          updatedCount++;
+        } else {
+          updatedList.push({
+            id: `S-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            dpi: imp.dpi || 'N/A',
+            nombre: imp.nombre,
+            agencia: imp.agencia || undefined,
+            puesto: imp.puesto,
+            rol: imp.rol,
+            telefono: imp.telefono || '-',
+            estado: imp.estado || 'Disponible',
+            // Mismo campo faltante que en la actualización: se capturaban en el
+            // Excel pero nunca llegaban a guardarse en un colaborador nuevo.
+            codigo: imp.codigo,
+            codigoCorto: imp.codigoCorto,
+            estatus: imp.estatus || 'ALTA',
+          });
+          newCount++;
+        }
+      });
+
+      const message =
+        updatedCount > 0
+          ? `Carga masiva completada: ${fmtNum(newCount)} colaboradores agregados y ${fmtNum(updatedCount)} omitidos (ya existían en el sistema).`
+          : `Carga masiva completada: ${fmtNum(newCount)} colaboradores agregados desde Excel.`;
+      showToast(message, 'success');
+
+      return updatedList;
+    });
+  };
+
+  const handleImportTrucksBatch = (importedTrucks: Truck[]) => {
+    if (!importedTrucks || importedTrucks.length === 0) return;
+
+    setTrucks((prev) => {
+      const updatedList = [...prev];
+      let newCount = 0;
+      let updatedCount = 0;
+
+      importedTrucks.forEach((imp) => {
+        // Buscar coincidencia existente por ID de Camión (si es válido) o por Placa
+        const matchIdx = updatedList.findIndex((existing) => {
+          const idCamionMatch =
+            existing.idCamion &&
+            imp.idCamion &&
+            String(existing.idCamion).trim() === String(imp.idCamion).trim();
+          const placaMatch =
+            existing.placa &&
+            imp.placa &&
+            existing.placa.replace(/\s+/g, '').toUpperCase() ===
+              imp.placa.replace(/\s+/g, '').toUpperCase();
+          return idCamionMatch || placaMatch;
+        });
+
+        if (matchIdx >= 0) {
+          // Corrección: la carga masiva de Camiones ya NO sobrescribe registros que
+          // ya existían en el sistema (antes actualizaba los campos del camión
+          // encontrado). Ahora simplemente se omite esa fila del Excel y se cuenta
+          // como "ya existente", para no borrar/editar datos previamente cargados.
+          updatedCount++;
+        } else {
+          updatedList.push({
+            id: `T-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            idCamion: imp.idCamion || undefined,
+            placa: imp.placa,
+            agencia: imp.agencia || undefined,
+            capacidad: imp.capacidad || '0',
+            ton: imp.ton || undefined,
+            bahias: imp.bahias || undefined,
+            estado: imp.estado || 'Disponible',
+            rutaActual: null,
+          });
+          newCount++;
+        }
+      });
+
+      const message =
+        updatedCount > 0
+          ? `Carga masiva completada: ${fmtNum(newCount)} camiones agregados y ${fmtNum(updatedCount)} omitidos (ya existían en el sistema).`
+          : `Carga masiva completada: ${fmtNum(newCount)} camiones agregados desde Excel.`;
+      showToast(message, 'success');
+
+      return updatedList;
+    });
+  };
+
+  const handleDeleteTrucks = (truckIdsPedidos: string[]) => {
+    if (!truckIdsPedidos || truckIdsPedidos.length === 0) return;
+    const truckIds = truckIdsPedidos.filter((id) => puedeEliminarEn(trucks.find((t) => t.id === id)?.agencia));
+    if (truckIds.length < truckIdsPedidos.length) {
+      showToast(`${truckIdsPedidos.length - truckIds.length} camión(es) no se eliminaron: son de agencias que no administras.`, 'error');
+    }
+    if (truckIds.length === 0) return;
+    const idSet = new Set(truckIds);
+    const removed = trucks.filter((t) => idSet.has(t.id));
+    setTrucks((prev) => prev.filter((t) => !idSet.has(t.id)));
+    // Borrado explícito en Supabase con las claves exactas confirmadas por el
+    // usuario (ver la nota de seguridad en pushSharedCollection).
+    void deleteSharedRecords('app_trucks', truckIds);
+    if (removed.length === 1) {
+      showToast(`Camión ${removed[0].placa} eliminado`, 'info');
+    } else {
+      showToast(`${removed.length} camiones eliminados`, 'info');
+    }
+  };
+
+  const handleDeleteStaffMembers = (staffIdsPedidos: string[]) => {
+    if (!staffIdsPedidos || staffIdsPedidos.length === 0) return;
+    const staffIds = staffIdsPedidos.filter((id) => puedeEliminarEn(staff.find((x) => x.id === id)?.agencia));
+    if (staffIds.length < staffIdsPedidos.length) {
+      showToast(`${staffIdsPedidos.length - staffIds.length} colaborador(es) no se eliminaron: son de agencias que no administras.`, 'error');
+    }
+    if (staffIds.length === 0) return;
+    const idSet = new Set(staffIds);
+    const removed = staff.filter((s) => idSet.has(s.id));
+    setStaff((prev) => prev.filter((s) => !idSet.has(s.id)));
+    // Borrado explícito en Supabase con las claves exactas confirmadas por el
+    // usuario (ver la nota de seguridad en pushSharedCollection).
+    void deleteSharedRecords('app_staff', staffIds);
+    if (removed.length === 1) {
+      showToast(`Colaborador ${removed[0].nombre} eliminado`, 'info');
+    } else {
+      showToast(`${removed.length} colaboradores eliminados`, 'info');
+    }
+  };
+
+  const handleUpdateStaffStatus = (staffId: string, newStatus: ResourceStatus) => {
+    // Corrección: mismo resguardo que en handleUpdateStaffEstatus — el estado
+    // operativo del día tampoco debe poder cambiarse sin permiso de carga de
+    // Excel de personal.
+    if (!canBulkUploadStaff) {
+      showToast('No tienes permiso para modificar el estatus de personal.', 'error');
+      return;
+    }
+    const target = staff.find((s) => s.id === staffId);
+    if (!target) return;
+
+    setStaff((prev) =>
+      prev.map((s) => (s.id === staffId ? { ...s, estado: newStatus } : s))
+    );
+
+    if (newStatus === 'Baja') {
+      showToast(`Colaborador ${target.nombre} dado de BAJA`, 'info');
+    } else if (newStatus === 'Disponible') {
+      showToast(`Colaborador ${target.nombre} activado a DISPONIBLE`, 'success');
+    } else {
+      showToast(`Estado de ${target.nombre} actualizado a ${newStatus}`, 'info');
+    }
+  };
+
+  const handleSetTruckReason = (truckId: string, reason: TruckUnavailableReason | null) => {
+    const target = trucks.find((t) => t.id === truckId);
+    setTrucks((prev) =>
+      prev.map((t) =>
+        t.id === truckId
+          ? {
+              ...t,
+              motivoNoAsignado: reason,
+              motivoNoAsignadoFecha: reason ? formatDateTimeToGuatemala(new Date()) : null,
+              // Se registra la clasificación de Remunera vigente al momento de asignar el
+              // motivo, para el reporte de costos que se construirá más adelante.
+              remuneraNoAsignado: reason ? TRUCK_REASON_REMUNERA[reason] : null,
+            }
+          : t
+      )
+    );
+    if (reason) {
+      showToast(`Camión ${target?.placa || truckId} marcado como "${reason}"`, 'info');
+    }
+  };
+
+  const handleSetStaffReason = (staffId: string, reason: StaffUnavailableReason | null) => {
+    const target = staff.find((s) => s.id === staffId);
+    setStaff((prev) =>
+      prev.map((s) =>
+        s.id === staffId
+          ? {
+              ...s,
+              motivoNoAsignado: reason,
+              motivoNoAsignadoFecha: reason ? formatDateTimeToGuatemala(new Date()) : null,
+              remuneraNoAsignado: reason ? STAFF_REASON_REMUNERA[reason] : null,
+            }
+          : s
+      )
+    );
+    if (reason) {
+      showToast(`${target?.nombre || staffId} marcado con motivo "${reason}"`, 'info');
+    }
+  };
+
+  // Comentario opcional del Fin de Asignación (no es obligatorio). Se guarda
+  // junto con el motivo en el camión / la persona.
+  const handleSetTruckComment = (truckId: string, comentario: string) => {
+    const txt = comentario.trim().slice(0, 300) || null;
+    setTrucks((prev) => prev.map((t) => (t.id === truckId && (t.comentarioNoAsignado || null) !== txt ? { ...t, comentarioNoAsignado: txt } : t)));
+  };
+  const handleSetStaffComment = (staffId: string, comentario: string) => {
+    const txt = comentario.trim().slice(0, 300) || null;
+    setStaff((prev) => prev.map((s) => (s.id === staffId && (s.comentarioNoAsignado || null) !== txt ? { ...s, comentarioNoAsignado: txt } : s)));
+  };
+
+  // Corrección de seguridad crítica: "Restablecer Datos de Ejemplo" reemplaza
+  // TODO el contenido de Rutas, Camiones y Personal por los datos de ejemplo
+  // con los que arranca la app en modo local — algo razonable únicamente
+  // cuando NO hay una base de datos compartida configurada (modo de un solo
+  // navegador, sin Supabase). Con Supabase configurado, este botón terminaba
+  // reemplazando en TODAS las pantallas conectadas los datos reales cargados
+  // por el equipo con datos de ejemplo, con un solo clic y sin ninguna
+  // confirmación — esto ya causó pérdidas reales de Rutas, Camiones y
+  // Personal. Ahora esta función se niega a ejecutarse si Supabase está
+  // configurado (además, el botón que la dispara ya no se muestra en ese caso
+  // — ver TabNav.tsx / allowResetDemo), como segunda capa de protección.
+  const handleResetDemo = () => {
+    if (isSupabaseConfigured) {
+      showToast(
+        'Restablecer a datos de ejemplo está deshabilitado: esta base de datos es compartida y contiene datos reales de todos los usuarios.',
+        'error'
+      );
+      return;
+    }
+    const snapshot = { routes, trucks, staff, historicalRoutes };
+    setRoutes(JSON.parse(JSON.stringify(INITIAL_ROUTES)));
+    setTrucks(JSON.parse(JSON.stringify(INITIAL_TRUCKS)));
+    setStaff(JSON.parse(JSON.stringify(INITIAL_STAFF)));
+    setHistoricalRoutes([]);
+    showToast('Datos restaurados al reporte de ejemplo', 'info', {
+      label: 'Deshacer',
+      onClick: () => {
+        setRoutes(snapshot.routes);
+        setTrucks(snapshot.trucks);
+        setStaff(snapshot.staff);
+        setHistoricalRoutes(snapshot.historicalRoutes);
+      },
+    });
+  };
+
+  // Botón "Rutas Prioridades": Excel con No. Ruta, Camión, Piloto y Segmento
+  // de las rutas visibles en el Tablero (con los filtros aplicados).
+  const boardVisibleRoutesRef = useRef<Route[]>([]);
+  const handleBoardVisibleRoutes = useCallback((list: Route[]) => {
+    boardVisibleRoutesRef.current = list;
+  }, []);
+  const handleExportRutasPrioridades = async () => {
+    // Solo rutas que están en el Tablero en este momento: mismas que la tabla
+    // (mismo orden), nunca liquidadas ni de agencias/filtros fuera de pantalla.
+    const enTablero = new Set(filteredActiveRoutes.map((r) => getRouteKey(r)));
+    const base = boardVisibleRoutesRef.current.length ? boardVisibleRoutesRef.current : filteredActiveRoutes;
+    const vistos = new Set<string>();
+    const lista = base.filter((r) => {
+      const k = getRouteKey(r);
+      if (r.estado === 'Liquidada' || !enTablero.has(k) || vistos.has(k)) return false;
+      vistos.add(k);
+      return true;
+    });
+    const ok = await exportRutasPrioridadesToExcel(lista, trucks, boardFecha || undefined, staff);
+    showToast(ok ? 'Excel de Rutas Prioridades descargado' : 'No hay rutas en el tablero para exportar', ok ? 'success' : 'error');
+  };
+
+  const handleExportActiveRoutesExcel = async () => {
+    if (activeTab === 'liquidated') {
+      const success = await exportRoutesToExcel(allLiquidatedRoutes, staff);
+      if (success) {
+        showToast('Reporte de rutas liquidadas descargado en Excel', 'success');
+      } else {
+        showToast('No hay rutas liquidadas para exportar', 'error');
+      }
+      return;
+    }
+    const success = await exportRoutesToExcel(filteredActiveRoutes, staff, boardFecha || undefined);
+    if (success) {
+      showToast('Reporte Excel descargado con desglose de tripulación', 'success');
+    } else {
+      showToast('No hay rutas activas para exportar', 'error');
+    }
+  };
+
+  // Corrección: se agrega "fecha" (opcional, al final para no romper la llamada
+  // existente desde LiquidatedBoardView que ya pasa el objeto de ruta directo en
+  // directRoute) porque el mismo ID de ruta puede repetirse en fechas distintas —
+  // sin esto, ver el acta desde el Tablero de Rutas podía abrir la de otra fila con
+  // el mismo ID pero de otra fecha.
+  const handleViewSettlementReceipt = (routeId: string, directRoute?: Route, fecha?: string) => {
+    const matchesTarget = (r: Route) =>
+      fecha !== undefined ? routeMatchesKey(r, routeId, fecha) : String(r.id) === String(routeId);
+    const target =
+      directRoute ||
+      routes.find(matchesTarget) ||
+      allLiquidatedRoutes.find(matchesTarget) ||
+      historicalRoutes.find(matchesTarget);
+
+    if (!target) {
+      showToast('No se encontró la información de la ruta', 'error');
+      return;
+    }
+    setReceiptTarget(target);
+    setReceiptConsolidatedSiblings(undefined);
+  };
+
+  const handleViewConsolidatedReceipt = (parentRouteId: string, ref?: Route | null) => {
+    const allKnown = [...routes, ...allLiquidatedRoutes];
+    const uniqueMap = new Map<string, Route>();
+    allKnown.forEach((r) => {
+      if (r.parentRouteId === parentRouteId && isSameSplitGroup(r, parentRouteId, ref)) {
+        uniqueMap.set(String(r.id), r);
+      }
+    });
+    const siblings = Array.from(uniqueMap.values());
+    if (siblings.length === 0) return;
+    setReceiptTarget(siblings[0]);
+    setReceiptConsolidatedSiblings(siblings);
+  };
+
+  // Agencia heredada del contexto activo del usuario (selector superior).
+  // Si el usuario tiene "TODAS" seleccionado (sin agencia específica), se usa
+  // la primera agencia conocida como respaldo.
+  const effectiveAgencyForCreation = useMemo(() => {
+    return selectedAgency !== 'TODAS' ? selectedAgency : (agenciasSel[0] || agencies[0] || 'Mercado Abierto');
+  }, [selectedAgency, agenciasSel, agencies]);
+
+  // Correlativo automático para Rutas de Entrega: formato M0000XXXXX (5 dígitos de correlativo)
+  const nextEntregaRouteId = useMemo(() => {
+    const allIds = [...routes, ...historicalRoutes].map((r) => String(r.id));
+    let maxN = 0;
+    allIds.forEach((id) => {
+      const m = /^M0000(\d{5})$/.exec(id);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > maxN) maxN = n;
+      }
+    });
+    return `M0000${String(maxN + 1).padStart(5, '0')}`;
+  }, [routes, historicalRoutes]);
+
+  // Correlativo automático para Rutas de Traslado: formato TL00000XXX (3 dígitos de correlativo)
+  const nextTrasladoRouteId = useMemo(() => {
+    const allIds = [...routes, ...historicalRoutes].map((r) => String(r.id));
+    let maxN = 0;
+    allIds.forEach((id) => {
+      const m = /^TL00000(\d{3})$/.exec(id);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > maxN) maxN = n;
+      }
+    });
+    return `TL00000${String(maxN + 1).padStart(3, '0')}`;
+  }, [routes, historicalRoutes]);
+
+  // Recursos disponibles (camiones y personal) que aún no tienen motivo de no-asignación.
+  // Corrección: se cuenta sobre visibleTrucks/visibleStaff (ya filtrados por la agencia
+  // del usuario) en vez de las listas completas, para que el número en la insignia de
+  // "Fin de Asignación" coincida con lo que ese usuario realmente puede ver al abrir el modal.
+  // Solo cuentan los que NO fueron asignados en la fecha del Tablero (o hoy):
+  // misma regla que el modal (ver utils/recursosSinAsignar).
+  const fechaFinAsignacion = boardFecha || formatDateToGuatemala(new Date());
+  const rutasFinAsignacion = useMemo(() => [...routes, ...historicalRoutes], [routes, historicalRoutes]);
+  const asignadosFinAsignacion = useMemo(
+    () => asignadosEnFecha(rutasFinAsignacion, fechaFinAsignacion),
+    [rutasFinAsignacion, fechaFinAsignacion]
+  );
+  // Fin de Asignación: solo camiones y personal de las agencias asignadas al
+  // usuario. A un usuario con agencias específicas NO se le muestran recursos
+  // sin agencia ni de otras agencias (en las listas generales sí aparecen los
+  // "Sin Agencia" para poder corregirlos).
+  const accesoRestringido =
+    !!currentUser && !currentUser.isAdmin && Array.isArray(currentUser.agencyAccess);
+  const deMisAgencias = (ag?: string | null) => (accesoRestringido ? !!ag && canViewAgency(ag) : true);
+  const trucksFinAsignacion = useMemo(
+    () => visibleTrucks.filter((t) => deMisAgencias(t.agencia)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visibleTrucks, currentUser]
+  );
+  const staffFinAsignacion = useMemo(
+    () => visibleStaff.filter((x) => deMisAgencias(x.agencia)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visibleStaff, currentUser]
+  );
+  const pendingReasonsCount = useMemo(() => {
+    const pendingTrucks = camionesSinAsignar(trucksFinAsignacion, asignadosFinAsignacion).filter((t) => !t.motivoNoAsignado).length;
+    const pendingStaff = personalSinAsignar(staffFinAsignacion, asignadosFinAsignacion).filter((s) => !s.motivoNoAsignado).length;
+    return pendingTrucks + pendingStaff;
+  }, [trucksFinAsignacion, staffFinAsignacion, asignadosFinAsignacion]);
+
+  // Mientras se carga la base de datos compartida (solo aplica cuando Supabase
+  // está configurado — ver src/services/supabaseClient.ts) se muestra una
+  // pantalla de carga en vez del login, para no permitir el ingreso con datos
+  // de usuarios todavía incompletos.
+  const loadingScreen = (message: string) => (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="text-center space-y-3">
+        <div className="w-10 h-10 border-4 border-slate-300 border-t-blue-600 rounded-full animate-spin mx-auto" />
+        <p className="text-sm font-semibold text-slate-600">{message}</p>
+      </div>
+    </div>
+  );
+
+  // Orden con Supabase: 1) revisar sesión guardada → 2) login → 3) leer perfil
+  // → 4) cargar datos compartidos. Los datos solo se leen con sesión iniciada.
+  if (isSupabaseConfigured && !authChecked) {
+    return loadingScreen('Verificando sesión...');
+  }
+
+  if (isSupabaseConfigured && authUserId && !profilesLoaded) {
+    return loadingScreen('Cargando tu perfil...');
+  }
+
+  if (!currentUser) {
+    return (
+      <LoginScreen
+        onLogin={handleLogin}
+        notice={loginNotice || (isDemoMode ? 'VERSIÓN DEMO: muestra los datos reales, pero nada de lo que hagas aquí se guarda.' : undefined)}
+      />
+    );
+  }
+
+  if (isSupabaseConfigured && !isRemoteReady) {
+    return loadingScreen('Cargando datos compartidos...');
+  }
+
+  // Selector de segmento del Tablero: uno o varios segmentos (cambia la
+  // tabla, los indicadores y los reportes de Inicio y Fin de Día).
+  const etiquetaSegmento = (sg: string) => (sg === '__SIN__' ? 'Sin segmento' : sg);
+  const alternarSegmento = (sg: string) =>
+    setBoardSegmento((prev) => (prev.includes(sg) ? prev.filter((x) => x !== sg) : [...prev, sg]));
+  const segmentSelect = (donde: string) => (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        id={donde === 'toolbar' ? 'boardSegmentoFiltro' : `boardSegmentoFiltro-${donde}`}
+        onClick={(e) => {
+          if (segmentoMenu?.donde === donde) {
+            setSegmentoMenu(null);
+            return;
+          }
+          const rc = e.currentTarget.getBoundingClientRect();
+          setSegmentoMenu({ donde, top: rc.bottom + 4, left: Math.max(8, Math.min(rc.left, window.innerWidth - 272)) });
+        }}
+        aria-haspopup="true"
+        aria-expanded={segmentoMenu?.donde === donde}
+        title="Ver solo las rutas de uno o varios segmentos"
+        className={`min-h-[40px] px-3 rounded-xl border text-xs font-bold cursor-pointer flex items-center gap-1.5 max-w-[240px] ${
+          boardSegmento.length ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-700 border-slate-300'
+        }`}
+      >
+        <span className="truncate">
+          {boardSegmento.length === 0
+            ? 'Todos los segmentos'
+            : boardSegmento.length === 1
+            ? etiquetaSegmento(boardSegmento[0])
+            : `${boardSegmento.length} segmentos`}
+        </span>
+        <span aria-hidden>▾</span>
+      </button>
+      {segmentoMenu?.donde === donde && (
+        <>
+          <div className="fixed inset-0 z-[70]" onClick={() => setSegmentoMenu(null)} aria-hidden />
+          <div
+            role="group"
+            aria-label="Segmentos del tablero"
+            style={{ top: segmentoMenu.top, left: segmentoMenu.left }}
+            className="fixed z-[71] w-64 max-h-80 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl p-1.5"
+          >
+            <button
+              type="button"
+              onClick={() => setBoardSegmento([])}
+              className={`w-full text-left min-h-[40px] px-2.5 rounded-lg text-xs font-bold cursor-pointer ${
+                boardSegmento.length === 0 ? 'bg-purple-50 text-purple-800' : 'text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {boardSegmento.length === 0 ? '✓ ' : ''}Todos los segmentos
+            </button>
+            <div className="my-1 border-t border-slate-100" />
+            {[...boardSegmentOptions, '__SIN__'].map((sg) => {
+              const marcado = boardSegmento.includes(sg);
+              return (
+                <label
+                  key={sg}
+                  className="flex items-center gap-2 min-h-[40px] px-2.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={marcado}
+                    onChange={() => alternarSegmento(sg)}
+                    className="w-4 h-4 cursor-pointer accent-purple-600"
+                  />
+                  {etiquetaSegmento(sg)}
+                </label>
+              );
+            })}
+            <div className="mt-1 pt-1 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSegmentoMenu(null)}
+                className="min-h-[36px] px-3 rounded-lg bg-slate-900 text-white text-xs font-bold cursor-pointer"
+              >
+                Listo
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  // Selector de fecha del Tablero (cambia la tabla y los indicadores).
+  const boardDateSelect = (
+    <select
+      id="boardFechaFiltro"
+      value={boardFecha}
+      onChange={(e) => setBoardFecha(e.target.value)}
+      aria-label="Fecha de las rutas del tablero"
+      title="Filtrar el tablero y sus indicadores por fecha de ruta"
+      className={`shrink-0 min-h-[40px] px-2 rounded-xl border text-xs font-bold cursor-pointer ${
+        boardFecha ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-300'
+      }`}
+    >
+      <option value="">Todas las fechas</option>
+      {boardDateOptions.map((d) => (
+        <option key={d} value={d}>
+          {d === formatDateToGuatemala(new Date()) ? `${d} (hoy)` : d}
+        </option>
+      ))}
+    </select>
+  );
+
+  return (
+    <div className="bg-gradient-to-b from-slate-100 to-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
+      {/* Versión DEMO (rama "demo" en Netlify: demo--...netlify.app). Muestra
+          los datos reales pero no guarda nada (ver services/demoMode.ts). */}
+      {isDemoMode && (
+        <div className="sticky top-0 z-[60] bg-amber-400 text-amber-950 text-center text-xs sm:text-sm font-bold py-1.5 px-4 shadow">
+          VERSIÓN DEMO · Práctica y presentaciones — nada de lo que hagas aquí se guarda en los datos reales. Recarga la página para volver a los datos actuales.
+        </div>
+      )}
+      {esSoloConsulta && !isDemoMode && (
+        <div className="sticky top-0 z-[60] bg-sky-600 text-white text-center text-xs sm:text-sm font-bold py-1.5 px-4 shadow">
+          USUARIO DE SOLO CONSULTA · Puedes ver la información, pero los cambios no se guardan.
+        </div>
+      )}
+      <Navbar
+        agencies={boardAgencies}
+        selectedAgency={selectedAgency}
+        onSelectAgency={setSelectedAgency}
+        selectedAgencies={agenciasSel}
+        onChangeAgencies={setAgenciasSel}
+        currentUsername={currentUser.nombre || currentUser.username}
+        isAdmin={currentUser.isAdmin}
+        adminAgencias={adminAgenciasSesion}
+        onLogout={handleLogout}
+        notificaciones={
+          isSupabaseConfigured && (currentUser.isAdmin || adminAgenciasSesion.length > 0) ? (
+            <NotificationBell
+              isAdmin={!!currentUser.isAdmin}
+              adminAgencias={adminAgenciasSesion}
+              prestamos={prestamos}
+              situacionRecargas={situacionRecargas}
+              puedeVer={{ recargas: true, prestamos: true, zr: canViewZr }}
+              onIr={irANotificacion}
+            />
+          ) : undefined
+        }
+        saveIndicator={
+          isSupabaseConfigured ? (
+            <SaveIndicator isOnline={isOnline} pending={pendingSaves} failed={lastSaveFailed} compact />
+          ) : undefined
+        }
+        onDownloadBackup={isSupabaseConfigured && currentUser.isAdmin ? handleDownloadBackup : undefined}
+        onResetDemo={!isSupabaseConfigured && currentUser.isAdmin ? handleResetDemo : undefined}
+      />
+
+      {/* Rediseño para tablet: navegación en una barra lateral fija (en vez de
+          una fila completa arriba) e indicadores compactos en la misma fila de la
+          búsqueda, para que el Tablero de Rutas use casi toda la pantalla. */}
+      <div className={`flex-1 flex w-full min-h-0 ${(isDailySummaryModalOpen || isClosingActaModalOpen) ? 'no-print print:hidden' : ''}`}>
+        <aside className={`${railCollapsed ? 'hidden' : 'hidden md:block'} w-[88px] shrink-0 bg-white/90 border-r border-slate-200 h-[calc(100dvh-68px)] sticky top-[68px] overflow-y-auto z-20`}>
+          <TabNav
+            mode="rail"
+            onToggleRail={toggleRail}
+          activeTab={tabPedida}
+          onTabChange={cambiarTab}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
+          pendingReasonsCount={pendingReasonsCount}
+          activeCount={filteredActiveRoutes.length}
+          liquidatedCount={allLiquidatedRoutes.length}
+          trucksCount={listaTrucks.length}
+          staffCount={listaStaff.length}
+          usersCount={users.length}
+          showDashboard={canView('dashboard')}
+          showBoard={canView('board')}
+          showLiquidated={canView('liquidated')}
+          showTrucks={canView('trucks')}
+          showStaff={canView('staff')}
+          showBatch={canView('batch')}
+          showUsers={canManageUsers}
+          showZr={canViewZr}
+          isAdmin={!!currentUser.isAdmin}
+        />
+        </aside>
+
+      <main className="flex-1 min-w-0 h-[calc(100dvh-68px)] overflow-y-auto flex flex-col gap-2.5 px-2 sm:px-3 md:px-4 py-2.5">
+        <div className="md:hidden shrink-0">
+          <TabNav
+            mode="bar"
+          activeTab={tabPedida}
+          onTabChange={cambiarTab}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onOpenUnassignedResourcesModal={() => setIsUnassignedResourcesModalOpen(true)}
+          pendingReasonsCount={pendingReasonsCount}
+          activeCount={filteredActiveRoutes.length}
+          liquidatedCount={allLiquidatedRoutes.length}
+          trucksCount={listaTrucks.length}
+          staffCount={listaStaff.length}
+          usersCount={users.length}
+          showDashboard={canView('dashboard')}
+          showBoard={canView('board')}
+          showLiquidated={canView('liquidated')}
+          showTrucks={canView('trucks')}
+          showStaff={canView('staff')}
+          showBatch={canView('batch')}
+          showUsers={canManageUsers}
+          showZr={canViewZr}
+          isAdmin={!!currentUser.isAdmin}
+        />
+        </div>
+
+        <div className="shrink-0">
+          <TabNav
+            mode="toolbar"
+            railCollapsed={railCollapsed}
+            onToggleRail={toggleRail}
+            onFullscreen={activeTab === 'board' ? enterBoardFullscreen : undefined}
+            // Inicio / Fin de Día y Nueva Ruta: solo en el Tablero de Rutas.
+            onOpenDailySummary={activeTab === 'board' ? handleOpenDailySummary : undefined}
+            onNewRoute={activeTab === 'board' ? () => setIsRouteTypeSelectModalOpen(true) : undefined}
+            leading={
+              // Indicadores según la sección: los principales (pendientes, tránsito,
+              // etc.) en el Tablero de Rutas; los de liquidación en Rutas Liquidadas.
+              activeTab === 'board' ? (
+              <div className="flex items-center gap-1.5 min-w-0">
+                {boardDateSelect}
+                {segmentSelect('toolbar')}
+              <StatsCards
+                compact
+          pendientes={boardStats.pendientes}
+          transito={boardStats.transito - boardStats.recargasTransito}
+          recargas={boardStats.recargasTransito}
+          bolson={boardStats.bolson}
+          selfService={boardStats.selfService}
+          abiertas={boardStats.abiertas}
+          liquidadas={boardStats.liquidadas}
+          liquidadasTotal={boardStats.liquidadasTotal}
+          pisoHoy={boardStats.pisoHoy}
+          fechaHoy={boardStats.fechaHoy}
+          cajasFisicasHoy={boardStats.cajasFisicasHoy}
+          cajasEntregadasHoy={boardStats.cajasEntregadasHoy}
+          onSelectTab={cambiarTab}
+        />
+              </div>
+              ) : activeTab === 'liquidated' && liqKpis ? (
+                <LiquidatedStatsStrip {...liqKpis} />
+              ) : activeTab === 'staff' ? (
+                <StatPills pills={staffPills} />
+              ) : activeTab === 'trucks' ? (
+                <StatPills pills={truckPills} />
+              ) : null
+            }
+          activeTab={tabPedida}
+          onTabChange={cambiarTab}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onExportExcel={
+            // Exportación única: en Liquidadas se exporta desde la propia vista
+            // (con sus filtros); en Camiones/Personal no aplica.
+            activeTab === 'board' || activeTab === 'dashboard' ? handleExportActiveRoutesExcel : undefined
+          }
+          onExportPrioridades={activeTab === 'board' ? handleExportRutasPrioridades : undefined}
+          onOpenUnassignedResourcesModal={
+            // "Fin de Asignación" solo en el Tablero de Rutas (cierre del proceso de asignación).
+            activeTab === 'board' ? () => setIsUnassignedResourcesModalOpen(true) : undefined
+          }
+          pendingReasonsCount={pendingReasonsCount}
+          activeCount={filteredActiveRoutes.length}
+          liquidatedCount={allLiquidatedRoutes.length}
+          trucksCount={listaTrucks.length}
+          staffCount={listaStaff.length}
+          usersCount={users.length}
+          showDashboard={canView('dashboard')}
+          showBoard={canView('board')}
+          showLiquidated={canView('liquidated')}
+          showTrucks={canView('trucks')}
+          showStaff={canView('staff')}
+          showBatch={canView('batch')}
+          showUsers={canManageUsers}
+          showZr={canViewZr}
+          isAdmin={!!currentUser.isAdmin}
+        />
+        </div>
+
+        {cambiandoTab && (
+          <div className="fixed top-0 left-0 right-0 h-1 z-[60] bg-sky-100 overflow-hidden pointer-events-none" role="progressbar" aria-label="Cargando pantalla">
+            <div className="h-full w-1/3 bg-[#5AACE4] animate-pulse" />
+          </div>
+        )}
+
+        {mantenerTab('dashboard') && (
+          <Activity mode={activeTab === 'dashboard' ? 'visible' : 'hidden'}>
+          <DashboardView
+            routes={dashboardRoutes}
+            activeRoutesByAgency={activeRoutesVisibleAllAgencies}
+            liquidatedRoutes={dashboardLiquidatedRoutes}
+            trucks={visibleTrucks}
+            staff={visibleStaff}
+            stats={stats}
+            selectedAgency={selectedAgency}
+            etiquetaTodas={etiquetaAgencias}
+            historyLimitedDays={historyLimited ? HISTORY_INITIAL_DAYS : undefined}
+            onLoadFullHistory={loadFullHistory}
+            isLoadingFullHistory={isLoadingFullHistory}
+            puedeVerAgencia={(ag: string) => canViewAgency(ag) && enAgenciaSel(ag)}
+            situacionRecargas={situacionRecargas}
+            usuario={currentUser.nombre || currentUser.username}
+          />
+          </Activity>
+        )}
+
+        {activeTab === 'board' && (
+          <div
+            className={
+              boardFullscreen
+                ? 'fixed inset-0 z-40 bg-slate-100 flex flex-col gap-2 p-2 sm:p-3'
+                : 'flex-1 min-h-[320px]'
+            }
+          >
+          {boardFullscreen && (
+            <div className="shrink-0 flex flex-wrap items-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm px-2.5 py-2">
+              <span className="font-bold text-sm text-slate-800 px-1 whitespace-nowrap">
+                Asignación{agenciasSel.length ? ` · ${agenciasSel.join(', ')}` : ''}
+              </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                {boardDateSelect}
+                {segmentSelect('pantalla')}
+                <StatsCards
+                  compact
+                  pendientes={boardStats.pendientes}
+                  transito={boardStats.transito - boardStats.recargasTransito}
+                  recargas={boardStats.recargasTransito}
+                  bolson={boardStats.bolson}
+          selfService={boardStats.selfService}
+                  abiertas={boardStats.abiertas}
+                  liquidadas={boardStats.liquidadas}
+                  liquidadasTotal={boardStats.liquidadasTotal}
+                  pisoHoy={boardStats.pisoHoy}
+                  fechaHoy={boardStats.fechaHoy}
+                  cajasFisicasHoy={boardStats.cajasFisicasHoy}
+                  cajasEntregadasHoy={boardStats.cajasEntregadasHoy}
+                />
+                </div>
+              </div>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar ruta, camión, piloto, cliente..."
+                aria-label="Buscar ruta, camión o piloto"
+                className="flex-1 min-w-[160px] max-w-xs min-h-[44px] px-3 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                <DayReportButtons onOpen={handleOpenDailySummary} />
+                <NewRouteButton onClick={() => setIsRouteTypeSelectModalOpen(true)} />
+                <Button variant="secondary" icon={ACTION_ICONS.prioridades} onClick={handleExportRutasPrioridades} title="Descargar Excel de Rutas Prioridades" className="text-indigo-700 border-indigo-300">
+                  Rutas Prioridades
+                </Button>
+                <Button
+                  variant={pendingReasonsCount > 0 ? 'success' : 'secondary'}
+                  icon={ACTION_ICONS.finAsignacion}
+                  onClick={() => setIsUnassignedResourcesModalOpen(true)}
+                  title="Cerrar la asignación del día: motivo para camiones y personal que no salieron"
+                  badge={pendingReasonsCount > 0 ? pendingReasonsCount : undefined}
+                >
+                  Fin de Asignación
+                </Button>
+                <Button variant="dark" icon={ACTION_ICONS.restaurar} onClick={exitBoardFullscreen}>
+                  Salir de pantalla completa
+                </Button>
+              </div>
+            </div>
+          )}
+          <div className={boardFullscreen ? 'flex-1 min-h-0' : 'h-full'}>
+          <RoutesTable
+            fillHeight
+            routes={filteredActiveRoutes}
+            busqueda={searchQuery}
+            allRoutes={routes}
+            trucks={trucksLive}
+            staff={staffLive}
+            onOpenAssignModal={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
+              if (r) setAssignTarget(r);
+            }}
+            onOpenLiquidateModal={(id, fecha) => {
+              if (!puedeLiquidar) {
+                avisoSinRolLiquidador();
+                return;
+              }
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
+              if (r) setLiquidateTarget(r);
+            }}
+            onOpenSplitRouteModal={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
+              if (r) setSplitRouteTarget(r);
+            }}
+            onOpenRevertSplitModal={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
+              if (r) setRevertSplitTarget(r);
+            }}
+            resumenGrupoDe={resumenGrupoDe}
+            onOpenRepartirCajas={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
+              if (r) openRepartirCajas(r);
+            }}
+            onViewSettlementReceipt={(id, fecha) => handleViewSettlementReceipt(id, undefined, fecha)}
+            onViewConsolidatedReceipt={(parentRouteId, ref) =>
+              handleViewConsolidatedReceipt(parentRouteId, ref)
+            }
+            onOpenNewRouteModal={() => setIsRouteTypeSelectModalOpen(true)}
+            onMoveToFloor={handleMoveToFloor}
+            onRemoveBolson={handleRemoveBolson}
+            onRemoveSelfService={handleRemoveSelfService}
+            onVisibleRoutesChange={handleBoardVisibleRoutes}
+            onOpenApoyo={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
+              if (r) setApoyoTarget(r);
+            }}
+            onChangeSegment={(id, fecha) => {
+              const r = routes.find((item) => routeMatchesKey(item, id, fecha));
+              if (r) setSegmentTarget(r);
+            }}
+            onBulkMoveToFloor={handleBulkMoveToFloor}
+            onBulkLiquidate={puedeLiquidar ? (keys) => setBulkLiquidarKeys(keys) : undefined}
+            onOpenDeleteModal={canDeleteData ? (ids) => setDeleteRoutesTargetIds(ids) : undefined}
+            puedeEliminarRuta={(r) => puedeEliminarEn(r.agencia)}
+          />
+          </div>
+          </div>
+        )}
+
+        {mantenerTab('liquidated') && (
+          <Activity mode={activeTab === 'liquidated' ? 'visible' : 'hidden'}>
+          <LiquidatedBoardView
+            onKpisChange={setLiqKpis}
+            historyLimitedDays={historyLimited ? HISTORY_INITIAL_DAYS : undefined}
+            onLoadFullHistory={loadFullHistory}
+            isLoadingFullHistory={isLoadingFullHistory}
+            liquidatedRoutes={allLiquidatedRoutes}
+            allRoutes={routes}
+            staff={staffLive}
+            allAgencies={agencies}
+            onViewSettlementReceipt={(id, routeObj) => handleViewSettlementReceipt(id, routeObj)}
+            onViewConsolidatedReceipt={(parentRouteId, ref) =>
+              handleViewConsolidatedReceipt(parentRouteId, ref)
+            }
+            onOpenFinalizeCajaAbierta={(routeObj) => {
+              if (!puedeLiquidar) {
+                avisoSinRolLiquidador();
+                return;
+              }
+              setFinalizeCajaAbiertaTarget(routeObj);
+            }}
+            onOpenAbonosCaja={(routeObj) => setAbonosCajaTarget(routeObj)}
+            onShowToast={showToast}
+            onDeleteRoutes={esAdminDeAlguna ? (keys) => setDeleteRoutesTargetIds(keys) : undefined}
+          />
+          </Activity>
+        )}
+
+        {activeTab === 'trucks' && (
+          <ResourcesView
+            mode="trucks"
+            trucks={listaTrucks}
+            onRequestAsignarIdRentado={(t) => setAsignarIdTarget(t)}
+            onRequestTruckStatusChange={(t) => setTruckStatusTarget(t)}
+            staff={listaStaff}
+            defaultAgencia={effectiveAgencyForCreation}
+            onOpenNewTruckModal={() => setIsNewTruckModalOpen(true)}
+            onOpenNewStaffModal={() => setIsNewStaffModalOpen(true)}
+            onUpdateStaffStatus={handleUpdateStaffStatus}
+            onUpdateStaffEstatus={handleUpdateStaffEstatus}
+            onUpdateTruckTipo={handleUpdateTruckTipo}
+            onUpdateStaffTipo={handleUpdateStaffTipo}
+            onImportStaffBatch={handleImportStaffBatch}
+            onImportTrucksBatch={handleImportTrucksBatch}
+            onDeleteTrucks={handleDeleteTrucks}
+            onDeleteStaffMembers={handleDeleteStaffMembers}
+            onShowToast={showToast}
+            canDelete={canDeleteData}
+            onVerifyPassword={handleVerifyPassword}
+            canBulkUploadTrucks={canBulkUploadTrucks}
+            canManualAddTrucks={canManualAddTrucks}
+            canBulkUploadStaff={canBulkUploadStaff}
+            canManualAddStaff={canManualAddStaff}
+          />
+        )}
+
+        {activeTab === 'staff' && (
+          <ResourcesView
+            mode="staff"
+            trucks={listaTrucks}
+            staff={listaStaff}
+            defaultAgencia={effectiveAgencyForCreation}
+            onOpenNewTruckModal={() => setIsNewTruckModalOpen(true)}
+            onOpenNewStaffModal={() => setIsNewStaffModalOpen(true)}
+            onUpdateStaffStatus={handleUpdateStaffStatus}
+            onUpdateStaffEstatus={handleUpdateStaffEstatus}
+            onUpdateTruckTipo={handleUpdateTruckTipo}
+            onUpdateStaffTipo={handleUpdateStaffTipo}
+            onImportStaffBatch={handleImportStaffBatch}
+            onImportTrucksBatch={handleImportTrucksBatch}
+            onDeleteTrucks={handleDeleteTrucks}
+            onDeleteStaffMembers={handleDeleteStaffMembers}
+            onShowToast={showToast}
+            canDelete={canDeleteData}
+            onVerifyPassword={handleVerifyPassword}
+            canBulkUploadTrucks={canBulkUploadTrucks}
+            canManualAddTrucks={canManualAddTrucks}
+            canBulkUploadStaff={canBulkUploadStaff}
+            canManualAddStaff={canManualAddStaff}
+          />
+        )}
+
+        {activeTab === 'batch' && (
+          <div className="space-y-6">
+            <BatchImportView
+              existingRoutes={batchExistingRoutes}
+              agencyOptions={importAgencyOptions}
+              onCommitRoutes={handleCommitBatchRoutes}
+              onShowToast={showToast}
+            />
+            <ClientesImportView
+              routes={routes}
+              historicalRoutes={historicalRoutes}
+              agencyOptions={importAgencyOptions}
+              onCommitClientesRuta={handleImportClientesPorRuta}
+              onShowToast={showToast}
+            />
+            {currentUser.isAdmin && (
+              <ContingenciaImportView
+                trucks={trucks}
+                staff={staff}
+                agencies={importAgencyOptions}
+                onPreview={handlePreviewContingencia}
+                onApply={handleApplyContingencia}
+                onShowToast={showToast}
+              />
+            )}
+          </div>
+        )}
+
+        {activeTab === 'recargas' && currentUser && (
+          <RecargasView
+            rutas={rutasParaRecargas}
+            staff={staffParaRecargas}
+            trucks={trucksLive}
+            agencias={agenciasSel.length > 1 ? importAgencyOptions.filter((ag) => enAgenciaSel(ag)) : importAgencyOptions}
+            agenciaGeneral={selectedAgency}
+            usuario={currentUser.nombre || currentUser.username}
+            isAdmin={currentUser.isAdmin}
+            canDelete={!!currentUser.canDelete || !!currentUser.isAdmin}
+            adminAgencias={adminAgenciasSesion}
+            onShowToast={showToast}
+            prestamos={prestamos}
+          />
+        )}
+
+        {activeTab === 'zr' && currentUser && canViewZr && <ZRView usuario={currentUser} agenciaSugerida={zrAgenciaPedida || selectedAgency} staff={staffLive} />}
+
+        {activeTab === 'prestamos' && currentUser && (
+          <PrestamosView
+            prestamos={prestamos}
+            onGuardados={(list) =>
+              setPrestamos((prev) => {
+                const byId = new Map<string, Prestamo>(list.map((x) => [x.id, x] as [string, Prestamo]));
+                const next: Prestamo[] = prev.map((x) => byId.get(x.id) || x);
+                list.forEach((x) => {
+                  if (!prev.some((y) => y.id === x.id)) next.push(x);
+                });
+                return next;
+              })
+            }
+            onEliminado={(id) => setPrestamos((prev) => prev.filter((x) => x.id !== id))}
+            onRecargar={() => void cargarPrestamos()}
+            cargando={prestamosCargando}
+            tablaFalta={prestamosTablaFalta}
+            staff={staffLive}
+            trucks={trucksLive}
+            rutas={rutasParaRecargas}
+            agencias={agenciasSel.length > 1 ? importAgencyOptions.filter((ag) => enAgenciaSel(ag)) : importAgencyOptions}
+            agenciasTodas={AGENCIA_LOCATION_OPTIONS}
+            agenciaGeneral={selectedAgency}
+            usuario={currentUser.nombre || currentUser.username}
+            isAdmin={currentUser.isAdmin}
+            canDelete={!!currentUser.canDelete || !!currentUser.isAdmin}
+            adminAgencias={adminAgenciasSesion}
+            onShowToast={showToast}
+          />
+        )}
+
+        {activeTab === 'users' && canManageUsers && (
+          <UsersView
+            users={users}
+            currentUser={currentUser}
+            onCreateUser={handleCreateUser}
+            onUpdateUser={handleUpdateUser}
+            onResetPassword={handleResetPassword}
+            onDeleteUser={handleDeleteUser}
+            onVerifyPassword={handleVerifyPassword}
+            onDownloadBackup={isSupabaseConfigured && currentUser.isAdmin ? handleDownloadBackup : undefined}
+          />
+        )}
+      </main>
+      </div>
+
+      {/* Modals */}
+      <RouteTypeSelectModal
+        isOpen={isRouteTypeSelectModalOpen}
+        onClose={() => setIsRouteTypeSelectModalOpen(false)}
+        onSelectEntrega={() => {
+          setIsRouteTypeSelectModalOpen(false);
+          setIsNewRouteModalOpen(true);
+        }}
+        onSelectTraslado={() => {
+          setIsRouteTypeSelectModalOpen(false);
+          setIsTrasladoRouteModalOpen(true);
+        }}
+      />
+
+      <NewRouteModal
+        isOpen={isNewRouteModalOpen}
+        onClose={() => setIsNewRouteModalOpen(false)}
+        onSubmit={handleCreateRoute}
+        nextSuggestedId={nextEntregaRouteId}
+        agencia={effectiveAgencyForCreation}
+      />
+
+      <NewTrasladoRouteModal
+        isOpen={isTrasladoRouteModalOpen}
+        onClose={() => setIsTrasladoRouteModalOpen(false)}
+        onSubmit={handleCreateRoute}
+        nextSuggestedId={nextTrasladoRouteId}
+        agencia={effectiveAgencyForCreation}
+        agenciasOrigen={
+          // Origen = agencia del usuario. Con acceso limitado: sus agencias
+          // (botones si son varias). Con acceso a todas: la elegida arriba, o
+          // botones con todas si está en "Todas las agencias".
+          currentUser && !currentUser.isAdmin && Array.isArray(currentUser.agencyAccess)
+            ? importAgencyOptions
+            : selectedAgency !== 'TODAS'
+            ? [selectedAgency]
+            : importAgencyOptions
+        }
+      />
+
+      <ChangeSegmentModal
+        route={segmentTarget}
+        splitCount={segmentSplitGroup(segmentTarget).length}
+        defaultAdminUser={esAdminDe(segmentTarget?.agencia) ? currentUser.username : ''}
+        onVerifyAdmin={(u, p) =>
+          handleVerifyAdminForSegment(u, p, segmentTarget?.agencia, {
+            tipo: 'segmento',
+            // Número de ruta base (los viajes 300.1 / 300.2 de una ruta dividida usan 300).
+            ref: String(segmentTarget?.parentRouteId || segmentTarget?.id || '').split('.')[0],
+          })
+        }
+        onConfirm={handleConfirmSegmentChange}
+        onClose={() => setSegmentTarget(null)}
+      />
+      <ChangeTruckStatusModal
+        truck={truckStatusTarget}
+        defaultAdminUser={esAdminDe(truckStatusTarget?.agencia) ? currentUser.username : ''}
+        onVerifyAdmin={(u, p) =>
+          handleVerifyAdminForSegment(u, p, truckStatusTarget?.agencia, {
+            tipo: 'estatus_camion',
+            ref: String(truckStatusTarget?.id || ''),
+          })
+        }
+        onConfirm={handleConfirmTruckStatus}
+        onClose={() => setTruckStatusTarget(null)}
+      />
+      <SplitRouteModal
+        isOpen={!!splitRouteTarget}
+        onClose={() => setSplitRouteTarget(null)}
+        route={splitRouteTarget}
+        onConfirmSplit={handleConfirmSplit}
+      />
+
+      <RepartirCajasModal
+        isOpen={!!repartirCajasTarget}
+        onClose={() => setRepartirCajasTarget(null)}
+        trips={repartirCajasTrips(repartirCajasTarget)}
+        liquidados={repartirCajasLiquidados(repartirCajasTarget)}
+        onConfirm={handleConfirmRepartirCajas}
+      />
+
+      <RevertSplitModal
+        isOpen={!!revertSplitTarget}
+        onClose={() => setRevertSplitTarget(null)}
+        route={revertSplitTarget}
+        siblings={
+          revertSplitTarget
+            ? routes.filter((r) =>
+                isSameSplitGroup(
+                  r,
+                  revertSplitTarget.parentRouteId || String(revertSplitTarget.id).split('.')[0],
+                  revertSplitTarget
+                )
+              )
+            : []
+        }
+        onConfirmRevert={handleConfirmRevert}
+      />
+
+      <ApoyoModal
+        route={apoyoTarget ? routes.find((r) => getRouteKey(r) === getRouteKey(apoyoTarget)) || apoyoTarget : null}
+        trucks={trucksLive}
+        staff={staffLive}
+        prestamos={prestamos}
+        usuario={currentUser?.nombre || currentUser?.username || ''}
+        onGuardar={handleGuardarApoyos}
+        onClose={() => setApoyoTarget(null)}
+        onShowToast={showToast}
+      />
+
+      <AssignModal
+        isOpen={!!assignTarget}
+        onClose={() => setAssignTarget(null)}
+        route={assignTarget}
+        trucks={trucksLive}
+        staff={staffLive}
+        prestamos={prestamos}
+        activeRoutes={routes}
+        puedeVerAgencia={canViewAgency}
+        historyRoutes={historicalRoutes}
+        onConfirmAssignment={handleConfirmAssignment}
+        onMoveToFloor={handleMoveToFloor}
+        onMoveToBolson={handleMoveToBolson}
+        onMoveToSelfService={handleMoveToSelfService}
+        onShowToast={showToast}
+      />
+
+      <LiquidateModal
+        isOpen={!!liquidateTarget}
+        onClose={() => setLiquidateTarget(null)}
+        route={liquidateTarget}
+        defaultAuditor={currentUser?.nombre || currentUser?.username || ''}
+        onConfirmLiquidation={handleConfirmLiquidation}
+        viajesPendientesGrupo={liquidateTarget ? viajesQueRecibenCajas(routes, liquidateTarget) : []}
+        resumenGrupo={liquidateTarget ? resumenGrupo([...historicalRoutes, ...routes], liquidateTarget) : null}
+      />
+
+      <BulkLiquidateModal
+        isOpen={!!bulkLiquidarKeys}
+        onClose={() => setBulkLiquidarKeys(null)}
+        routes={bulkLiquidarKeys ? routes.filter((r) => bulkLiquidarKeys.includes(getRouteKey(r))) : []}
+        defaultAuditor={currentUser?.nombre || currentUser?.username || ''}
+        onConfirm={handleBulkLiquidation}
+      />
+
+      <AbonosCajaModal
+        route={abonosCajaTarget}
+        onClose={() => setAbonosCajaTarget(null)}
+        onRegistrar={handleRegistrarAbonoCaja}
+      />
+      <FinalizeCajaAbiertaModal
+        isOpen={!!finalizeCajaAbiertaTarget}
+        onClose={() => setFinalizeCajaAbiertaTarget(null)}
+        route={finalizeCajaAbiertaTarget}
+        onConfirmFinalize={handleFinalizeCajaAbierta}
+      />
+
+      <ReceiptModal
+        isOpen={!!receiptTarget}
+        onClose={() => {
+          setReceiptTarget(null);
+          setReceiptConsolidatedSiblings(undefined);
+        }}
+        route={receiptTarget}
+        consolidatedSiblings={receiptConsolidatedSiblings}
+        staff={staffLive}
+      />
+
+      <NewTruckModal
+        isOpen={isNewTruckModalOpen}
+        onClose={() => setIsNewTruckModalOpen(false)}
+        defaultAgencia={effectiveAgencyForCreation}
+        onSubmit={handleCreateTruck}
+        puedeAgregarProveedor={canManualAddTrucks}
+      />
+
+      <AsignarIdRentadoModal
+        truck={asignarIdTarget}
+        puedeAgregarProveedor={canManualAddTrucks}
+        onClose={() => setAsignarIdTarget(null)}
+        onConfirm={handleAsignarIdRentado}
+      />
+
+      <NewStaffModal
+        isOpen={isNewStaffModalOpen}
+        onClose={() => setIsNewStaffModalOpen(false)}
+        defaultAgencia={effectiveAgencyForCreation}
+        onSubmit={handleCreateStaff}
+      />
+
+      {isDailySummaryModalOpen && (
+      <Suspense
+        fallback={
+          <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center">
+            <div className="bg-white rounded-xl px-5 py-3 text-sm font-semibold text-slate-700 shadow-xl">Cargando resumen...</div>
+          </div>
+        }
+      >
+      <DailySummaryModal
+        isOpen={isDailySummaryModalOpen}
+        onClose={() => setIsDailySummaryModalOpen(false)}
+        // Si en el Tablero se filtraron uno o varios segmentos, el reporte de
+        // Inicio y Fin de Día se arma solo con esas rutas.
+        routes={routes.filter((r) => canViewAgency(r.agencia) && enAgenciaSel(r.agencia) && coincideSegmento(r, boardSegmento))}
+        allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia) && enAgenciaSel(r.agencia) && coincideSegmento(r, boardSegmento))}
+        segmentosFiltro={boardSegmento.map((sg) => (sg === '__SIN__' ? 'Sin segmento' : sg))}
+        // Si en el Tablero se filtró una fecha, el reporte usa esa fecha con la
+        // misma regla del Tablero (solo rutas de ese día, sin rezagadas).
+        fechaFiltroTablero={boardFecha}
+        // Camiones y personal de todas las agencias permitidas: el reporte los
+        // filtra con su propio selector de agencia (que abre con el general).
+        staff={staffOp.filter((s) => !s.agencia || (canViewAgency(s.agencia) && enAgenciaSel(s.agencia)))}
+        trucks={trucksOp.filter((t) => !t.agencia || (canViewAgency(t.agencia) && enAgenciaSel(t.agencia)))}
+        selectedAgency={selectedAgency}
+        agencies={agenciasSel.length > 1 ? agencies.filter((ag) => enAgenciaSel(ag)) : agencies}
+        etiquetaTodas={etiquetaAgencias}
+        // Abre con la fecha elegida en el filtro del Tablero (o con hoy).
+        fechaHoy={boardFecha || formatDateToGuatemala(new Date())}
+        initialMode={dailySummaryMode}
+        onOpenClosingActa={() => {
+          setIsDailySummaryModalOpen(false);
+          setIsClosingActaModalOpen(true);
+        }}
+      />
+      </Suspense>
+      )}
+
+      <ClosingActaModal
+        isOpen={isClosingActaModalOpen}
+        onClose={() => setIsClosingActaModalOpen(false)}
+        routes={routes.filter((r) => canViewAgency(r.agencia) && enAgenciaSel(r.agencia))}
+        allLiquidatedRoutes={allLiquidatedRoutes.filter((r) => canViewAgency(r.agencia) && enAgenciaSel(r.agencia))}
+        selectedAgency={selectedAgency}
+        agencies={agenciasSel.length > 1 ? agencies.filter((ag) => enAgenciaSel(ag)) : agencies}
+        // Acta de Cierre con la fecha del filtro del Tablero (o hoy).
+        fechaHoy={boardFecha || formatDateToGuatemala(new Date())}
+        fechaEstricta
+        quienLiquida={currentUser?.nombre || currentUser?.username || 'Operador de Agencia'}
+      />
+
+      <DeleteRoutesModal
+        isOpen={!!deleteRoutesTargetIds && deleteRoutesTargetIds.length > 0}
+        onClose={() => setDeleteRoutesTargetIds(null)}
+        routeIds={deleteRoutesTargetIds || []}
+        routes={deleteModalRoutes}
+        onConfirmDelete={handleConfirmDeleteRoutes}
+        onVerifyPassword={handleVerifyPassword}
+      />
+
+      <UnassignedResourcesModal
+        isOpen={isUnassignedResourcesModalOpen}
+        onClose={() => setIsUnassignedResourcesModalOpen(false)}
+        trucks={trucksFinAsignacion}
+        staff={staffFinAsignacion}
+        routes={rutasFinAsignacion}
+        onSetTruckReason={handleSetTruckReason}
+        onSetStaffReason={handleSetStaffReason}
+        onSetTruckComment={handleSetTruckComment}
+        onSetStaffComment={handleSetStaffComment}
+        summaryRoutes={routes.filter((r) => canViewAgency(r.agencia) && enAgenciaSel(r.agencia))}
+        // Resumen de Fin de Asignación con la fecha del filtro del Tablero (o hoy).
+        fechaOperacion={boardFecha || formatDateToGuatemala(new Date())}
+        agencies={agenciasSel.length > 1 ? boardAgencies.filter((ag) => enAgenciaSel(ag)) : boardAgencies}
+        selectedAgency={selectedAgency}
+      />
+
+      {isSupabaseConfigured && !isOnline && (
+        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[80] max-w-[92vw] px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold shadow-xl flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+          Sin conexión: los cambios se guardarán cuando vuelva la señal. No cierres la app.
+        </div>
+      )}
+      {isSupabaseConfigured && spaceAlert && !spaceAlertDismissed && (
+        <div
+          className={`fixed bottom-3 right-3 z-[80] max-w-[92vw] w-[460px] px-4 py-3 rounded-xl text-white text-sm shadow-xl flex items-start gap-3 ${
+            spaceAlert.pct >= 90 ? 'bg-rose-600' : 'bg-amber-500'
+          }`}
+        >
+          <div className="flex-1">
+            <p className="font-bold">Espacio de la base de datos: {spaceAlert.mb} MB ({spaceAlert.pct}% del límite)</p>
+            <p className="text-white/90 text-xs mt-0.5">
+              {spaceAlert.alerta}. Descarga un respaldo y revisa el archivo supabase/diagnostico_espacio_y_seguridad.sql
+              o considera el plan Pro para evitar que la app deje de guardar.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSpaceAlertDismissed(true)}
+            className="shrink-0 px-2 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-xs font-bold"
+          >
+            Entendido
+          </button>
+        </div>
+      )}
+
+      {isSupabaseConfigured && sessionLost && currentUser && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <form
+            className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleRelogin();
+            }}
+          >
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Tu sesión venció</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                No se perdió nada de lo que tienes en pantalla. Ingresa tu contraseña para continuar; los cambios
+                pendientes se guardarán automáticamente.
+              </p>
+            </div>
+            <div className="text-sm">
+              <span className="text-slate-500">Usuario: </span>
+              <span className="font-semibold text-slate-800">{currentUser.username}</span>
+            </div>
+            <input
+              type="password"
+              autoFocus
+              autoComplete="current-password"
+              value={reloginPassword}
+              onChange={(e) => setReloginPassword(e.target.value)}
+              placeholder="Contraseña"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {reloginError && <p className="text-sm text-rose-600 font-medium">{reloginError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={!reloginPassword || reloginBusy}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-lg py-2 text-sm"
+              >
+                {reloginBusy ? 'Verificando…' : 'Continuar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void signOutIntentionally().finally(() => window.location.reload());
+                }}
+                className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg py-2 text-sm"
+              >
+                Salir
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+    </div>
+  );
+}
