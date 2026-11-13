@@ -29,6 +29,7 @@ import { RouteRowActions } from './RouteRowActions';
 import { Button } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 import { getRouteKey, isSameSplitGroup } from '../utils/routeKey';
+import { motivoNoLiquidableEnLote } from './modals/BulkLiquidateModal';
 import { toNum, fmtNum } from '../utils/number';
 import { apoyosActivos, textoApoyos } from '../utils/apoyos';
 import type { ResumenGrupo } from '../utils/splitGroup';
@@ -66,6 +67,9 @@ interface RoutesTableProps {
   onVisibleRoutesChange?: (routes: Route[]) => void;
   // routeIds aquí son claves compuestas ID+Fecha (ver getRouteKey), no solo el ID.
   onBulkMoveToFloor?: (routeIds: string[]) => void;
+  // Liquidar al 100% varias rutas seleccionadas (sin rechazos). Solo se envía
+  // si el usuario puede liquidar.
+  onBulkLiquidate?: (routeKeys: string[]) => void;
   onOpenDeleteModal?: (routeIds: string[]) => void;
   // Si se indica, solo se ofrece "Eliminar ruta" en las rutas que devuelve true
   // (administrador de agencias: solo las de sus agencias).
@@ -113,6 +117,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   onOpenApoyo,
   onVisibleRoutesChange,
   onBulkMoveToFloor,
+  onBulkLiquidate,
   onOpenDeleteModal,
   puedeEliminarRuta,
   busqueda = '',
@@ -336,6 +341,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
   const selectedRoutesForTotals = allRoutes.filter((r) => selectedKeySet.has(getRouteKey(r)));
   const subtotalCajas = selectedRoutesForTotals.reduce((acc, r) => acc + (toNum(r.cajasFisicas) || 0), 0);
   const subtotalParadas = selectedRoutesForTotals.reduce((acc, r) => acc + (parseInt(String(r.paradas || 0)) || 0), 0);
+  const liquidablesEnLote = selectedRoutesForTotals.filter((r) => !motivoNoLiquidableEnLote(r)).length;
 
   return (
     <div className={`bg-white border border-slate-200/80 rounded-2xl shadow-sm w-full ${fillHeight ? 'h-full flex flex-col' : ''}`}>
@@ -366,6 +372,18 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
             <Button variant="ghost" size="sm" onClick={() => setSelectedRouteIds([])}>
               Quitar selección
             </Button>
+            {onBulkLiquidate && (
+              <Button
+                variant="success"
+                size="sm"
+                icon={ACTION_ICONS.liquidar}
+                disabled={liquidablesEnLote === 0}
+                title={liquidablesEnLote ? 'Liquidar al 100% (sin rechazos) las rutas seleccionadas en tránsito' : 'Ninguna ruta seleccionada está en tránsito'}
+                onClick={() => onBulkLiquidate(selectedRouteIds)}
+              >
+                Liquidar al 100% ({liquidablesEnLote})
+              </Button>
+            )}
             {onBulkMoveToFloor && (
               <Button
                 variant="warning"
