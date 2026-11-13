@@ -265,6 +265,8 @@ export interface RouteLiquidation {
   // que ejecutó la liquidación en el sistema (no editable, se llena solo).
   liquidadoPorUsuario?: string;
   fechaLiquidacion: string;
+  // Liquidada desde "Liquidar rutas al 100%" (varias rutas a la vez, sin rechazos).
+  liquidacionEnLote?: boolean;
   // Ruta partida: cajas que regresaron de este viaje y se pasaron a los viajes
   // pendientes del mismo grupo (no cuentan como devolución) y a cuáles.
   cajasTransferidas?: number;
