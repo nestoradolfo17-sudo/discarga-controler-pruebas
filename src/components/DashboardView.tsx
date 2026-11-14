@@ -3,6 +3,7 @@ import { Route, Truck, Staff } from '../types';
 import { DashboardExecutive } from './DashboardExecutive';
 import { DashboardSeguimiento } from './DashboardSeguimiento';
 import { DashboardRecargas } from './DashboardRecargas';
+import { DashboardStatusAsignacion } from './DashboardStatusAsignacion';
 import type { SituacionViaje } from '../services/recargas';
 import { FileDown } from 'lucide-react';
 import { Button } from './ui/Button';
@@ -44,13 +45,23 @@ interface DashboardViewProps {
   situacionRecargas?: (id: string) => SituacionViaje;
   // Quién descarga el PDF (va en el encabezado).
   usuario?: string;
+  // Status de Asignación: solo para administradores. Usa todas las agencias
+  // (tablero + historial, camiones y personal sin el filtro de la vista).
+  esAdmin?: boolean;
+  statusAsignacion?: {
+    routes: Route[];
+    historicalRoutes: Route[];
+    trucks: Truck[];
+    staff: Staff[];
+    enFiltro?: (ag: string) => boolean;
+  };
 }
 
 // Vistas del Dashboard: Despacho (inicio del día) · Cajas y Rutas Abiertas
 // (pendientes de cerrar + liquidación: cumplimiento, entregas, devoluciones) · Recargas.
 // La preferencia se recuerda en este navegador.
-type DashView = 'despacho' | 'seguimiento' | 'recargas';
-const VISTAS: [DashView, string][] = [
+type DashView = 'despacho' | 'seguimiento' | 'recargas' | 'status';
+const VISTAS_BASE: [DashView, string][] = [
   ['despacho', 'Despacho'],
   ['seguimiento', 'Cajas y Rutas Abiertas'],
   ['recargas', 'Recargas'],
@@ -143,7 +154,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
     try {
       const v = localStorage.getItem('dc_dashboard_view');
       // 'liquidacion' fue una pestaña aparte por poco tiempo: ahora vive en Cajas y Rutas Abiertas.
-      return v === 'seguimiento' || v === 'liquidacion' ? 'seguimiento' : v === 'recargas' ? 'recargas' : 'despacho';
+      return v === 'seguimiento' || v === 'liquidacion' ? 'seguimiento' : v === 'recargas' ? 'recargas' : v === 'status' ? 'status' : 'despacho';
     } catch {
       return 'despacho';
     }
@@ -156,6 +167,10 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
       /* sin almacenamiento: solo dura esta sesión */
     }
   };
+  const puedeStatus = !!props.esAdmin && !!props.statusAsignacion;
+  const VISTAS: [DashView, string][] = puedeStatus ? [...VISTAS_BASE, ['status', 'Status de Asignación']] : VISTAS_BASE;
+  // Un usuario que no es administrador nunca ve el Status (aunque haya quedado guardado).
+  const vista: DashView = view === 'status' && !puedeStatus ? 'despacho' : view;
   const contenidoRef = useRef<HTMLDivElement>(null);
   // Cómo armar el reporte de la vista actual (lo entrega cada dashboard).
   const armarRef = useRef<(() => ReportePdf) | null>(null);
@@ -172,7 +187,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
     armarLiqRef.current = armar;
   }, []);
   useEffect(() => {
-    if (view !== 'seguimiento') return;
+    if (vista !== 'seguimiento') return;
     armarRef.current = () => {
       const a = armarSegRef.current?.();
       const b = armarLiqRef.current?.();
@@ -189,7 +204,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
     };
   });
   const [generando, setGenerando] = useState(false);
-  const nombreVista = VISTAS.find(([k]) => k === view)?.[1] || 'Dashboard';
+  const nombreVista = VISTAS.find(([k]) => k === vista)?.[1] || 'Dashboard';
   const etiquetaTodas = props.etiquetaTodas && props.etiquetaTodas !== 'Todas' ? props.etiquetaTodas : '';
   const agencia = props.selectedAgency === 'TODAS' ? etiquetaTodas || 'Todas las agencias' : props.selectedAgency;
   const hoy = new Intl.DateTimeFormat('es-GT', { timeZone: 'America/Guatemala', day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -199,16 +214,16 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <div role="tablist" aria-label="Vista del dashboard" className="inline-flex bg-slate-100 border border-slate-200 rounded-xl p-1">
+        <div role="tablist" aria-label="Vista del dashboard" className="inline-flex max-w-full overflow-x-auto bg-slate-100 border border-slate-200 rounded-xl p-1">
           {VISTAS.map(([k, label]) => (
             <button
               key={k}
               type="button"
               role="tab"
-              aria-selected={view === k}
+              aria-selected={vista === k}
               onClick={() => choose(k)}
-              className={`min-h-[40px] px-4 rounded-lg text-sm font-semibold cursor-pointer transition ${
-                view === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              className={`min-h-[40px] px-4 rounded-lg text-sm font-semibold cursor-pointer transition whitespace-nowrap shrink-0 ${
+                vista === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
               {label}
@@ -240,7 +255,16 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
         </Button>
       </div>
       <div ref={contenidoRef}>
-        {view === 'seguimiento' ? (
+        {vista === 'status' && props.statusAsignacion ? (
+          <DashboardStatusAsignacion
+            routes={props.statusAsignacion.routes}
+            historicalRoutes={props.statusAsignacion.historicalRoutes}
+            trucks={props.statusAsignacion.trucks}
+            staff={props.statusAsignacion.staff}
+            enFiltro={props.statusAsignacion.enFiltro}
+            registrarReporte={registrarReporte}
+          />
+        ) : vista === 'seguimiento' ? (
           <div className="space-y-6">
             <DashboardSeguimiento
               routes={props.routes}
@@ -268,7 +292,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
               registrarReporte={registrarLiq}
             />
           </div>
-        ) : view === 'recargas' ? (
+        ) : vista === 'recargas' ? (
           <DashboardRecargas
             staff={props.staff}
             selectedAgency={props.selectedAgency}
