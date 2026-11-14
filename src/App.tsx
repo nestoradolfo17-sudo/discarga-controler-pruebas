@@ -5026,6 +5026,12 @@ export default function App() {
             puedeVerAgencia={(ag: string) => canViewAgency(ag) && enAgenciaSel(ag)}
             situacionRecargas={situacionRecargas}
             usuario={currentUser.nombre || currentUser.username}
+            esAdmin={!!currentUser.isAdmin}
+            statusAsignacion={
+              currentUser.isAdmin
+                ? { routes, historicalRoutes, trucks: trucksOp, staff: staffOp, enFiltro: (ag: string) => enAgenciaSel(ag) }
+                : undefined
+            }
           />
           </Activity>
         )}
