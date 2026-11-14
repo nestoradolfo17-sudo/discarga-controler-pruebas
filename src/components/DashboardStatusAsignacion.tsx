@@ -68,6 +68,14 @@ interface Props {
   registrarReporte?: (armar: () => ReportePdf) => void;
 }
 
+// Nombres que NO son agencias operativas de asignación (proyectos, áreas o
+// agencias que no cargan Excel diario): no entran al Status.
+const normAg = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+const NO_SEGUIR = new Set(
+  ['CMI', 'Lif Brands', 'Mercadeo Operativo', 'Monte Maria', 'Otros Proyectos', 'Proyecto Huracan', 'SSO', 'Zona Pradera'].map(normAg)
+);
+const seSigue = (ag: string) => !NO_SEGUIR.has(normAg(ag));
+
 const isPiso = (r: Route) => !!(r.aPiso || r.tipoAsignacion === 'Ruta a Piso' || r.asignacion?.tipoAsignacion === 'Ruta a Piso');
 const isBolson = (r: Route) => !!(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
 const isSelf = (r: Route) => !!(r.esSelfService || r.tipoAsignacion === 'Self Service');
@@ -147,7 +155,7 @@ export const DashboardStatusAsignacion: React.FC<Props> = ({ routes, historicalR
       const d = msDia(r.fecha);
       if (r.agencia && d && d >= ini && d <= fin) set.add(r.agencia);
     });
-    return [...set].filter((ag) => ag && ag !== 'Sin agencia' && (!enFiltro || enFiltro(ag))).sort((a, b) => a.localeCompare(b, 'es'));
+    return [...set].filter((ag) => ag && ag !== 'Sin agencia' && seSigue(ag) && (!enFiltro || enFiltro(ag))).sort((a, b) => a.localeCompare(b, 'es'));
   }, [trucks, staff, todas, dia, enFiltro]);
 
   const asignados = useMemo(() => asignadosEnFecha(todas, dia), [todas, dia]);
@@ -602,7 +610,7 @@ export const DashboardStatusAsignacion: React.FC<Props> = ({ routes, historicalR
         <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
           <strong>Carga de Excel:</strong> la agencia tiene rutas con fecha del día. <strong>Asignación:</strong> rutas que ya salieron con camión y tripulación, o que
           quedaron a piso, en bolsón o son Self Service. <strong>Fin de asignación:</strong> todos los camiones y el personal de la agencia que no salieron ese día
-          tienen motivo (la misma regla del botón "Fin de Asignación"). Se siguen las agencias con camiones o personal activos, o con rutas en los últimos 14 días.
+          tienen motivo (la misma regla del botón "Fin de Asignación"). Se siguen las agencias con camiones o personal activos, o con rutas en los últimos 14 días (no se incluyen CMI, Lif Brands, Mercadeo Operativo, Monte María, Otros Proyectos, Proyecto Huracán, SSO ni Zona Pradera).
         </p>
       </section>
     </div>
