@@ -57,7 +57,7 @@ export const STAFF_REASON_REMUNERA: Record<StaffUnavailableReason, RemuneraStatu
   'Suspensión laboral': 'No Remunera',
   'Vacaciones': 'Remunera (StandBy)',
   'Suspensión IGSS': 'No Remunera',
-  'Cita IGSS': 'No Remunera',
+  'Cita IGSS': 'Remunera (StandBy)',
   'Permiso sin goce de salario - no penaliza séptimo': 'No Remunera',
   'Permiso con goce': 'Remunera (StandBy)',
   'Séptimo/ Descanso': 'N/A',
