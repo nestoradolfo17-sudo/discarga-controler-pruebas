@@ -4,6 +4,7 @@ import { DashboardExecutive } from './DashboardExecutive';
 import { DashboardSeguimiento } from './DashboardSeguimiento';
 import { DashboardRecargas } from './DashboardRecargas';
 import { DashboardStatusAsignacion } from './DashboardStatusAsignacion';
+import { DashboardCostos } from './DashboardCostos';
 import type { SituacionViaje } from '../services/recargas';
 import { FileDown } from 'lucide-react';
 import { Button } from './ui/Button';
@@ -55,12 +56,19 @@ interface DashboardViewProps {
     staff: Staff[];
     enFiltro?: (ag: string) => boolean;
   };
+  // Costos de operación: solo administradores (mismas fuentes que el Status).
+  costos?: {
+    routes: Route[];
+    historicalRoutes: Route[];
+    trucks: Truck[];
+    enFiltro?: (ag: string) => boolean;
+  };
 }
 
 // Vistas del Dashboard: Despacho (inicio del día) · Cajas y Rutas Abiertas
 // (pendientes de cerrar + liquidación: cumplimiento, entregas, devoluciones) · Recargas.
 // La preferencia se recuerda en este navegador.
-type DashView = 'despacho' | 'seguimiento' | 'recargas' | 'status';
+type DashView = 'despacho' | 'seguimiento' | 'recargas' | 'status' | 'costos';
 const VISTAS_BASE: [DashView, string][] = [
   ['despacho', 'Despacho'],
   ['seguimiento', 'Cajas y Rutas Abiertas'],
@@ -154,7 +162,7 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
     try {
       const v = localStorage.getItem('dc_dashboard_view');
       // 'liquidacion' fue una pestaña aparte por poco tiempo: ahora vive en Cajas y Rutas Abiertas.
-      return v === 'seguimiento' || v === 'liquidacion' ? 'seguimiento' : v === 'recargas' ? 'recargas' : v === 'status' ? 'status' : 'despacho';
+      return v === 'seguimiento' || v === 'liquidacion' ? 'seguimiento' : v === 'recargas' ? 'recargas' : v === 'status' ? 'status' : v === 'costos' ? 'costos' : 'despacho';
     } catch {
       return 'despacho';
     }
@@ -168,9 +176,14 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
     }
   };
   const puedeStatus = !!props.esAdmin && !!props.statusAsignacion;
-  const VISTAS: [DashView, string][] = puedeStatus ? [...VISTAS_BASE, ['status', 'Status de Asignación']] : VISTAS_BASE;
-  // Un usuario que no es administrador nunca ve el Status (aunque haya quedado guardado).
-  const vista: DashView = view === 'status' && !puedeStatus ? 'despacho' : view;
+  const puedeCostos = !!props.esAdmin && !!props.costos;
+  const VISTAS: [DashView, string][] = [
+    ...VISTAS_BASE,
+    ...(puedeStatus ? ([['status', 'Status de Asignación']] as [DashView, string][]) : []),
+    ...(puedeCostos ? ([['costos', 'Costos']] as [DashView, string][]) : []),
+  ];
+  // Un usuario que no es administrador nunca ve Status ni Costos (aunque haya quedado guardado).
+  const vista: DashView = (view === 'status' && !puedeStatus) || (view === 'costos' && !puedeCostos) ? 'despacho' : view;
   const contenidoRef = useRef<HTMLDivElement>(null);
   // Cómo armar el reporte de la vista actual (lo entrega cada dashboard).
   const armarRef = useRef<(() => ReportePdf) | null>(null);
@@ -255,7 +268,16 @@ export const DashboardView: React.FC<DashboardViewProps> = (props) => {
         </Button>
       </div>
       <div ref={contenidoRef}>
-        {vista === 'status' && props.statusAsignacion ? (
+        {vista === 'costos' && props.costos ? (
+          <DashboardCostos
+            routes={props.costos.routes}
+            historicalRoutes={props.costos.historicalRoutes}
+            trucks={props.costos.trucks}
+            enFiltro={props.costos.enFiltro}
+            usuario={props.usuario || ''}
+            registrarReporte={registrarReporte}
+          />
+        ) : vista === 'status' && props.statusAsignacion ? (
           <DashboardStatusAsignacion
             routes={props.statusAsignacion.routes}
             historicalRoutes={props.statusAsignacion.historicalRoutes}
