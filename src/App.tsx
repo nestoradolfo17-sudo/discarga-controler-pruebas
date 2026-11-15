@@ -88,6 +88,7 @@ import { NotificationBell, DestinoNotificacion } from './components/Notification
 import { AssignModal } from './components/modals/AssignModal';
 import { LiquidateModal } from './components/modals/LiquidateModal';
 import { guardarStandbyDia } from './services/costos';
+import { DashboardCostos } from './components/DashboardCostos';
 import { BulkLiquidateModal, motivoNoLiquidableEnLote, paradasDeRuta, cajasDeRuta } from './components/modals/BulkLiquidateModal';
 import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiertaModal';
 import { AbonosCajaModal, totalAbonado } from './components/modals/AbonosCajaModal';
@@ -1275,6 +1276,10 @@ export default function App() {
     }
     if (activeTab === 'zr') {
       if (!canViewZr) setActiveTab('board');
+      return;
+    }
+    if (activeTab === 'costos') {
+      if (!currentUser.isAdmin) setActiveTab('board');
       return;
     }
     const key = tabPermissionKey[activeTab];
@@ -4930,6 +4935,7 @@ export default function App() {
           showBatch={canView('batch')}
           showUsers={canManageUsers}
           showZr={canViewZr}
+          showCostos={!!currentUser.isAdmin}
           isAdmin={!!currentUser.isAdmin}
         />
         </aside>
@@ -4957,6 +4963,7 @@ export default function App() {
           showBatch={canView('batch')}
           showUsers={canManageUsers}
           showZr={canViewZr}
+          showCostos={!!currentUser.isAdmin}
           isAdmin={!!currentUser.isAdmin}
         />
         </div>
@@ -5030,6 +5037,7 @@ export default function App() {
           showBatch={canView('batch')}
           showUsers={canManageUsers}
           showZr={canViewZr}
+          showCostos={!!currentUser.isAdmin}
           isAdmin={!!currentUser.isAdmin}
         />
         </div>
@@ -5317,6 +5325,15 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'costos' && currentUser?.isAdmin && (
+          <DashboardCostos
+            modo="costos"
+            routes={routes}
+            historicalRoutes={historicalRoutes}
+            trucks={trucksOp}
+            usuario={currentUser.nombre || currentUser.username}
+          />
+        )}
         {activeTab === 'zr' && currentUser && canViewZr && <ZRView usuario={currentUser} agenciaSugerida={zrAgenciaPedida || selectedAgency} staff={staffLive} />}
 
         {activeTab === 'prestamos' && currentUser && (
