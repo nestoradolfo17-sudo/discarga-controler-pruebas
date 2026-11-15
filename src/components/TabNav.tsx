@@ -1,9 +1,9 @@
 import React from 'react';
-import { Search, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, ShieldCheck, Gauge, PanelLeftClose, PanelLeftOpen, Repeat, ArrowLeftRight, Sun, Moon, LayoutGrid, ChevronDown, Banknote } from 'lucide-react';
+import { Search, FileSpreadsheet, LayoutDashboard, Truck, Users, CheckCircle2, ShieldCheck, Gauge, PanelLeftClose, PanelLeftOpen, Repeat, ArrowLeftRight, Sun, Moon, LayoutGrid, ChevronDown, Banknote, Wallet } from 'lucide-react';
 import { Button, IconButton } from './ui/Button';
 import { ACTION_ICONS } from './ui/actionIcons';
 
-export type ActiveTab = 'dashboard' | 'board' | 'liquidated' | 'recargas' | 'prestamos' | 'trucks' | 'staff' | 'batch' | 'zr' | 'users';
+export type ActiveTab = 'dashboard' | 'board' | 'liquidated' | 'recargas' | 'prestamos' | 'trucks' | 'staff' | 'batch' | 'zr' | 'users' | 'costos';
 
 interface TabNavProps {
   activeTab: ActiveTab;
@@ -44,6 +44,8 @@ interface TabNavProps {
   showBatch?: boolean;
   showUsers?: boolean;
   showZr?: boolean;
+  // Costos (valores mes a mes): solo administradores generales.
+  showCostos?: boolean;
   // Solo los administradores ven el submenú "Administración" (Carga Masiva / Usuarios)
   // y el botón "Demo" para restablecer datos de prueba, evitando que un operador de
   // agencia lo confunda con una acción normal del día a día.
@@ -103,6 +105,7 @@ export const TabNav: React.FC<TabNavProps> = ({
   showBatch = true,
   showUsers = false,
   showZr = false,
+  showCostos = false,
   isAdmin = false,
   mode = 'toolbar',
   leading,
@@ -123,6 +126,7 @@ export const TabNav: React.FC<TabNavProps> = ({
     { key: 'staff', label: 'Personal', short: 'Personal', icon: Users, count: staffCount, activeClass: 'bg-indigo-600 text-white', iconClass: 'text-indigo-600', show: showStaff },
     { key: 'batch', label: 'Cargar Rutas', short: 'Cargar Rutas', icon: FileSpreadsheet, activeClass: 'bg-emerald-600 text-white', iconClass: 'text-emerald-600', show: showBatch },
     { key: 'users', label: 'Usuarios', short: 'Usuarios', icon: ShieldCheck, count: usersCount, activeClass: 'bg-slate-700 text-white', iconClass: 'text-slate-500', show: showUsers },
+    { key: 'costos', label: 'Costos', short: 'Costos', icon: Wallet, activeClass: 'bg-slate-900 text-white', iconClass: 'text-slate-600', show: showCostos },
   ].filter((i) => i.show) as NavItem[];
 
   // Menú lateral: a la vista Dashboard, Asignación, Liquidadas y Carga
