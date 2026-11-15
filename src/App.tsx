@@ -87,6 +87,7 @@ import { ZRView } from './components/ZRView';
 import { NotificationBell, DestinoNotificacion } from './components/NotificationBell';
 import { AssignModal } from './components/modals/AssignModal';
 import { LiquidateModal } from './components/modals/LiquidateModal';
+import { guardarStandbyDia } from './services/costos';
 import { BulkLiquidateModal, motivoNoLiquidableEnLote, paradasDeRuta, cajasDeRuta } from './components/modals/BulkLiquidateModal';
 import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiertaModal';
 import { AbonosCajaModal, totalAbonado } from './components/modals/AbonosCajaModal';
@@ -4679,6 +4680,36 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [visibleStaff, currentUser]
   );
+  // Registro diario de standby (para Costos): una foto por agencia de los
+  // camiones y el personal que hoy no salieron y su motivo. Se guarda sola
+  // unos segundos después de cada cambio (solo lo que cambió); la última foto
+  // del día es la que vale. Cada usuario registra solo sus agencias.
+  useEffect(() => {
+    if (!currentUser) return;
+    const timer = window.setTimeout(() => {
+      const hoy = formatDateToGuatemala(new Date());
+      const asign = asignadosEnFecha([...routes, ...historicalRoutes], hoy);
+      const ags = new Set<string>();
+      trucksOp.forEach((t) => t.agencia && ags.add(t.agencia));
+      staffOp.forEach((s) => s.agencia && ags.add(s.agencia));
+      const filas = [...ags]
+        .filter((ag) => canViewAgency(ag))
+        .map((ag) => ({
+          fecha: hoy,
+          agencia: ag,
+          camiones: camionesSinAsignar(trucksOp.filter((t) => t.agencia === ag), asign)
+            .filter((t) => !!t.motivoNoAsignado)
+            .map((t) => ({ id: String(t.id), nombre: t.placa, motivo: String(t.motivoNoAsignado), remunera: TRUCK_REASON_REMUNERA[t.motivoNoAsignado!] ?? null })),
+          personal: personalSinAsignar(staffOp.filter((s) => s.agencia === ag), asign)
+            .filter((s) => !!s.motivoNoAsignado)
+            .map((s) => ({ id: String(s.id), nombre: s.nombre, puesto: s.puesto, motivo: String(s.motivoNoAsignado), remunera: STAFF_REASON_REMUNERA[s.motivoNoAsignado!] ?? null })),
+        }));
+      void guardarStandbyDia(filas, currentUser.nombre || currentUser.username);
+    }, 15000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routes, historicalRoutes, trucksOp, staffOp, currentUser]);
+
   const pendingReasonsCount = useMemo(() => {
     const pendingTrucks = camionesSinAsignar(trucksFinAsignacion, asignadosFinAsignacion).filter((t) => !t.motivoNoAsignado).length;
     const pendingStaff = personalSinAsignar(staffFinAsignacion, asignadosFinAsignacion).filter((s) => !s.motivoNoAsignado).length;
@@ -5032,6 +5063,7 @@ export default function App() {
                 ? { routes, historicalRoutes, trucks: trucksOp, staff: staffOp, enFiltro: (ag: string) => enAgenciaSel(ag) }
                 : undefined
             }
+            costos={currentUser.isAdmin ? { routes, historicalRoutes, trucks: trucksOp, enFiltro: (ag: string) => enAgenciaSel(ag) } : undefined}
           />
           </Activity>
         )}
