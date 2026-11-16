@@ -30,7 +30,8 @@ export type StaffUnavailableReason =
   | 'Alta'
   | 'Ausencia día festivo o extraordinario'
   | 'Abandono de labores'
-  | 'Día festivo o extraordinario';
+  | 'Día festivo o extraordinario'
+  | 'Traslado a Taller - Remunerado';
 
 // Clasificación de costo asociada a cada motivo de no-asignación (Taller de camiones /
 // Fin de Asignación de personal). Se guarda junto con el motivo, en el momento en que
@@ -113,6 +114,9 @@ export interface ClientePendiente {
   nombre: string;
   motivo: string;
   cajas?: number;
+  // Caja Abierta: valor (Q) pendiente de este cliente. Puede quedar vacío solo
+  // con el motivo "Pendiente Envase / Cajilla".
+  monto?: number;
 }
 
 export interface Truck {
@@ -304,6 +308,21 @@ export interface RouteLiquidation {
   // tenía clientesRuta cargado (import de Excel con detalle de clientes); si no,
   // la liquidación sigue funcionando igual que siempre, sin este detalle.
   clientesPendientes?: ClientePendiente[];
+  // Rectificaciones hechas con el botón "Revertir" del Tablero de Rutas
+  // Liquidadas (Liquidada ↔ Caja Abierta): quién, cuándo y de qué a qué.
+  rectificaciones?: RectificacionLiquidacion[];
+}
+
+export interface RectificacionLiquidacion {
+  fecha: string; // DD/MM/AAAA HH:MM
+  usuario: string;
+  de: 'Liquidada' | 'Caja Abierta';
+  a: 'Liquidada' | 'Caja Abierta';
+  motivoCajaAbierta?: string;
+  montoDiferenciaCaja?: number;
+  comentario?: string;
+  // Datos de caja que tenía antes del cambio (para poder consultarlos).
+  anterior?: { motivoCajaAbierta?: string; montoDiferenciaCaja?: number; clientesPendientes?: ClientePendiente[] };
 }
 
 export interface RouteDispatchRecord {
@@ -398,6 +417,9 @@ export interface Route {
   // Ruta Bolsón: la ruta se envía a rechazo y NO sale (no lleva camión ni
   // tripulación). Queda en el tablero para liquidarse como rechazo.
   esBolson?: boolean;
+  // Solo en pantalla (Tablero de Liquidadas): registro de un viaje anterior de
+  // la ruta, armado desde historialDespachos. No se guarda.
+  viajeAnterior?: boolean;
   fechaBolson?: string;
   motivoBolson?: string;
   // Self Service: el cliente recoge el pedido; no lleva camión ni tripulación.
