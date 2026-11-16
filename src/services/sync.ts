@@ -184,19 +184,57 @@ export async function fetchSharedCollection<T>(
     const since = opts?.sinceDays
       ? new Date(Date.now() - opts.sinceDays * 24 * 60 * 60 * 1000).toISOString()
       : null;
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const pageFrom = from;
-      // La consulta se arma dentro del reintento: cada intento es una solicitud nueva.
-      const { data } = await withRetry(async () => {
-        let query = supabase!.from(table).select('id, data');
+    // Rendimiento: la primera página trae también el total de filas; las demás
+    // páginas se piden en paralelo (de 4 en 4) en vez de una tras otra. Con
+    // tablas de varios miles de registros (personal, historial) la carga
+    // inicial baja de N viajes al servidor a ~N/4.
+    const pagina = async (pageFrom: number, conTotal: boolean) =>
+      withRetry(async () => {
+        // La consulta se arma dentro del reintento: cada intento es una solicitud nueva.
+        let query = supabase!.from(table).select('id, data', conTotal ? { count: 'exact' } : undefined);
         if (since) query = query.gte('updated_at', since);
         const res = await query.order('id', { ascending: true }).range(pageFrom, pageFrom + PAGE_SIZE - 1);
         if (res.error) throw res.error;
         return res;
       });
-      const rows = (data || []) as { id: string; data: T }[];
-      rows.forEach((row) => all.push({ key: row.id, data: row.data }));
-      if (rows.length < PAGE_SIZE) break;
+    const agregar = (data: unknown) => ((data || []) as { id: string; data: T }[]).forEach((row) => all.push({ key: row.id, data: row.data }));
+    const primera = await pagina(0, true);
+    const filas1 = (primera.data || []) as unknown[];
+    agregar(primera.data);
+    if (filas1.length < PAGE_SIZE) return all;
+    const total = typeof primera.count === 'number' ? primera.count : null;
+    if (total !== null) {
+      const desdes: number[] = [];
+      for (let from = PAGE_SIZE; from < total; from += PAGE_SIZE) desdes.push(from);
+      const resultados: unknown[][] = new Array(desdes.length);
+      let siguiente = 0;
+      const trabajador = async () => {
+        while (siguiente < desdes.length) {
+          const i = siguiente++;
+          const res = await pagina(desdes[i], false);
+          resultados[i] = (res.data || []) as unknown[];
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(4, desdes.length) }, trabajador));
+      resultados.forEach((d) => agregar(d));
+      // Si mientras se leía entraron filas nuevas, se siguen leyendo una a una.
+      let from = PAGE_SIZE * (desdes.length + 1);
+      let ultima = resultados.length ? resultados[resultados.length - 1].length : filas1.length;
+      while (ultima === PAGE_SIZE) {
+        const res = await pagina(from, false);
+        const d = (res.data || []) as unknown[];
+        agregar(d);
+        ultima = d.length;
+        from += PAGE_SIZE;
+      }
+      return all;
+    }
+    // Sin total: lectura página por página (como antes).
+    for (let from = PAGE_SIZE; ; from += PAGE_SIZE) {
+      const res = await pagina(from, false);
+      const d = (res.data || []) as unknown[];
+      agregar(d);
+      if (d.length < PAGE_SIZE) break;
     }
     return all;
   } catch (e) {
@@ -401,22 +439,57 @@ export function subscribeToSharedCollection<T>(
   const filter =
     keys.length === 0 ? undefined : keys.length === 1 ? `agencia_key=eq.${keys[0]}` : `agencia_key=in.(${keys.join(',')})`;
 
+  // Rendimiento: los cambios en vivo se juntan en lotes (~150 ms) y se
+  // aplican de una sola vez. Antes cada fila recibida actualizaba la pantalla
+  // completa: una carga de Excel o una liquidación en lote de otro usuario
+  // (cientos de filas) provocaba cientos de redibujos seguidos y la app se
+  // "congelaba" varios segundos. El resultado final es exactamente el mismo.
+  type Op = { tipo: 'up'; key: string; item: T } | { tipo: 'del'; key: string };
+  const cola: Op[] = [];
+  let temporizador: ReturnType<typeof setTimeout> | null = null;
+  const aplicarLote = () => {
+    temporizador = null;
+    const lote = cola.splice(0, cola.length);
+    if (!lote.length) return;
+    onChange((prev) => {
+      const next: (T | undefined)[] = prev.slice();
+      const indice = new Map<string, number>();
+      next.forEach((item, i) => {
+        const k = getKey(item as T);
+        if (!indice.has(k)) indice.set(k, i); // como antes: se actualiza la primera coincidencia
+      });
+      let huboBorrado = false;
+      lote.forEach((op) => {
+        const i = indice.get(op.key);
+        if (op.tipo === 'del') {
+          if (i !== undefined) {
+            next[i] = undefined;
+            indice.delete(op.key);
+            huboBorrado = true;
+          }
+        } else if (i === undefined) {
+          indice.set(op.key, next.length);
+          next.push(op.item);
+        } else {
+          next[i] = op.item;
+        }
+      });
+      return (huboBorrado ? next.filter((x) => x !== undefined) : next) as T[];
+    });
+  };
+  const encolar = (op: Op) => {
+    cola.push(op);
+    if (!temporizador) temporizador = setTimeout(aplicarLote, 150);
+  };
   const onUpsert = (payload: any) => {
     const newItem = payload.new?.data as T | undefined;
     if (!newItem) return;
-    const newKey = getKey(newItem);
-    onChange((prev) => {
-      const idx = prev.findIndex((item) => getKey(item) === newKey);
-      if (idx === -1) return [...prev, newItem];
-      const next = [...prev];
-      next[idx] = newItem;
-      return next;
-    });
+    encolar({ tipo: 'up', key: getKey(newItem), item: newItem });
   };
   const onDelete = (payload: any) => {
     const deletedKey = payload.old?.id;
     if (!deletedKey) return;
-    onChange((prev) => prev.filter((item) => getKey(item) !== deletedKey));
+    encolar({ tipo: 'del', key: String(deletedKey) });
   };
 
   let channel = supabase.channel(`${table}-changes${filter ? '-ag' : ''}`);
@@ -444,6 +517,8 @@ export function subscribeToSharedCollection<T>(
   });
 
   return () => {
+    if (temporizador) clearTimeout(temporizador);
+    cola.length = 0;
     supabase!.removeChannel(channel);
   };
 }
