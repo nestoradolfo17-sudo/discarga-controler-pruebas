@@ -251,6 +251,33 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
     onVisibleRoutesChange?.(sortedRoutes);
   }, [sortedRoutes, onVisibleRoutesChange]);
 
+  // Rendimiento: con "Todas las agencias" (administradores) el tablero puede
+  // tener cientos de rutas; dibujarlas todas en cada cambio trababa la
+  // pantalla. Se dibujan por bloques: las primeras FILAS_BLOQUE y el resto se
+  // agrega solo al bajar (o con "Mostrar más"). Filtros, orden, selección y
+  // totales siguen usando TODAS las rutas.
+  const FILAS_BLOQUE = 80;
+  const [filasMostradas, setFilasMostradas] = React.useState(FILAS_BLOQUE);
+  React.useEffect(() => {
+    setFilasMostradas(FILAS_BLOQUE);
+  }, [sortKey, sortOrder, busqueda, routes.length]);
+  const filasVisibles = React.useMemo(() => sortedRoutes.slice(0, filasMostradas), [sortedRoutes, filasMostradas]);
+  const faltanFilas = sortedRoutes.length - filasVisibles.length;
+  const centinelaRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const el = centinelaRef.current;
+    if (!el || faltanFilas <= 0 || typeof IntersectionObserver === 'undefined') return;
+    const obs = new IntersectionObserver(
+      (entradas) => {
+        if (entradas.some((e) => e.isIntersecting)) setFilasMostradas((n) => n + FILAS_BLOQUE);
+      },
+      { rootMargin: '600px 0px' }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [faltanFilas, filasMostradas]);
+  const seleccionSet = React.useMemo(() => new Set(selectedRouteIds), [selectedRouteIds]);
+
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
@@ -466,11 +493,11 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-normal">
-            {sortedRoutes.map((route, index) => {
+            {filasVisibles.map((route, index) => {
               const isAbierta = route.estado === 'Abierta';
               const routeKey = getRouteKey(route);
-              const isSelected = selectedRouteIds.includes(routeKey);
-              const isNearBottom = sortedRoutes.length >= 3 && index >= sortedRoutes.length - 2;
+              const isSelected = seleccionSet.has(routeKey);
+              const isNearBottom = filasVisibles.length >= 3 && index >= filasVisibles.length - 2;
 
               const helpers = [
                 route.asignacion?.auxiliar1,
@@ -874,6 +901,27 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
             })}
           </tbody>
         </table>
+        {faltanFilas > 0 && (
+          <div ref={centinelaRef} className="flex flex-wrap items-center justify-center gap-2 py-3 text-xs text-slate-500">
+            <span>
+              Mostrando {filasVisibles.length} de {sortedRoutes.length} rutas
+            </span>
+            <button
+              type="button"
+              onClick={() => setFilasMostradas((n) => n + FILAS_BLOQUE * 2)}
+              className="min-h-[34px] px-3 rounded-lg border border-slate-200 bg-white font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              Mostrar {Math.min(FILAS_BLOQUE * 2, faltanFilas)} más
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilasMostradas(sortedRoutes.length)}
+              className="min-h-[34px] px-3 rounded-lg text-slate-500 hover:text-slate-800 underline cursor-pointer"
+            >
+              Mostrar todas
+            </button>
+          </div>
+        )}
       </div>
 
       <AssignmentDetailModal
