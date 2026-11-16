@@ -88,9 +88,14 @@ export function camionesSinAsignar(trucks: Truck[], asignados: AsignadosDelDia):
   );
 }
 
+// Fin de Asignación: solo cuenta el personal operativo de ruta (pilotos VPP,
+// VPPB y auxiliares APP). Otros puestos no aparecen ni piden motivo.
+const PUESTOS_FIN = new Set(['APP', 'VPP', 'VPPB']);
+
 export function personalSinAsignar(staff: Staff[], asignados: AsignadosDelDia): Staff[] {
   return staff.filter(
     (s) =>
+      PUESTOS_FIN.has(String(s.puesto || '').trim().toUpperCase()) &&
       s.estado === 'Disponible' &&
       s.estatus !== 'BAJA' &&
       !asignados.staffIds.has(String(s.id)) &&
