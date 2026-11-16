@@ -1,5 +1,5 @@
 import { getRouteKey } from '../../utils/routeKey';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Route, MotivoDevolucionReason, CajaAbiertaReason, ClientePendiente } from '../../types';
 import { X, CheckCircle, ClipboardCheck, RotateCcw, AlertTriangle, Lock, Users, Search } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
@@ -25,6 +25,11 @@ interface LiquidateModalProps {
   // de este viaje, y el control de cajas del grupo.
   viajesPendientesGrupo?: Route[];
   resumenGrupo?: ResumenGrupo | null;
+  // Reliquidar (botón Revertir del Tablero de Liquidadas): la ruta ya está
+  // liquidada; se vuelve a liquidar ahí mismo como Liquidada o Caja Abierta
+  // (sin Ruta Abierta, para que no regrese al Tablero de Asignación). Precarga
+  // los datos de la liquidación actual y pide el motivo de la reliquidación.
+  reliquidar?: boolean;
   // Corrección: se agrega "fecha" porque el mismo ID de ruta puede repetirse en
   // fechas distintas (ver src/utils/routeKey.ts) — sin esto, liquidar una fila podía
   // terminar liquidando también otra fila con el mismo ID pero de otra fecha.
@@ -83,7 +88,11 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   onConfirmLiquidation,
   viajesPendientesGrupo = [],
   resumenGrupo = null,
+  reliquidar = false,
 }) => {
+  // Reliquidar: motivo de devolución a precargar después de fijar la modalidad
+  // (al cambiar la modalidad se limpia el motivo; ver el efecto de abajo).
+  const motivoPrecargaRef = useRef<string | null>(null);
   const [isMaximized, toggleMaximized] = useMaximized('dc_liquidate_maximized');
   const [guiasExitosas, setGuiasExitosas] = useState(0);
   const [guiasRechazadas, setGuiasRechazadas] = useState(0);
@@ -132,6 +141,18 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       setAuditor(defaultAuditor?.trim() || 'Operador de Agencia');
       // If already marked as Abierta, default to abierta
       setTipoResolucion(route.estado === 'Abierta' ? 'abierta' : 'liquidada');
+      if (reliquidar && route.liquidacion) {
+        // Reliquidar: se parte de la liquidación actual y se propone el otro estatus.
+        const l = route.liquidacion;
+        const pr = Number(l.guiasRechazadas ?? 0) || 0;
+        setGuiasRechazadas(pr);
+        setGuiasExitosas(Math.max(0, paradasCount - pr));
+        setCajasDevueltas((Number(l.cajasDevueltas) || 0).toFixed(3));
+        const enCaja = !!l.cajaAbierta && !l.cajaAbiertaResuelta;
+        motivoPrecargaRef.current = l.motivoDevolucion || '';
+        setTipoResolucion(enCaja ? 'liquidada' : 'cajaAbierta');
+        setMotivoGeneral(l.motivoDevolucion || '');
+      }
       setMotivoCajaAbierta(null);
       setCajaAbiertaError('');
       setMontoDiferencia('');
@@ -146,7 +167,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       setClientesPendientesError('');
       setTransferir(true);
     }
-  }, [isOpen, route, defaultAuditor]);
+  }, [isOpen, route, defaultAuditor, reliquidar]);
 
   // Cambiar de modalidad de cierre limpia los clientes marcados: los motivos
   // disponibles son distintos entre Ruta Abierta y Caja Abierta, así que no
@@ -155,7 +176,14 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
     setClientesMarcados(new Map());
     setMontosClientes(new Map());
     setClientesPendientesError('');
-    setMotivoGeneral(route && isBolsonRoute(route) && tipoResolucion === 'liquidada' ? MOTIVO_BOLSON : '');
+    setMotivoGeneral(
+      motivoPrecargaRef.current !== null
+        ? motivoPrecargaRef.current
+        : route && isBolsonRoute(route) && tipoResolucion === 'liquidada'
+        ? MOTIVO_BOLSON
+        : ''
+    );
+    motivoPrecargaRef.current = null;
     setMotivoGeneralError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipoResolucion]);
@@ -262,6 +290,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
     avisos.push('No se marcó motivo para dejar la ruta abierta (se registrará como Revisita).');
   }
   if (clientesSinMotivo) bloqueos.push('Hay clientes marcados como pendientes sin motivo.');
+  if (reliquidar && comentario.trim().length < 5) bloqueos.push('Escribe el motivo de la reliquidación (al menos 5 letras).');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -398,10 +427,12 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
           <div>
             <div className="flex items-center space-x-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-              <h3 className="font-bold text-sm">{esBolson ? 'Liquidación de Ruta Bolsón (Rechazo)' : 'Cierre y Liquidación de Ruta'}</h3>
+              <h3 className="font-bold text-sm">
+                {reliquidar ? 'Reliquidar ruta (Revertir estatus)' : esBolson ? 'Liquidación de Ruta Bolsón (Rechazo)' : 'Cierre y Liquidación de Ruta'}
+              </h3>
             </div>
             <p className="text-[11px] text-slate-400">
-              Liquidando Ruta: {route.id}
+              {reliquidar ? 'Reliquidando' : 'Liquidando'} Ruta: {route.id}
               {isSplitNotice} | Agencia: {route.agencia} | {fmtNum(route.cajasFisicas)} Cajas Físicas
             </p>
           </div>
@@ -605,7 +636,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
             <label className="block font-bold text-slate-800 text-xs">
               Modalidad de Cierre / Resolución de la Ruta *
             </label>
-            <div role="radiogroup" aria-label="Modalidad de cierre" className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div role="radiogroup" aria-label="Modalidad de cierre" className={`grid grid-cols-1 gap-2.5 ${reliquidar ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
               <div
                 role="radio"
                 tabIndex={0}
@@ -643,6 +674,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                 </div>
               </div>
 
+              {!reliquidar && (
               <div
                 role="radio"
                 tabIndex={0}
@@ -679,6 +711,8 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                   </p>
                 </div>
               </div>
+
+              )}
 
               <div
                 role="radio"
@@ -1033,13 +1067,13 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">
-              Comentario (opcional)
+              {reliquidar ? 'Motivo de la reliquidación *' : 'Comentario (opcional)'}
             </label>
             <textarea
               value={comentario}
               onChange={(e) => setComentario(e.target.value)}
               rows={2}
-              placeholder="Agrega cualquier observación adicional sobre esta liquidación..."
+              placeholder={reliquidar ? "Ej.: Se validó la boleta con el cliente / la caja no cuadró en la revisión." : "Agrega cualquier observación adicional sobre esta liquidación..."}
               className="w-full min-h-[44px] p-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"
             />
           </div>
@@ -1088,11 +1122,11 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
               </Button>
             ) : tipoResolucion === 'cajaAbierta' ? (
               <Button type="submit" variant="warning" size="lg" icon={Lock}>
-                Liquidar con caja abierta
+                {reliquidar ? 'Reliquidar con caja abierta' : 'Liquidar con caja abierta'}
               </Button>
             ) : (
               <Button type="submit" variant="success" size="lg" icon={ACTION_ICONS.liquidar}>
-                Liquidar ruta {route.id}
+                {reliquidar ? 'Reliquidar' : 'Liquidar'} ruta {route.id}
               </Button>
             )}
           </ModalFooter>
