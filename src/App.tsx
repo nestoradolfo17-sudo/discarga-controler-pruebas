@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense, useTransition } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense, useTransition, memo } from 'react';
 import * as ReactTodo from 'react';
 import type { ReactNode, ComponentType } from 'react';
 import {
@@ -144,6 +144,14 @@ const DashboardCostos = perezosa(() => import('./components/DashboardCostos').th
 const ZRView = perezosa(() => import('./components/ZRView').then((m) => m.ZRView));
 const PrestamosView = perezosa(() => import('./components/PrestamosView').then((m) => m.PrestamosView));
 const UsersView = perezosa(() => import('./components/UsersView').then((m) => m.UsersView));
+// Rendimiento: una pantalla oculta (Dashboard o Liquidadas que siguen montadas
+// en segundo plano) no se vuelve a calcular con cada cambio de datos; se
+// actualiza al volver a mostrarse. Para administradores (todas las agencias)
+// esto evita recalcular todos los tableros cada vez que llega un cambio.
+const Congelar = memo(
+  ({ children }: { activo: boolean; children: ReactNode }) => <>{children}</>,
+  (_antes, despues) => !despues.activo
+);
 const PANTALLAS = [DashboardView, LiquidatedBoardView, ResourcesView, RecargasView, PrestamosView, BatchImportView, ClientesImportView, ContingenciaImportView, DashboardCostos, ZRView, UsersView];
 
 // Optimización (análisis, punto 13): el Resumen Diario (y su generador de PDF)
@@ -5149,6 +5157,7 @@ export default function App() {
 
         {mantenerTab('dashboard') && (
           <Activity mode={activeTab === 'dashboard' ? 'visible' : 'hidden'}>
+          <Congelar activo={activeTab === 'dashboard'}>
           <DashboardView
             routes={dashboardRoutes}
             activeRoutesByAgency={activeRoutesVisibleAllAgencies}
@@ -5172,6 +5181,7 @@ export default function App() {
             }
             costos={currentUser.isAdmin ? { routes, historicalRoutes, trucks: trucksOp, enFiltro: (ag: string) => enAgenciaSel(ag) } : undefined}
           />
+          </Congelar>
           </Activity>
         )}
 
@@ -5299,6 +5309,7 @@ export default function App() {
 
         {mantenerTab('liquidated') && (
           <Activity mode={activeTab === 'liquidated' ? 'visible' : 'hidden'}>
+          <Congelar activo={activeTab === 'liquidated'}>
           <LiquidatedBoardView
             onKpisChange={setLiqKpis}
             historyLimitedDays={historyLimited ? HISTORY_INITIAL_DAYS : undefined}
@@ -5323,6 +5334,7 @@ export default function App() {
             onShowToast={showToast}
             onDeleteRoutes={esAdminDeAlguna ? (keys) => setDeleteRoutesTargetIds(keys) : undefined}
           />
+          </Congelar>
           </Activity>
         )}
 
@@ -5708,6 +5720,10 @@ export default function App() {
       </Suspense>
       )}
 
+      {/* Rendimiento: estas ventanas calculaban todo el historial en cada cambio
+          aunque estuvieran cerradas (muy pesado con todas las agencias). Ahora
+          solo existen mientras están abiertas. */}
+      {isClosingActaModalOpen && (
       <ClosingActaModal
         isOpen={isClosingActaModalOpen}
         onClose={() => setIsClosingActaModalOpen(false)}
@@ -5720,6 +5736,7 @@ export default function App() {
         fechaEstricta
         quienLiquida={currentUser?.nombre || currentUser?.username || 'Operador de Agencia'}
       />
+      )}
 
       <DeleteRoutesModal
         isOpen={!!deleteRoutesTargetIds && deleteRoutesTargetIds.length > 0}
@@ -5730,6 +5747,7 @@ export default function App() {
         onVerifyPassword={handleVerifyPassword}
       />
 
+      {isUnassignedResourcesModalOpen && (
       <UnassignedResourcesModal
         isOpen={isUnassignedResourcesModalOpen}
         onClose={() => setIsUnassignedResourcesModalOpen(false)}
@@ -5746,6 +5764,7 @@ export default function App() {
         agencies={agenciasSel.length > 1 ? boardAgencies.filter((ag) => enAgenciaSel(ag)) : boardAgencies}
         selectedAgency={selectedAgency}
       />
+      )}
 
       {isSupabaseConfigured && !isOnline && (
         <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[80] max-w-[92vw] px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold shadow-xl flex items-center gap-2">
