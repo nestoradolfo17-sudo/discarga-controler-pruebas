@@ -574,11 +574,11 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
       )}
 
       <div className="overflow-auto border border-slate-200 rounded-xl w-full max-h-[70vh]">
-        <table className="min-w-full divide-y divide-slate-200 text-left text-xs sm:text-sm whitespace-nowrap">
-          <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-xs sm:text-[13px] tracking-wider">
+        <table className="min-w-full divide-y divide-slate-200 text-left text-xs whitespace-nowrap">
+          <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10.5px] tracking-wide">
             <tr>
               {canDelete && (
-                <th scope="col" className="pl-4 pr-1 py-4 sticky top-0 z-20 bg-slate-50 w-10">
+                <th scope="col" className="pl-3 pr-1 py-2 sticky top-0 z-20 bg-slate-50 w-10">
                   <input
                     type="checkbox"
                     aria-label="Seleccionar todas las rutas visibles"
@@ -592,17 +592,15 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                   />
                 </th>
               )}
-              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">ID Ruta</th>
-              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Estado</th>
-              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Clientes</th>
-              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Agencia y Segmento</th>
-              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Fecha Ruta & Cierre</th>
-              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Unidad</th>
-              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Paradas</th>
-              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Balance Cajas Físicas</th>
-              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Motivo Devolución</th>
-              <th scope="col" className="px-5 py-4 sticky top-0 z-20 bg-slate-50">Auditor</th>
-              <th scope="col" className="px-5 py-4 text-right min-w-[140px] sticky top-0 z-20 bg-slate-50">Pase de Salida</th>
+              <th scope="col" className="px-2 py-2 sticky top-0 z-20 bg-slate-50">ID Ruta</th>
+              <th scope="col" className="px-2 py-2 sticky top-0 z-20 bg-slate-50">Estado</th>
+              <th scope="col" className="px-2 py-2 sticky top-0 z-20 bg-slate-50">Agencia · Clientes</th>
+              <th scope="col" className="px-2 py-2 sticky top-0 z-20 bg-slate-50">Fechas · Auditor</th>
+              <th scope="col" className="px-2 py-2 sticky top-0 z-20 bg-slate-50">Unidad</th>
+              <th scope="col" className="px-2 py-2 sticky top-0 z-20 bg-slate-50">Paradas</th>
+              <th scope="col" className="px-2 py-2 sticky top-0 z-20 bg-slate-50">Cajas</th>
+              <th scope="col" className="px-2 py-2 sticky top-0 z-20 bg-slate-50">Motivo Devolución</th>
+              <th scope="col" className="px-2 py-2 text-right sticky top-0 z-20 bg-slate-50">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-normal">
@@ -645,7 +643,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                   className={`transition-colors ${canDelete && selectedKeys.has(routeKey) ? 'bg-rose-50/70 hover:bg-rose-50' : 'hover:bg-slate-50/90'}`}
                 >
                   {canDelete && (
-                    <td className="pl-4 pr-1 py-4 w-10">
+                    <td className="pl-3 pr-1 py-2 w-10">
                       <input
                         type="checkbox"
                         aria-label={`Seleccionar ruta ${r.id}`}
@@ -656,8 +654,8 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                     </td>
                   )}
                   {/* ID */}
-                  <td className="px-5 py-4 font-mono">
-                    <div className="font-bold text-slate-900 text-sm sm:text-base">{r.id}</div>
+                  <td className="px-2 py-2 font-mono">
+                    <div className="font-bold text-slate-900 text-sm">{r.id}</div>
                     {r.parentRouteId && (
                       <span className="text-[11px] bg-purple-100 text-purple-800 font-mono px-1.5 py-0.5 rounded block w-fit mt-1">
                         Matriz {r.parentRouteId}
@@ -688,7 +686,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                   </td>
 
                   {/* Estado Badge */}
-                  <td className="px-5 py-4">
+                  <td className="px-2 py-2">
                     {liq.cajaAbierta ? (
                       <div className="space-y-1">
                         {liq.cajaAbiertaResuelta ? (
@@ -761,12 +759,17 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                     )}
                   </td>
 
-                  {/* Clientes (prioridad): lista completa con los pendientes marcados */}
-                  <td className="px-5 py-4 text-xs sm:text-sm">
+                  {/* Agencia y Segmento */}
+                  <td className="px-2 py-2 text-xs">
+                    <div className="font-semibold text-blue-700">{r.agencia}</div>
+                    {r.segmento && (
+                      <div className="text-[11px] text-slate-500">{r.segmento}</div>
+                    )}
+                    {/* Clientes: botón para ver la lista (con los pendientes marcados) */}
                     {(() => {
                       const total = r.clientesRuta?.length || 0;
                       const pend = liq.clientesPendientes?.length || 0;
-                      if (total === 0 && pend === 0) return <span className="text-[11px] text-slate-400">Sin lista</span>;
+                      if (total === 0 && pend === 0) return null;
                       const abierto = expandedClientesKey === routeKey;
                       return (
                         <button
@@ -774,7 +777,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                           onClick={() => setExpandedClientesKey((prev) => (prev === routeKey ? null : routeKey))}
                           title="Ver la lista de clientes de esta ruta"
                           aria-expanded={abierto}
-                          className={`inline-flex flex-col items-start gap-0.5 min-h-[44px] px-3 py-1.5 rounded-lg border-2 transition cursor-pointer text-left ${
+                          className={`mt-1 inline-flex items-center gap-1.5 min-h-[30px] px-2 py-0.5 rounded-lg border transition cursor-pointer text-left ${
                             abierto
                               ? 'bg-blue-600 border-blue-600 text-white'
                               : 'bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100'
@@ -798,18 +801,10 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                     })()}
                   </td>
 
-                  {/* Agencia y Segmento */}
-                  <td className="px-5 py-4 text-xs sm:text-sm">
-                    <div className="font-semibold text-blue-700">{r.agencia}</div>
-                    {r.segmento && (
-                      <div className="text-[11px] text-slate-500">{r.segmento}</div>
-                    )}
-                  </td>
-
                   {/* Fecha Ruta & Cierre */}
-                  <td className="px-5 py-4 text-xs sm:text-sm">
+                  <td className="px-2 py-2 text-xs">
                     <div className="font-medium text-slate-800">
-                      <span className="text-[10px] sm:text-[11px] text-slate-400 block uppercase font-medium">Ruta:</span>
+                      <span className="text-[10px] text-slate-400 uppercase font-medium mr-1">Ruta</span>
                       {formatDateToGuatemala(r.fechaOriginalRuta || r.fecha) || '-'}
                     </div>
                     {(r.aPiso || r.tipoAsignacion === 'Ruta a Piso') && r.fechaReprogramada && (
@@ -819,19 +814,53 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                       </div>
                     )}
                     {(r.fechaAsignacion || asig.fechaAsignacion) && (
-                      <div className="text-[11px] text-blue-700 font-mono mt-0.5" title="Fecha en que fue asignada">
+                      <div className="text-[11px] text-blue-700 font-mono" title="Fecha en que fue asignada">
                         <span className="text-slate-400">Asig: </span>
                         {r.fechaAsignacion || asig.fechaAsignacion}
                       </div>
                     )}
-                    <div className="text-[11px] text-emerald-700 font-mono mt-0.5" title="Fecha en que fue liquidada">
+                    <div className="text-[11px] text-emerald-700 font-mono" title="Fecha en que fue liquidada">
                       <span className="text-slate-400">Liq: </span>
                       {formatDateTimeToGuatemala(liq.fechaLiquidacion || r.fechaLiquidacion) || '-'}
                     </div>
+                    {/* Auditor (antes columna aparte) */}
+                    {liq.auditor && (
+                      <div className="text-[11px] text-slate-600 mt-0.5" title="Auditor de la liquidación">
+                        <span className="text-slate-400">Aud: </span>
+                        {liq.auditor}
+                      </div>
+                    )}
+                    {/* Corrección: se muestra además el usuario del sistema que realmente
+                        ejecutó la liquidación (trazabilidad), sin afectar el campo Auditor
+                        de texto libre que puede ser una persona distinta. */}
+                    {liq.liquidadoPorUsuario && (
+                      <div
+                        className="text-[10px] text-slate-400 font-mono mt-0.5"
+                        title="Usuario del sistema que registró la liquidación"
+                      >
+                        Sistema: {liq.liquidadoPorUsuario}
+                      </div>
+                    )}
+                    {liq.comentario && (
+                      <div
+                        className="text-[10px] text-slate-500 italic mt-1 max-w-[220px] whitespace-normal"
+                        title="Comentario registrado al liquidar"
+                      >
+                        "{liq.comentario}"
+                      </div>
+                    )}
+                    {liq.cajaAbiertaResuelta && liq.comentarioLiquidacionFinal && (
+                      <div
+                        className="text-[10px] text-emerald-700 italic mt-1 max-w-[220px] whitespace-normal"
+                        title="Comentario de la Liquidación Final"
+                      >
+                        Final: "{liq.comentarioLiquidacionFinal}"
+                      </div>
+                    )}
                   </td>
 
                   {/* Unidad: placa + ojo con camión y tripulación (compacto) */}
-                  <td className="px-5 py-4 text-xs sm:text-sm">
+                  <td className="px-2 py-2 text-xs">
                     <div className="flex items-center gap-2">
                       <div className="min-w-0">
                         <div className="font-mono font-bold text-slate-800 whitespace-nowrap">{asig.camionPlaca || '-'}</div>
@@ -874,7 +903,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                   </td>
 
                   {/* Paradas */}
-                  <td className="px-5 py-4 font-mono text-xs sm:text-sm">
+                  <td className="px-2 py-2 font-mono text-xs">
                     <div className="font-semibold text-slate-700">Prog: {fmtNum(r.paradas)}</div>
                     <div className="text-[11px] sm:text-xs text-emerald-700 font-semibold">
                       Entregadas: {liq.guiasExitosas !== undefined ? liq.guiasExitosas : r.paradas}
@@ -888,7 +917,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                   </td>
 
                   {/* Balance Cajas */}
-                  <td className="px-5 py-4 font-mono text-xs sm:text-sm">
+                  <td className="px-2 py-2 font-mono text-xs">
                     <div className="text-slate-500 text-[11px]">
                       Salida: <b>{fmtNum(cajasSalida, 3)}</b>
                     </div>
@@ -901,7 +930,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                   </td>
 
                   {/* Motivo Devolución */}
-                  <td className="px-5 py-4 text-xs sm:text-sm max-w-xs truncate">
+                  <td className="px-2 py-2 text-xs max-w-xs truncate">
                     {(() => {
                       const isFullDelivered =
                         cajasDevueltas === 0 &&
@@ -943,43 +972,11 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                     )}
                   </td>
 
-                  {/* Auditor */}
-                  <td className="px-5 py-4 text-slate-700 font-medium text-xs sm:text-sm">
-                    {liq.auditor || '-'}
-                    {/* Corrección: se muestra además el usuario del sistema que realmente
-                        ejecutó la liquidación (trazabilidad), sin afectar el campo Auditor
-                        de texto libre que puede ser una persona distinta. */}
-                    {liq.liquidadoPorUsuario && (
-                      <div
-                        className="text-[10px] text-slate-400 font-mono mt-0.5"
-                        title="Usuario del sistema que registró la liquidación"
-                      >
-                        Sistema: {liq.liquidadoPorUsuario}
-                      </div>
-                    )}
-                    {liq.comentario && (
-                      <div
-                        className="text-[10px] text-slate-500 italic mt-1 max-w-[220px] whitespace-normal"
-                        title="Comentario registrado al liquidar"
-                      >
-                        "{liq.comentario}"
-                      </div>
-                    )}
-                    {liq.cajaAbiertaResuelta && liq.comentarioLiquidacionFinal && (
-                      <div
-                        className="text-[10px] text-emerald-700 italic mt-1 max-w-[220px] whitespace-normal"
-                        title="Comentario de la Liquidación Final"
-                      >
-                        Final: "{liq.comentarioLiquidacionFinal}"
-                      </div>
-                    )}
-                  </td>
-
                   {/* Acciones */}
-                  <td className="px-5 py-4 text-right">
+                  <td className="px-2 py-2 text-right">
                     {/* Acción principal por estado: si la caja quedó abierta, "Liquidación
                         final" (ámbar) va primero; el acta siempre disponible. */}
-                    <div className="flex items-center justify-end gap-2 flex-wrap">
+                    <div className="flex items-center justify-end gap-1.5 flex-nowrap">
                       {liq.cajaAbierta && onOpenAbonosCaja && (!liq.cajaAbiertaResuelta || (liq.abonosCaja && liq.abonosCaja.length > 0)) && (
                         <Button
                           variant={liq.cajaAbiertaResuelta ? 'secondary' : 'success'}
@@ -1012,8 +1009,9 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                               ? 'Revertir a Liquidada (la caja se da por validada)'
                               : 'Revertir a Caja Abierta (pide motivo y valor en Q)'
                           }
+                          aria-label="Revertir estatus"
                         >
-                          Revertir
+                          <span className="hidden 2xl:inline">Revertir</span>
                         </Button>
                       )}
                       {allSiblingsSettled && parentId && (
@@ -1023,8 +1021,9 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                           icon={ACTION_ICONS.acta}
                           onClick={() => onViewConsolidatedReceipt(parentId, r)}
                           title="Ver Pase de Salida consolidado de todos los viajes"
+                          aria-label="Pase consolidado"
                         >
-                          Consolidado
+                          <span className="hidden 2xl:inline">Consolidado</span>
                         </Button>
                       )}
                       <Button
@@ -1033,8 +1032,9 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                         icon={ACTION_ICONS.acta}
                         onClick={() => onViewSettlementReceipt(r.id, r)}
                         title="Ver e imprimir el Pase de Salida - Finalización Liquidación"
+                        aria-label="Pase de salida"
                       >
-                        Pase de salida
+                        <span className="hidden 2xl:inline">Pase de salida</span>
                       </Button>
                     </div>
                   </td>
@@ -1042,7 +1042,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                 {expandedClientesKey === routeKey &&
                   ((r.clientesRuta && r.clientesRuta.length > 0) || (liq.clientesPendientes && liq.clientesPendientes.length > 0)) && (
                   <tr className="bg-slate-50/70">
-                    <td colSpan={canDelete ? 12 : 11} className="px-5 py-3">
+                    <td colSpan={canDelete ? 10 : 9} className="px-5 py-3">
                       <ClientesRutaList clientes={r.clientesRuta || []} pendientes={liq.clientesPendientes} />
                     </td>
                   </tr>
@@ -1108,7 +1108,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                 <X className="w-4 h-4 text-slate-500" />
               </button>
             </div>
-            <div className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-2">
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-2 py-2">
               <div className="text-[10px] uppercase text-slate-500 font-semibold">Camión</div>
               <div className="font-mono font-bold text-slate-900 text-sm">
                 {unidadPop.idCamion ? `${unidadPop.idCamion} · ` : ''}
@@ -1116,7 +1116,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
               </div>
               {unidadPop.salida && <div className="text-[11px] text-slate-500">Salida: {unidadPop.salida}</div>}
             </div>
-            <div className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-2">
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-2 py-2">
               <div className="text-[10px] uppercase text-slate-500 font-semibold">Piloto</div>
               <div className="font-semibold text-slate-900">
                 {unidadPop.piloto || 'Sin piloto'}{' '}
@@ -1124,7 +1124,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
               </div>
               {unidadPop.dpi && <div className="text-[11px] text-slate-500 font-mono">DPI: {unidadPop.dpi}</div>}
             </div>
-            <div className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-2">
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-2 py-2">
               <div className="text-[10px] uppercase text-slate-500 font-semibold">Auxiliares ({unidadPop.auxiliares.length})</div>
               {unidadPop.auxiliares.length > 0 ? (
                 <ul className="list-disc list-inside text-slate-800">
