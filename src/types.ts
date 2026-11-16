@@ -323,6 +323,10 @@ export interface RectificacionLiquidacion {
   comentario?: string;
   // Datos de caja que tenía antes del cambio (para poder consultarlos).
   anterior?: { motivoCajaAbierta?: string; montoDiferenciaCaja?: number; clientesPendientes?: ClientePendiente[] };
+  // Reliquidación completa desde el Tablero de Liquidadas: copia de la
+  // liquidación tal como estaba antes (cajas, paradas, motivos, caja abierta...).
+  reliquidacion?: boolean;
+  liquidacionAnterior?: Omit<RouteLiquidation, 'rectificaciones'>;
 }
 
 export interface RouteDispatchRecord {
