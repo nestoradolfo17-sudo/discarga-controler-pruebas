@@ -456,6 +456,20 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
           la ventana ni de la Navbar. */}
       <div className={`overflow-auto pb-8 md:pb-10 ${fillHeight ? 'flex-1 min-h-0' : 'min-h-[280px] max-h-[70vh]'}`}>
         <table className="w-full divide-y divide-slate-200 text-left text-xs">
+          {/* Anchos de columna ajustados al contenido: las columnas de datos cortos
+              (ID, fecha, carga, estado) ocupan solo lo necesario y el espacio que
+              sobra va a "Camión y Tripulación", que lleva los nombres. */}
+          <colgroup>
+            <col style={{ width: 44 }} />
+            <col style={{ width: 84 }} />
+            <col style={{ width: 112 }} />
+            <col style={{ width: 150 }} />
+            <col style={{ width: 132 }} />
+            <col style={{ width: 108 }} />
+            <col style={{ width: 236 }} />
+            <col />
+            <col style={{ width: 128 }} />
+          </colgroup>
           {/* El "sticky" real se aplica celda por celda (ver renderSortHeader y los
               <th> de abajo), no aquí en el <thead> — ver la nota en renderSortHeader. */}
           <thead className="bg-slate-50 text-slate-600 uppercase tracking-wider font-bold text-[10px] md:text-[11px]">
@@ -613,7 +627,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                         type="button"
                         onClick={() => onChangeSegment(route.id, routeKey)}
                         title="Cambiar segmento (requiere contraseña de administrador)"
-                        className="inline-flex items-center gap-1 min-h-[32px] max-w-[120px] text-left leading-tight px-2 rounded-lg border border-transparent hover:border-slate-300 hover:bg-slate-50 cursor-pointer text-slate-700"
+                        className="inline-flex items-center gap-1 min-h-[32px] whitespace-nowrap text-left leading-tight px-2 rounded-lg border border-transparent hover:border-slate-300 hover:bg-slate-50 cursor-pointer text-slate-700"
                       >
                         {route.segmento || '-'}
                         <span aria-hidden className="text-slate-400 text-[11px]">✎</span>
