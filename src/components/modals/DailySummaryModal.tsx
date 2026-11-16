@@ -31,6 +31,7 @@ import {
   Users,
   ClipboardCheck,
   Repeat,
+  Sunrise,
 } from 'lucide-react';
 import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
@@ -39,6 +40,7 @@ import { getRouteKey } from '../../utils/routeKey';
 import { CierreDiaResumen, COLOR_CIERRE, TablaPorEstado } from '../CierreDiaResumen';
 import { calcularCierre, estadoCierre, ETIQUETA_CIERRE, textoDias, type EstadoCierre } from '../../utils/cierreDia';
 import { descargarReportePdf, type ReportePdf } from '../../utils/dashboardPdf';
+import { totalAbonado } from './AbonosCajaModal';
 
 export type DailySummaryMode = 'inicio' | 'fin';
 export type InicioFilter = 'todas' | 'pendientes' | 'transito' | 'en_tiempo' | 'atrasadas' | 'piso' | 'recargas' | 'bolson';
@@ -1094,6 +1096,134 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
     };
   };
 
+  // ---------- PDF para el equipo de la mañana ----------
+  // Lo que queda pendiente al cierre, con todo lo que se registró al liquidar:
+  // rutas a piso, rutas con Caja Abierta (sin validar) y rutas abiertas (en
+  // revisita), cada una con sus motivos, comentarios y clientes pendientes.
+  const armarPdfEquipoManana = (): ReportePdf => {
+    const enAg = (r: Route) => filterAgency === 'TODAS' || r.agencia === filterAgency;
+    const n0 = (v: number) => Math.round(v).toLocaleString('en-US');
+    const n1 = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const q2 = (v: number) => `Q${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const unir = (...xs: (string | undefined | null | false)[]) => xs.filter((x) => x && String(x).trim()).join(' · ');
+    const clientesTxt = (cps?: { codigo: string; nombre: string; motivo: string; monto?: number }[]) =>
+      (cps || []).map((c) => `${c.codigo} ${c.nombre}: ${c.motivo}${typeof c.monto === 'number' ? ` (${q2(c.monto)})` : ''}`).join('; ');
+    const tripulacion = (r: Route) => {
+      const a = r.asignacion || r.ultimoDespacho;
+      return a ? unir(a.camionPlaca, a.conductor) : '';
+    };
+
+    // 1) A piso: siguen en el tablero sin salir, pasan para mañana.
+    const piso = routes
+      .filter((r) => enAg(r) && r.estado !== 'Liquidada' && (r.aPiso || r.tipoAsignacion === 'Ruta a Piso'))
+      .sort((a, b) => (a.agencia || '').localeCompare(b.agencia || '', 'es') || String(a.id).localeCompare(String(b.id), 'es', { numeric: true }));
+
+    // 2) Caja Abierta sin validar (cualquier fecha de liquidación).
+    const vistos = new Set<string>();
+    const cajas = allLiquidatedRoutes
+      .filter((r) => {
+        const l = r.liquidacion;
+        if (!enAg(r) || !l?.cajaAbierta || l.cajaAbiertaResuelta) return false;
+        const k = `${getRouteKey(r)}|${l.fechaLiquidacion || ''}`;
+        if (vistos.has(k)) return false;
+        vistos.add(k);
+        return true;
+      })
+      .sort((a, b) => (a.agencia || '').localeCompare(b.agencia || '', 'es') || String(a.id).localeCompare(String(b.id), 'es', { numeric: true }));
+    const saldoDe = (r: Route) => Math.max(0, (r.liquidacion?.montoDiferenciaCaja || 0) - totalAbonado(r.liquidacion?.abonosCaja));
+    const totalSaldo = cajas.reduce((a, r) => a + saldoDe(r), 0);
+
+    // 3) Rutas abiertas (en revisita): lo registrado en su último retorno.
+    const abiertas = routes
+      .filter((r) => enAg(r) && r.estado === 'Abierta')
+      .sort((a, b) => (a.agencia || '').localeCompare(b.agencia || '', 'es') || String(a.id).localeCompare(String(b.id), 'es', { numeric: true }));
+    const ultimoRetorno = (r: Route) => {
+      const h = r.historialDespachos || [];
+      return h.length ? h[h.length - 1] : undefined;
+    };
+
+    return {
+      titulo: 'Pendientes para el equipo de la mañana',
+      periodo: `Cierre del ${fechaReporte} · generado ${formatDateTimeToGuatemala(new Date())}`,
+      agencia: agenciaTxt,
+      kpis: [
+        { label: 'Rutas a piso', valor: n0(piso.length), sub: `${n1(piso.reduce((a, r) => a + toNum(r.cajasFisicas), 0))} CJ para despachar`, tono: piso.length ? 'warn' : 'ok' },
+        { label: 'Cajas abiertas', valor: n0(cajas.length), sub: `Saldo pendiente ${q2(totalSaldo)}`, tono: cajas.length ? 'crit' : 'ok' },
+        { label: 'Rutas abiertas', valor: n0(abiertas.length), sub: 'En revisita / sin cerrar', tono: abiertas.length ? 'warn' : 'ok' },
+      ],
+      tablas: [
+        {
+          titulo: 'Rutas a piso',
+          sub: 'No salieron: quedan en bodega para despacharse',
+          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Fecha' }, { t: 'Segmento' }, { t: 'CJ', num: true }, { t: 'Paradas', num: true }, { t: 'Motivo / comentario' }],
+          filas: piso.map((r) => [
+            String(r.id),
+            r.agencia || '',
+            r.fechaOriginalRuta || r.fecha || '',
+            r.segmento || '',
+            n1(toNum(r.cajasFisicas)),
+            n0(Number(r.paradas) || 0),
+            unir(r.motivoPiso, r.fechaPiso && `a piso ${r.fechaPiso}`) || '—',
+          ]),
+          vacio: 'No hay rutas a piso.',
+        },
+        {
+          titulo: 'Rutas con Caja Abierta (pendientes de validar)',
+          sub: 'Liquidadas con caja/boleta pendiente: motivo, valor, abonos y clientes',
+          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Liquidada' }, { t: 'Motivo' }, { t: 'Valor Q', num: true }, { t: 'Saldo Q', num: true }, { t: 'Comentario / clientes' }],
+          filas: cajas.map((r) => {
+            const l = r.liquidacion!;
+            return [
+              String(r.id),
+              r.agencia || '',
+              l.fechaLiquidacion || '',
+              l.motivoCajaAbierta || '—',
+              typeof l.montoDiferenciaCaja === 'number' ? q2(l.montoDiferenciaCaja) : '—',
+              typeof l.montoDiferenciaCaja === 'number' ? q2(saldoDe(r)) : '—',
+              unir(l.comentario, clientesTxt(l.clientesPendientes), l.rectificaciones?.length && `Rectificada ${l.rectificaciones.length} vez/veces`) || '—',
+            ];
+          }),
+          total: cajas.length ? ['Total', '', '', '', q2(cajas.reduce((a, r) => a + (r.liquidacion?.montoDiferenciaCaja || 0), 0)), q2(totalSaldo), ''] : undefined,
+          vacio: 'No hay cajas abiertas pendientes.',
+        },
+        {
+          titulo: 'Rutas abiertas',
+          sub: 'Regresaron sin cerrar: lo que quedó registrado en su último retorno',
+          columnas: [{ t: 'Ruta' }, { t: 'Agencia' }, { t: 'Fecha' }, { t: 'Camión / piloto' }, { t: 'CJ dev.', num: true }, { t: 'Motivo' }, { t: 'Comentario / clientes' }],
+          filas: abiertas.map((r) => {
+            const u = ultimoRetorno(r);
+            return [
+              String(r.id),
+              r.agencia || '',
+              r.fechaOriginalRuta || r.fecha || '',
+              u ? unir(u.camionPlaca, u.conductor) : tripulacion(r),
+              u ? n1(toNum(u.cajasDevueltas)) : '—',
+              u?.motivoDevolucion || r.motivoDevolucion || '—',
+              unir(u?.comentario, clientesTxt(u?.clientesPendientes)) || '—',
+            ];
+          }),
+          vacio: 'No hay rutas abiertas.',
+        },
+      ],
+      notas: [
+        'Rutas a piso y abiertas: según el Tablero al momento de generar el reporte. Cajas abiertas: todas las que siguen sin Liquidación Final, de cualquier fecha. Saldo = valor de la caja menos abonos registrados.',
+      ],
+    };
+  };
+  const descargarEquipoManana = () => {
+    setDownloadFeedback('Generando reporte para la mañana...');
+    const agencyLabel = filterAgency === 'TODAS' ? 'Todas_Agencias' : filterAgency.replace(/\s+/g, '_');
+    descargarReportePdf(armarPdfEquipoManana(), { archivo: `Pendientes_Equipo_Manana_${agencyLabel}_${fechaReporte.replace(/\//g, '-')}.pdf` })
+      .then(() => {
+        setDownloadFeedback('✓ Reporte de la mañana guardado');
+        setTimeout(() => setDownloadFeedback(null), 3000);
+      })
+      .catch((err) => {
+        console.error('Error al generar el reporte de la mañana:', err);
+        setDownloadFeedback('Error al exportar PDF');
+      });
+  };
+
   // ---------- PDF de Inicio de Día (formato y logo de DISCARGA) ----------
   const armarPdfInicio = (): ReportePdf => {
     const c = calcularCierre(filteredMetrics);
@@ -1363,6 +1493,18 @@ export const DailySummaryModal: React.FC<DailySummaryModalProps> = ({
               <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-700/60 px-2.5 py-1 rounded-lg animate-in fade-in">
                 {downloadFeedback}
               </span>
+            )}
+
+            {mode === 'fin' && (
+              <Button
+                id="btnReporteEquipoManana"
+                variant="secondary"
+                icon={Sunrise}
+                onClick={descargarEquipoManana}
+                title="PDF para el equipo de la mañana: rutas a piso, cajas abiertas y rutas abiertas con sus comentarios de liquidación"
+              >
+                Reporte equipo mañana
+              </Button>
             )}
 
             {mode === 'fin' && onOpenClosingActa && (
