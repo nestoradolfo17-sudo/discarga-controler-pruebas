@@ -86,7 +86,7 @@ import { LiquidateModal } from './components/modals/LiquidateModal';
 import { guardarStandbyDia } from './services/costos';
 import { BulkLiquidateModal, motivoNoLiquidableEnLote, paradasDeRuta, cajasDeRuta } from './components/modals/BulkLiquidateModal';
 import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiertaModal';
-import { RevertirLiquidacionModal, estatusLiquidacion, type DatosRevertir } from './components/modals/RevertirLiquidacionModal';
+import { estatusLiquidacion } from './components/modals/RevertirLiquidacionModal';
 import { AbonosCajaModal, totalAbonado } from './components/modals/AbonosCajaModal';
 import { ReceiptModal } from './components/modals/ReceiptModal';
 import { NewTruckModal } from './components/modals/NewTruckModal';
@@ -3969,73 +3969,6 @@ export default function App() {
     showToast(`Ruta ${routeId}: Liquidación Final registrada. Caja Abierta resuelta.`, 'success');
   };
 
-  // Revertir estatus de una ruta liquidada (Liquidada ↔ Caja Abierta). Solo
-  // cambia el estatus de la caja; no toca cajas, paradas ni motivos de
-  // devolución. Cada cambio queda en liquidacion.rectificaciones (quién, cuándo,
-  // de qué a qué, motivo y lo que tenía antes) y en el historial de estados.
-  const handleRevertirLiquidacion = (registro: Route, datos: DatosRevertir) => {
-    const routeKey = getRouteKey(registro);
-    const target =
-      routes.find((r) => routeMatchesKey(r, registro.id, routeKey)) ||
-      historicalRoutes.find((r) => routeMatchesKey(r, registro.id, routeKey));
-    if (!target || target.estado !== 'Liquidada' || !target.liquidacion) {
-      showToast('No se encontró la liquidación de esta ruta.', 'error');
-      return;
-    }
-    if (registro.liquidacion?.fechaLiquidacion && target.liquidacion.fechaLiquidacion && registro.liquidacion.fechaLiquidacion !== target.liquidacion.fechaLiquidacion) {
-      showToast('Solo se puede revertir la última liquidación de la ruta.', 'error');
-      return;
-    }
-    const de = estatusLiquidacion(target);
-    if (de === datos.a) {
-      showToast(`La ruta ya está en ${datos.a}.`, 'info');
-      setRevertirTarget(null);
-      return;
-    }
-    const ahora = formatDateTimeToGuatemala(new Date());
-    const usuario = currentUser?.nombre || currentUser?.username || '';
-    const liq = target.liquidacion;
-    const rectificacion = {
-      fecha: ahora,
-      usuario,
-      de,
-      a: datos.a,
-      motivoCajaAbierta: datos.motivoCajaAbierta,
-      montoDiferenciaCaja: datos.montoDiferenciaCaja,
-      comentario: datos.comentario,
-      anterior: { motivoCajaAbierta: liq.motivoCajaAbierta, montoDiferenciaCaja: liq.montoDiferenciaCaja, clientesPendientes: liq.clientesPendientes },
-    };
-    const base = {
-      ...liq,
-      rectificaciones: [...(liq.rectificaciones || []), rectificacion],
-      historialEstados: [...(liq.historialEstados || []), { estado: `Revertida a ${datos.a} (${usuario || 'usuario'})`, fecha: ahora }],
-    };
-    const nuevaLiq =
-      datos.a === 'Caja Abierta'
-        ? {
-            ...base,
-            cajaAbierta: true,
-            cajaAbiertaResuelta: false,
-            fechaLiquidacionFinal: undefined,
-            comentarioLiquidacionFinal: undefined,
-            motivoCajaAbierta: datos.motivoCajaAbierta,
-            montoDiferenciaCaja: datos.montoDiferenciaCaja,
-            ...(datos.clientesPendientes ? { clientesPendientes: datos.clientesPendientes } : {}),
-          }
-        : {
-            ...base,
-            cajaAbierta: false,
-            cajaAbiertaResuelta: undefined,
-            motivoCajaAbierta: undefined,
-            montoDiferenciaCaja: undefined,
-          };
-    const updatedRoute: Route = { ...target, liquidacion: nuevaLiq };
-    setRoutes((prev) => prev.map((r) => (routeMatchesKey(r, registro.id, routeKey) ? updatedRoute : r)));
-    setHistoricalRoutes((prev) => prev.map((r) => (routeMatchesKey(r, registro.id, routeKey) ? updatedRoute : r)));
-    setRevertirTarget(null);
-    showToast(`Ruta ${registro.id}: revertida de ${de} a ${datos.a}.`, 'success');
-  };
-
   // Registra un abono contra una Caja Abierta. Si lo abonado llega al 100% del
   // valor pendiente, la caja se cierra sola (Liquidación Final) y la ruta queda
   // liquidada. Solo agrega datos a la liquidación; no toca cajas, paradas ni motivos.
@@ -4476,6 +4409,81 @@ export default function App() {
   };
   const handleUpdateStaffTipo = (staffId: string, tipo: TipoUnidad) => {
     setStaff((prev) => prev.map((x) => (x.id === staffId ? { ...x, tipo } : x)));
+  };
+
+  // Reliquidar (botón Revertir del Tablero de Liquidadas): la ruta se vuelve a
+  // liquidar ahí mismo, como Liquidada o Caja Abierta, con el mismo proceso de
+  // la liquidación inicial. NO regresa al Tablero de Asignación: sigue en estado
+  // Liquidada y no toca camión ni tripulación. Conserva la fecha de liquidación
+  // original y guarda el tracking (rectificaciones) con la liquidación anterior.
+  const handleReliquidar = (
+    routeId: string,
+    fecha: string,
+    data: Parameters<typeof handleConfirmLiquidation>[2]
+  ) => {
+    const registro = revertirTarget;
+    if (!registro) return;
+    const routeKey = getRouteKey(registro);
+    const target =
+      routes.find((r) => routeMatchesKey(r, registro.id, routeKey)) ||
+      historicalRoutes.find((r) => routeMatchesKey(r, registro.id, routeKey));
+    if (!target || target.estado !== 'Liquidada' || !target.liquidacion) {
+      showToast('No se encontró la liquidación de esta ruta.', 'error');
+      setRevertirTarget(null);
+      return;
+    }
+    if (data.isRutaAbierta) {
+      showToast('Una ruta liquidada solo se puede reliquidar como Liquidada o Caja Abierta.', 'error');
+      return;
+    }
+    void routeId;
+    void fecha;
+    const ahora = formatDateTimeToGuatemala(new Date());
+    const usuario = currentUser?.nombre || currentUser?.username || '';
+    const liq = target.liquidacion;
+    const de = estatusLiquidacion(target);
+    const a: 'Liquidada' | 'Caja Abierta' = data.isCajaAbierta ? 'Caja Abierta' : 'Liquidada';
+    const isFullDelivered = !data.cajasDevueltas && !data.guiasRechazadas;
+    const cleanMotivo = isFullDelivered ? '' : data.motivoDevolucion || '';
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { rectificaciones: _r, ...anteriorCompleta } = liq;
+    const rectificacion = {
+      fecha: ahora,
+      usuario,
+      de,
+      a,
+      reliquidacion: true,
+      motivoCajaAbierta: data.isCajaAbierta ? data.motivoCajaAbierta : undefined,
+      montoDiferenciaCaja: data.isCajaAbierta ? data.montoDiferenciaCaja : undefined,
+      comentario: data.comentario,
+      anterior: { motivoCajaAbierta: liq.motivoCajaAbierta, montoDiferenciaCaja: liq.montoDiferenciaCaja, clientesPendientes: liq.clientesPendientes },
+      liquidacionAnterior: anteriorCompleta,
+    };
+    const nuevaLiq = {
+      ...liq,
+      guiasExitosas: data.guiasExitosas,
+      guiasRechazadas: data.guiasRechazadas,
+      cajasEntregadas: data.cajasEntregadas,
+      cajasDevueltas: data.cajasDevueltas,
+      motivoDevolucion: cleanMotivo,
+      motivosSeleccionados: isFullDelivered ? [] : data.motivosSeleccionados,
+      motivoDetalle: isFullDelivered ? undefined : data.motivoDetalle,
+      auditor: data.auditor,
+      cajaAbierta: !!data.isCajaAbierta,
+      cajaAbiertaResuelta: data.isCajaAbierta ? false : undefined,
+      fechaLiquidacionFinal: data.isCajaAbierta ? undefined : liq.fechaLiquidacionFinal,
+      comentarioLiquidacionFinal: data.isCajaAbierta ? undefined : liq.comentarioLiquidacionFinal,
+      motivoCajaAbierta: data.isCajaAbierta ? data.motivoCajaAbierta : undefined,
+      montoDiferenciaCaja: data.isCajaAbierta ? data.montoDiferenciaCaja : undefined,
+      clientesPendientes: data.clientesPendientes,
+      rectificaciones: [...(liq.rectificaciones || []), rectificacion],
+      historialEstados: [...(liq.historialEstados || []), { estado: `Reliquidada como ${a} (${usuario || 'usuario'})`, fecha: ahora }],
+    };
+    const updatedRoute: Route = { ...target, motivoDevolucion: cleanMotivo, liquidacion: nuevaLiq };
+    setRoutes((prev) => prev.map((r) => (routeMatchesKey(r, registro.id, routeKey) ? updatedRoute : r)));
+    setHistoricalRoutes((prev) => prev.map((r) => (routeMatchesKey(r, registro.id, routeKey) ? updatedRoute : r)));
+    setRevertirTarget(null);
+    showToast(`Ruta ${registro.id} reliquidada: ${de} → ${a}. Sigue en Rutas Liquidadas.`, 'success');
   };
 
   // Teléfono celular del colaborador: lo puede editar cualquier usuario.
@@ -5760,7 +5768,14 @@ export default function App() {
         onRegistrar={handleRegistrarAbonoCaja}
       />
       {revertirTarget && (
-        <RevertirLiquidacionModal route={revertirTarget} onClose={() => setRevertirTarget(null)} onConfirm={handleRevertirLiquidacion} />
+        <LiquidateModal
+          isOpen
+          reliquidar
+          onClose={() => setRevertirTarget(null)}
+          route={revertirTarget}
+          defaultAuditor={currentUser?.nombre || currentUser?.username || ''}
+          onConfirmLiquidation={handleReliquidar}
+        />
       )}
 
       <FinalizeCajaAbiertaModal
