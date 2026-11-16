@@ -27,7 +27,7 @@ export interface LiquidatedKpis {
 
 
 // --- Estados de una ruta liquidada (filtro) ---
-type EstadoLiqFiltro = 'TODOS' | 'liquidada' | 'caja_pendiente' | 'caja_validada' | 'con_devolucion';
+type EstadoLiqFiltro = 'TODOS' | 'liquidada' | 'caja_pendiente' | 'caja_validada' | 'con_devolucion' | 'rectificada';
 
 const devueltas = (r: Route) => parseFloat(String(r.liquidacion?.cajasDevueltas)) || 0;
 
@@ -61,6 +61,13 @@ const ESTADOS_LIQ: { k: EstadoLiqFiltro; label: string; ayuda: string; activo: s
     activo: 'bg-rose-600 text-white border-rose-600',
     cumple: (r) => devueltas(r) > 0,
   },
+  {
+    k: 'rectificada',
+    label: 'Rectificadas',
+    ayuda: 'Rutas a las que se les cambió el estatus con el botón Revertir',
+    activo: 'bg-indigo-600 text-white border-indigo-600',
+    cumple: (r) => !!r.liquidacion?.rectificaciones?.length,
+  },
 ];
 
 interface LiquidatedBoardViewProps {
@@ -80,6 +87,8 @@ interface LiquidatedBoardViewProps {
   onOpenFinalizeCajaAbierta?: (route: Route) => void;
   // Abonos diarios de una Caja Abierta.
   onOpenAbonosCaja?: (route: Route) => void;
+  // Revertir el estatus (Liquidada ↔ Caja Abierta); abre el mismo paso de la liquidación.
+  onRevertir?: (route: Route) => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
   // Solo para administradores: eliminar varias rutas liquidadas a la vez
   // (abre la misma ventana de confirmación con contraseña del Tablero de Rutas).
@@ -99,6 +108,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
   onViewConsolidatedReceipt,
   onOpenFinalizeCajaAbierta,
   onOpenAbonosCaja,
+  onRevertir,
   onShowToast,
   onDeleteRoutes,
 }) => {
@@ -197,7 +207,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
   }, [liquidatedRoutes, busqueda, selectedAgency, dateFrom, dateTo]);
 
   const conteoEstados = useMemo(() => {
-    const c: Record<EstadoLiqFiltro, number> = { TODOS: baseList.length, liquidada: 0, caja_pendiente: 0, caja_validada: 0, con_devolucion: 0 };
+    const c: Record<EstadoLiqFiltro, number> = { TODOS: baseList.length, liquidada: 0, caja_pendiente: 0, caja_validada: 0, con_devolucion: 0, rectificada: 0 };
     baseList.forEach((r) => {
       ESTADOS_LIQ.forEach((e) => {
         if (e.k !== 'TODOS' && e.cumple(r)) c[e.k] += 1;
@@ -728,6 +738,14 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                       </span>
                     )}
 
+                    {liq.rectificaciones && liq.rectificaciones.length > 0 && (
+                      <span
+                        className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                        title={liq.rectificaciones.map((x) => `${x.fecha} · ${x.usuario}: ${x.de} → ${x.a}${x.comentario ? ` (${x.comentario})` : ''}`).join('\n')}
+                      >
+                        Rectificada ({liq.rectificaciones.length})
+                      </span>
+                    )}
                     {/* Historial de Estados: línea de tiempo ordenada con la fecha de
                         cada proceso realizado (Liquidada/Caja Abierta al momento de
                         liquidar, y Liquidación Final cuando se resuelve). */}
@@ -913,6 +931,7 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                         {liq.clientesPendientes.slice(0, 3).map((cp, idx) => (
                           <div key={`${cp.codigo}-${idx}`} className="text-[10px] text-slate-600 leading-tight">
                             <strong className="text-slate-700">{cp.nombre || cp.codigo}</strong>: {cp.motivo}
+                            {typeof cp.monto === 'number' && <span className="font-mono font-semibold text-amber-800"> · Q{cp.monto.toFixed(2)}</span>}
                           </div>
                         ))}
                         {liq.clientesPendientes.length > 3 && (
@@ -980,6 +999,21 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                           title="Registrar Liquidación Final: cierra el pendiente de validar caja/boleta"
                         >
                           Liquidación final
+                        </Button>
+                      )}
+                      {onRevertir && r.estado === 'Liquidada' && !r.viajeAnterior && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon={RotateCcw}
+                          onClick={() => onRevertir(r)}
+                          title={
+                            liq.cajaAbierta && !liq.cajaAbiertaResuelta
+                              ? 'Revertir a Liquidada (la caja se da por validada)'
+                              : 'Revertir a Caja Abierta (pide motivo y valor en Q)'
+                          }
+                        >
+                          Revertir
                         </Button>
                       )}
                       {allSiblingsSettled && parentId && (
