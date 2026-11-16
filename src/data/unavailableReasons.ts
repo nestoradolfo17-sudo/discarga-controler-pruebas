@@ -41,6 +41,7 @@ export const STAFF_REASON_OPTIONS: StaffUnavailableReason[] = [
   'Ausencia día festivo o extraordinario',
   'Abandono de labores',
   'Día festivo o extraordinario',
+  'Traslado a Taller - Remunerado',
 ];
 
 export const STAFF_REASON_REMUNERA: Record<StaffUnavailableReason, RemuneraStatus> = {
@@ -67,4 +68,5 @@ export const STAFF_REASON_REMUNERA: Record<StaffUnavailableReason, RemuneraStatu
   'Ausencia día festivo o extraordinario': 'No Remunera',
   'Abandono de labores': 'N/A',
   'Día festivo o extraordinario': 'N/A',
+  'Traslado a Taller - Remunerado': 'Remunera (StandBy)',
 };
