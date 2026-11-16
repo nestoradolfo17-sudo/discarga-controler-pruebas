@@ -75,9 +75,52 @@ interface ResourcesViewProps {
   // Clasificar un camión o colaborador como Propio / Rentado.
   onUpdateTruckTipo?: (truckId: string, tipo: TipoUnidad) => void;
   onUpdateStaffTipo?: (staffId: string, tipo: TipoUnidad) => void;
+  // Teléfono celular (editable por cualquier usuario).
+  onUpdateStaffTelefono?: (staffId: string, telefono: string) => void;
   // Camión rentado sin ID correlativo: abre la ventana para asignárselo.
   onRequestAsignarIdRentado?: (truck: Truck) => void;
 }
+
+// Celda editable del teléfono celular: se guarda al salir del campo o con Enter.
+const TelefonoCelda: React.FC<{ valor?: string; onGuardar?: (v: string) => void }> = ({ valor, onGuardar }) => {
+  const actual = valor && valor !== '-' ? String(valor) : '';
+  const [txt, setTxt] = React.useState(actual);
+  const [error, setError] = React.useState(false);
+  React.useEffect(() => setTxt(actual), [actual]);
+  if (!onGuardar) return <span className="font-mono text-xs text-slate-600">{actual || '-'}</span>;
+  const guardar = () => {
+    const limpio = txt.trim().replace(/\s+/g, ' ');
+    if (limpio === actual) return setError(false);
+    if (limpio && !/^\+?[\d\s-]{8,16}$/.test(limpio)) return setError(true);
+    setError(false);
+    onGuardar(limpio);
+  };
+  return (
+    <input
+      type="tel"
+      inputMode="tel"
+      value={txt}
+      onChange={(e) => {
+        setTxt(e.target.value);
+        setError(false);
+      }}
+      onBlur={guardar}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Escape') {
+          setTxt(actual);
+          setError(false);
+        }
+      }}
+      placeholder="Agregar celular"
+      aria-label="Teléfono celular"
+      title={error ? 'Número no válido: usa 8 dígitos (ej. 5555 1234)' : 'Escribe el celular y presiona Enter'}
+      className={`w-32 min-h-[36px] px-2 rounded-lg border text-xs font-mono outline-none focus:ring-2 focus:ring-blue-400 ${
+        error ? 'border-rose-400 bg-rose-50' : 'border-slate-200 bg-white hover:border-slate-300'
+      }`}
+    />
+  );
+};
 
 export const ResourcesView: React.FC<ResourcesViewProps> = ({
   mode,
@@ -102,6 +145,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
   onRequestTruckStatusChange,
   onUpdateTruckTipo,
   onUpdateStaffTipo,
+  onUpdateStaffTelefono,
   onRequestAsignarIdRentado,
 }) => {
   const [isBatchStaffModalOpen, setIsBatchStaffModalOpen] = useState(false);
@@ -642,6 +686,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                 <th className="py-3 px-4">DPI</th>
                 <th className="py-3 px-4">Código</th>
                 <th className="py-3 px-4">Nombre Completo</th>
+                <th className="py-3 px-4">Celular</th>
                 <th className="py-3 px-4">Agencia</th>
                 <th className="py-3 px-4">Tipo</th>
                 <th className="py-3 px-4">Puesto</th>
@@ -687,6 +732,9 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                     </td>
                     <td className="py-3 px-4 font-semibold text-slate-800">
                       {s.nombre}
+                    </td>
+                    <td className="py-2 px-4">
+                      <TelefonoCelda valor={s.telefono} onGuardar={onUpdateStaffTelefono ? (v) => onUpdateStaffTelefono(s.id, v) : undefined} />
                     </td>
                     <td className="py-3 px-4">
                       {s.agencia ? (
