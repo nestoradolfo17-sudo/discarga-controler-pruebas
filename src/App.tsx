@@ -192,6 +192,11 @@ const STORAGE_KEY_SESSION = 'rutamaster_session_v1';
 // cada vez volvía lenta la entrada). El resto se trae a pedido desde
 // "Rutas Liquidadas" → "Cargar historial completo".
 const HISTORY_INITIAL_DAYS = 45;
+// Ingreso rápido: para abrir la app solo se esperan las rutas activas, camiones,
+// personal y el historial de los últimos HISTORY_QUICK_DAYS días (lo que usa la
+// operación del día). El resto del historial (hasta 45 días) se descarga en
+// segundo plano y se agrega solo, sin bloquear la pantalla.
+const HISTORY_QUICK_DAYS = 3;
 
 // Filtro por segmento del Tablero: compara sin importar mayúsculas/espacios;
 // '__SIN__' = rutas que no tienen segmento.
@@ -652,6 +657,8 @@ export default function App() {
   }, []);
 
   const [historyLimited, setHistoryLimited] = useState<boolean>(isSupabaseConfigured);
+  // Historial de días anteriores bajándose en segundo plano (ingreso rápido).
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
   const [isLoadingFullHistory, setIsLoadingFullHistory] = useState(false);
   const loadFullHistory = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -712,11 +719,12 @@ export default function App() {
     dataLoadStartedRef.current = true;
     const cancelled = false;
 
+    const inicioCarga = performance.now();
     (async () => {
       try {
         const [remoteRoutes, remoteHistory, remoteTrucks, remoteStaff] = await Promise.all([
           fetchSharedCollection<Route>('app_routes'),
-          fetchSharedCollection<Route>('app_historical_routes', { sinceDays: HISTORY_INITIAL_DAYS }),
+          fetchSharedCollection<Route>('app_historical_routes', { sinceDays: HISTORY_QUICK_DAYS }),
           fetchSharedCollection<Truck>('app_trucks'),
           fetchSharedCollection<Staff>('app_staff'),
         ]);
@@ -813,7 +821,36 @@ export default function App() {
         console.error('Error cargando datos compartidos de Supabase:', e);
       } finally {
         if (!cancelled) setIsRemoteReady(true);
+        console.info(`[carga] datos del día listos en ${Math.round(performance.now() - inicioCarga)} ms`);
       }
+      // Segundo plano: resto del historial (hasta HISTORY_INITIAL_DAYS días).
+      if (historySyncRef.current.blocked) return;
+      setCargandoHistorial(true);
+      const t1 = performance.now();
+      const resto = await fetchSharedCollection<Route>('app_historical_routes', { sinceDays: HISTORY_INITIAL_DAYS });
+      setCargandoHistorial(false);
+      console.info(`[carga] historial ${HISTORY_INITIAL_DAYS} días: ${resto ? resto.length : 'error'} filas en ${Math.round(performance.now() - t1)} ms`);
+      if (!resto) return;
+      setHistoricalRoutes((prev) => {
+        // Lo que ya está en pantalla (de la carga rápida o recibido en vivo) es
+        // igual o más nuevo: se conserva. Solo se agregan las rutas que faltaban.
+        const byKey = new Map(prev.map((r) => [getRouteKey(r), r]));
+        const nuevos: Route[] = [];
+        resto.forEach((row) => {
+          const k = getRouteKey(row.data);
+          if (!byKey.has(k)) {
+            byKey.set(k, row.data);
+            nuevos.push(row.data);
+          }
+        });
+        if (!nuevos.length) return prev;
+        const next = [...prev, ...nuevos];
+        // Lo recién descargado ya está guardado en la base: no se vuelve a subir.
+        const mapa = new Map(historySyncRef.current.byKey);
+        nuevos.forEach((r) => mapa.set(getRouteKey(r), jsonDe(r)));
+        historySyncRef.current = { ultimo: next, byKey: mapa, blocked: historySyncRef.current.blocked };
+        return next;
+      });
     })();
     // Solo debe ejecutarse una vez al montar: intencionalmente no depende de
     // routes/trucks/staff/etc. (se usan solo como semilla si Supabase está vacío).
@@ -5760,6 +5797,12 @@ export default function App() {
       />
       )}
 
+      {isSupabaseConfigured && cargandoHistorial && (
+        <div className="fixed bottom-3 left-3 z-[70] max-w-[92vw] px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-semibold shadow-lg flex items-center gap-2" role="status">
+          <span className="w-3.5 h-3.5 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
+          Cargando historial de días anteriores… puedes seguir trabajando.
+        </div>
+      )}
       {isSupabaseConfigured && !isOnline && (
         <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[80] max-w-[92vw] px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold shadow-xl flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
