@@ -5,6 +5,7 @@ import {
   calcularSalidas,
   calcularStandby,
   resumirPorAgencia,
+  AVISO_MENOS_T3,
   type Tarifario,
   type TarifarioDatos,
   type StandbyDia,
@@ -277,6 +278,7 @@ export const DashboardCostos: React.FC<Props> = ({ routes, historicalRoutes, tru
   const [standbyPrev, setStandbyPrev] = useState<StandbyDia[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
+  const [verMenosT3, setVerMenosT3] = useState(false);
   const [actualizado, setActualizado] = useState('');
   const [compActivo, setCompActivo] = useState<Comp | null>(null);
   const [agHover, setAgHover] = useState<string | null>(null);
@@ -382,9 +384,16 @@ export const DashboardCostos: React.FC<Props> = ({ routes, historicalRoutes, tru
   const rentadasSinValor = rentadas.filter((s) => s.costo == null).length;
   const avisos = useMemo(() => {
     const m = new Map<string, number>();
-    [...salidas.filter((s) => s.tipo !== 'sin_costo' && !s.rentado), ...stb].forEach((s) => s.aviso && m.set(s.aviso, (m.get(s.aviso) || 0) + 1));
+    [...salidas.filter((s) => s.tipo !== 'sin_costo' && !s.rentado), ...stb].forEach(
+      (s) => s.aviso && s.aviso !== AVISO_MENOS_T3 && m.set(s.aviso, (m.get(s.aviso) || 0) + 1)
+    );
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [salidas, stb]);
+  // Viajes con 2 personas o menos: se costean como T3 (por ahora la única clase en uso) y se avisan aparte.
+  const menosT3 = useMemo(
+    () => salidas.filter((s) => s.aviso === AVISO_MENOS_T3 && !s.rentado).sort((a, b) => a.dia.localeCompare(b.dia) || a.agencia.localeCompare(b.agencia, 'es')),
+    [salidas]
+  );
   const diasStandby = new Set(standby.map((d) => d.fecha)).size;
 
   const TOP = 8;
@@ -755,7 +764,7 @@ export const DashboardCostos: React.FC<Props> = ({ routes, historicalRoutes, tru
       </div>
 
       {/* Puntos de atención */}
-      {(rentadas.length > 0 || avisos.length > 0 || diasStandby === 0) && (
+      {(rentadas.length > 0 || avisos.length > 0 || diasStandby === 0 || menosT3.length > 0) && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-xs text-amber-900">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="font-bold flex items-center gap-2">
@@ -771,6 +780,47 @@ export const DashboardCostos: React.FC<Props> = ({ routes, historicalRoutes, tru
           <ul className="mt-1.5 space-y-0.5">
             {rentadasSinValor > 0 && <li>• {n0(rentadasSinValor)} viaje(s) con camión rentado sin valor: no suman a la venta hasta asignarlo.</li>}
             {diasStandby === 0 && <li>• Aún no hay registro diario de standby este mes (se guarda solo desde que se activó el módulo).</li>}
+            {menosT3.length > 0 && (
+              <li>
+                • <strong>{n0(menosT3.length)} viaje(s) salieron con menos de 3 personas</strong> y se costearon como T3 ({Q(menosT3.reduce((a, s) => a + (s.costo || 0), 0))}).{' '}
+                <button type="button" onClick={() => setVerMenosT3((v) => !v)} className="underline font-semibold cursor-pointer">
+                  {verMenosT3 ? 'Ocultar detalle' : 'Ver detalle'}
+                </button>
+                {verMenosT3 && (
+                  <div className="mt-2 mb-1 rounded-lg bg-white border border-amber-200 overflow-x-auto max-h-64 overflow-y-auto">
+                    <table className="w-full text-[11px] text-slate-700 min-w-[560px]">
+                      <thead className="sticky top-0 bg-amber-50 text-amber-900">
+                        <tr>
+                          <th className="text-left px-2 py-1.5">Fecha</th>
+                          <th className="text-left px-2 py-1.5">Agencia</th>
+                          <th className="text-left px-2 py-1.5">Ruta</th>
+                          <th className="text-left px-2 py-1.5">Camión</th>
+                          <th className="text-left px-2 py-1.5">Tripulación</th>
+                          <th className="text-right px-2 py-1.5">Costo T3</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-amber-100">
+                        {menosT3.map((s) => (
+                          <tr key={s.id}>
+                            <td className="px-2 py-1 whitespace-nowrap">{s.dia.slice(0, 5)}</td>
+                            <td className="px-2 py-1">{s.agencia}</td>
+                            <td className="px-2 py-1">
+                              {s.ruta}
+                              {s.tipo === 'apoyo' ? ' (apoyo)' : ''}
+                            </td>
+                            <td className="px-2 py-1">{s.placa || '—'}</td>
+                            <td className="px-2 py-1">
+                              {s.tripulacion} persona(s): {s.conductor ? 'piloto' : <strong className="text-red-700">sin piloto</strong>} + {s.auxiliares} APP
+                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums">{s.costo == null ? '—' : Q(s.costo)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </li>
+            )}
             {avisos.slice(0, 4).map(([a, n]) => (
               <li key={a}>
                 • {a} ({n0(n)})
