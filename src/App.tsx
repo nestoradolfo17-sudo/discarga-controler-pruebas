@@ -137,7 +137,6 @@ const DashboardView = perezosa(() => import('./components/DashboardView').then((
 const LiquidatedBoardView = perezosa(() => import('./components/LiquidatedBoardView').then((m) => m.LiquidatedBoardView));
 const ResourcesView = perezosa(() => import('./components/ResourcesView').then((m) => m.ResourcesView));
 const BatchImportView = perezosa(() => import('./components/BatchImportView').then((m) => m.BatchImportView));
-const ClientesImportView = perezosa(() => import('./components/ClientesImportView').then((m) => m.ClientesImportView));
 const ContingenciaImportView = perezosa(() => import('./components/ContingenciaImportView').then((m) => m.ContingenciaImportView));
 const RecargasView = perezosa(() => import('./components/RecargasView').then((m) => m.RecargasView));
 const DashboardCostos = perezosa(() => import('./components/DashboardCostos').then((m) => m.DashboardCostos));
@@ -152,7 +151,7 @@ const Congelar = memo(
   ({ children }: { activo: boolean; children: ReactNode }) => <>{children}</>,
   (_antes, despues) => !despues.activo
 );
-const PANTALLAS = [DashboardView, LiquidatedBoardView, ResourcesView, RecargasView, PrestamosView, BatchImportView, ClientesImportView, ContingenciaImportView, DashboardCostos, ZRView, UsersView];
+const PANTALLAS = [DashboardView, LiquidatedBoardView, ResourcesView, RecargasView, PrestamosView, BatchImportView, ContingenciaImportView, DashboardCostos, ZRView, UsersView];
 
 // Optimización (análisis, punto 13): el Resumen Diario (y su generador de PDF)
 // es la pantalla más pesada; se descarga solo la primera vez que se abre.
@@ -5400,13 +5399,8 @@ export default function App() {
               onCommitRoutes={handleCommitBatchRoutes}
               onShowToast={showToast}
             />
-            <ClientesImportView
-              routes={routes}
-              historicalRoutes={historicalRoutes}
-              agencyOptions={importAgencyOptions}
-              onCommitClientesRuta={handleImportClientesPorRuta}
-              onShowToast={showToast}
-            />
+            {/* "Detalle de Clientes por Ruta" se quitó de esta pantalla (16/11/2026).
+                Los clientes ya cargados en las rutas se conservan. */}
             {currentUser.isAdmin && (
               <ContingenciaImportView
                 trucks={trucks}
