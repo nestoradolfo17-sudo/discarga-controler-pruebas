@@ -1006,8 +1006,8 @@ export const LiquidatedBoardView: React.FC<LiquidatedBoardViewProps> = ({
                           onClick={() => onRevertir(r)}
                           title={
                             liq.cajaAbierta && !liq.cajaAbiertaResuelta
-                              ? 'Revertir a Liquidada (la caja se da por validada)'
-                              : 'Revertir a Caja Abierta (pide motivo y valor en Q)'
+                              ? 'Revertir: reliquidar aquí mismo como Liquidada (no regresa a Asignación)'
+                              : 'Revertir: reliquidar aquí mismo como Caja Abierta (no regresa a Asignación)'
                           }
                           aria-label="Revertir estatus"
                         >
