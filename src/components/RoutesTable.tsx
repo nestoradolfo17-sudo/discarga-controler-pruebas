@@ -455,23 +455,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
           "top-0" respecto a SU PROPIO borde superior — ya no depende del scroll de
           la ventana ni de la Navbar. */}
       <div className={`overflow-auto pb-8 md:pb-10 ${fillHeight ? 'flex-1 min-h-0' : 'min-h-[280px] max-h-[70vh]'}`}>
-        {/* Compacta: en pantallas muy anchas la tabla no se estira más de 1,400 px
-            (antes cada columna crecía y los datos quedaban separados). */}
-        <table className="w-full divide-y divide-slate-200 text-left text-xs" style={{ maxWidth: 1400 }}>
-          {/* Anchos de columna ajustados al contenido: las columnas de datos cortos
-              (ID, fecha, carga, estado) ocupan solo lo necesario y el espacio que
-              sobra va a "Camión y Tripulación", que lleva los nombres. */}
-          <colgroup>
-            <col style={{ width: 40 }} />
-            <col style={{ width: 80 }} />
-            <col style={{ width: 104 }} />
-            <col style={{ width: 140 }} />
-            <col style={{ width: 128 }} />
-            <col style={{ width: 136 }} />
-            <col style={{ width: 208 }} />
-            <col />
-            <col style={{ width: 124 }} />
-          </colgroup>
+        <table className="w-full divide-y divide-slate-200 text-left text-xs">
           {/* El "sticky" real se aplica celda por celda (ver renderSortHeader y los
               <th> de abajo), no aquí en el <thead> — ver la nota en renderSortHeader. */}
           <thead className="bg-slate-50 text-slate-600 uppercase tracking-wider font-bold text-[10px] md:text-[11px]">
@@ -503,7 +487,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
               {renderSortHeader('segmento', 'Segmento')}
               {renderSortHeader('fecha', 'Fecha')}
               {renderSortHeader('carga', 'Carga')}
-              <th scope="col" className="px-2 2xl:px-3 py-1.5 text-center whitespace-nowrap sticky top-0 z-20 bg-slate-50">Acciones</th>
+              <th scope="col" className="px-2 2xl:px-3 py-2 md:py-2.5 text-center whitespace-nowrap sticky top-0 z-20 bg-slate-50">Acciones</th>
               {renderSortHeader('asignacion', 'Camión y Tripulación')}
               {renderSortHeader('estado', 'Estado')}
             </tr>
@@ -564,7 +548,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   </td>
 
                   {/* ID Ruta without # */}
-                  <td className="px-2 2xl:px-3 py-1.5 font-mono">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 font-mono">
                     <div className="font-bold text-slate-900 text-xs md:text-sm whitespace-nowrap">{route.id}</div>
                     {(() => {
                       const cl = clientesQueCoinciden(route, busqueda);
@@ -618,18 +602,18 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   </td>
 
                   {/* Agencia */}
-                  <td className="px-2 2xl:px-3 py-1.5 font-semibold text-blue-700 text-xs whitespace-nowrap">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 font-semibold text-blue-700 text-xs whitespace-nowrap">
                     {route.agencia || '-'}
                   </td>
 
                   {/* Segmento */}
-                  <td className="px-2 2xl:px-3 py-1.5 text-slate-700 text-xs font-medium">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 text-slate-700 text-xs font-medium">
                     {onChangeSegment && route.estado !== 'Liquidada' ? (
                       <button
                         type="button"
                         onClick={() => onChangeSegment(route.id, routeKey)}
                         title="Cambiar segmento (requiere contraseña de administrador)"
-                        className="inline-flex items-center gap-1 min-h-[32px] whitespace-nowrap text-left leading-tight px-2 rounded-lg border border-transparent hover:border-slate-300 hover:bg-slate-50 cursor-pointer text-slate-700"
+                        className="inline-flex items-center gap-1 min-h-[32px] max-w-[120px] text-left leading-tight px-2 rounded-lg border border-transparent hover:border-slate-300 hover:bg-slate-50 cursor-pointer text-slate-700"
                       >
                         {route.segmento || '-'}
                         <span aria-hidden className="text-slate-400 text-[11px]">✎</span>
@@ -640,9 +624,9 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   </td>
 
                   {/* Fecha */}
-                  <td className="px-2 2xl:px-3 py-1.5 text-slate-700 text-xs whitespace-nowrap">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 text-slate-700 text-xs whitespace-nowrap">
                     <div className="font-medium text-slate-800">
-                      <span className="text-[10px] text-slate-400 uppercase font-medium mr-1">Ruta</span>
+                      <span className="text-[10px] text-slate-400 block uppercase font-medium">Ruta:</span>
                       {formatDateToGuatemala(route.fechaOriginalRuta || route.fecha || route.fechaCarga) || '-'}
                     </div>
                     {route.aPiso && route.fechaReprogramada && (
@@ -666,7 +650,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   </td>
 
                   {/* Carga & Operación (Posición 5) */}
-                  <td className="px-2 2xl:px-3 py-1.5">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5">
                     <div className="space-y-0.5">
                       <div className="font-bold text-slate-800 text-xs flex items-center whitespace-nowrap">
                         {fmtNum(route.paradas)} paradas
@@ -675,30 +659,9 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                             V{route.tripNumber}/{route.totalTrips}
                           </span>
                         )}
-                        {route.clientesRuta && route.clientesRuta.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setExpandedClientesKey((prev) => (prev === routeKey ? null : routeKey));
-                            }}
-                            title={`${expandedClientesKey === routeKey ? 'Ocultar' : 'Ver'} los ${route.clientesRuta.length} clientes de esta ruta (solo consulta)`}
-                            aria-label={`${expandedClientesKey === routeKey ? 'Ocultar' : 'Ver'} clientes (${route.clientesRuta.length})`}
-                            aria-expanded={expandedClientesKey === routeKey}
-                            className={`ml-1.5 inline-flex items-center gap-1 min-h-[26px] px-1.5 text-[11px] font-semibold rounded-md border transition cursor-pointer ${
-                              expandedClientesKey === routeKey
-                                ? 'bg-blue-600 border-blue-600 text-white'
-                                : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
-                            }`}
-                          >
-                            <Users className="w-3 h-3" />
-                            {route.clientesRuta.length}
-                          </button>
-                        )}
                       </div>
                       <div className="text-[11px] md:text-xs font-mono text-slate-700 whitespace-nowrap">
-                        CJ <b className="text-blue-700 font-bold">{fmtNum(route.cajasFisicas)}</b>
-                        <span className="text-[10px] text-slate-500"> · 12 Oz <b className="text-slate-700 font-bold">{fmtNum(route.cajas12Oz)}</b></span>
+                        Cajas: <b className="text-blue-700 font-bold">{fmtNum(route.cajasFisicas)}</b>
                       </div>
                       {(() => {
                         const g = resumenGrupoDe ? resumenGrupoDe(route) : null;
@@ -713,12 +676,34 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                           </div>
                         );
                       })()}
+                      <div className="text-[10px] md:text-[11px] font-mono text-slate-500 whitespace-nowrap">
+                        12 Oz: <b className="text-slate-700 font-bold">{fmtNum(route.cajas12Oz)}</b>
+                      </div>
+                      {route.clientesRuta && route.clientesRuta.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedClientesKey((prev) => (prev === routeKey ? null : routeKey));
+                          }}
+                          title="Ver la lista de clientes de esta ruta (solo consulta)"
+                          aria-expanded={expandedClientesKey === routeKey}
+                          className={`mt-1 inline-flex items-center gap-1 min-h-[36px] px-2.5 text-[11px] font-semibold rounded-lg border transition cursor-pointer ${
+                            expandedClientesKey === routeKey
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50 hover:border-slate-400'
+                          }`}
+                        >
+                          <Users className="w-3 h-3" />
+                          {expandedClientesKey === routeKey ? 'Ocultar' : 'Ver'} clientes ({route.clientesRuta.length})
+                        </button>
+                      )}
                     </div>
                   </td>
 
                   {/* Acciones: acción principal directa según el estado + detalle
                       + "⋯" (ver RouteRowActions.tsx, configuración única). */}
-                  <td className="px-2 2xl:px-3 py-1.5 text-center whitespace-nowrap">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 text-center whitespace-nowrap">
                     <RouteRowActions
                       route={route}
                       isMenuOpen={activeDropdownId === routeKey}
@@ -770,7 +755,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                       El botón para ver el detalle completo (auxiliares, etc.) se
                       movió junto a "Acciones"; esta columna ahora solo informa
                       de un vistazo y se puede seguir ordenando igual que antes. */}
-                  <td className="px-2 2xl:px-3 py-1.5 text-left whitespace-nowrap">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 text-left whitespace-nowrap">
                     {route.asignacion ? (
                       <div className="text-[11px] leading-tight text-left">
                         {(() => {
@@ -813,7 +798,7 @@ export const RoutesTable: React.FC<RoutesTableProps> = ({
                   </td>
 
                   {/* Estado */}
-                  <td className="px-2 2xl:px-3 py-1.5 whitespace-nowrap">
+                  <td className="px-2 2xl:px-3 py-2 md:py-2.5 whitespace-nowrap">
                     {route.estado === 'Pendiente' && (
                       <div className="space-y-0.5">
                         {route.esSelfService || route.tipoAsignacion === 'Self Service' ? (
