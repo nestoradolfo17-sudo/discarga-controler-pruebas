@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense, useTransition } from 'react';
 import * as ReactTodo from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, ComponentType } from 'react';
 import {
   Route,
   Truck,
@@ -67,14 +67,11 @@ import { Navbar } from './components/Navbar';
 import { StatsCards, LiquidatedStatsStrip, StatPills, StatPill } from './components/StatsCards';
 import { TabNav, ActiveTab, DayReportButtons, NewRouteButton } from './components/TabNav';
 import { RoutesTable } from './components/RoutesTable';
-import { ResourcesView } from './components/ResourcesView';
-import { BatchImportView, BatchImportTarget } from './components/BatchImportView';
-import { ContingenciaImportView } from './components/ContingenciaImportView';
+import type { BatchImportTarget } from './components/BatchImportView';
 import { buildContingenciaPlan, ContParsed, ContPlan } from './utils/contingencia';
 import { AGENCIA_LOCATION_OPTIONS } from './data/agencies';
 import { SEGMENTO_OPTIONS } from './data/segmentos';
-import { ClientesImportView } from './components/ClientesImportView';
-import { LiquidatedBoardView, LiquidatedKpis } from './components/LiquidatedBoardView';
+import type { LiquidatedKpis } from './components/LiquidatedBoardView';
 import { NewRouteModal } from './components/modals/NewRouteModal';
 import { NewTrasladoRouteModal } from './components/modals/NewTrasladoRouteModal';
 import { RouteTypeSelectModal } from './components/modals/RouteTypeSelectModal';
@@ -83,12 +80,10 @@ import { ChangeSegmentModal } from './components/modals/ChangeSegmentModal';
 import { ChangeTruckStatusModal } from './components/modals/ChangeTruckStatusModal';
 import { RevertSplitModal } from './components/modals/RevertSplitModal';
 import { RepartirCajasModal, type CambioRepartoCajas } from './components/modals/RepartirCajasModal';
-import { ZRView } from './components/ZRView';
 import { NotificationBell, DestinoNotificacion } from './components/NotificationBell';
 import { AssignModal } from './components/modals/AssignModal';
 import { LiquidateModal } from './components/modals/LiquidateModal';
 import { guardarStandbyDia } from './services/costos';
-import { DashboardCostos } from './components/DashboardCostos';
 import { BulkLiquidateModal, motivoNoLiquidableEnLote, paradasDeRuta, cajasDeRuta } from './components/modals/BulkLiquidateModal';
 import { FinalizeCajaAbiertaModal } from './components/modals/FinalizeCajaAbiertaModal';
 import { AbonosCajaModal, totalAbonado } from './components/modals/AbonosCajaModal';
@@ -103,6 +98,54 @@ const Activity: (p: { mode: 'visible' | 'hidden'; children: ReactNode }) => Reac
   (ReactTodo as unknown as { Activity?: (p: { mode: 'visible' | 'hidden'; children: ReactNode }) => ReactNode }).Activity ||
   ((p) => (p.mode === 'visible' ? p.children : null));
 
+// Rendimiento: las pantallas grandes (Dashboard, Liquidadas, Camiones/Personal,
+// Recargas, Préstamos, Usuarios, Costos, cargas de Excel, ZR) se descargan por
+// separado. La app abre con mucho menos código y, ya cargados los datos, se
+// precargan en segundo plano para que cambiar de pestaña siga siendo inmediato.
+const CargandoPantalla = () => (
+  <div className="flex items-center justify-center py-16 text-sm font-semibold text-slate-500" role="status">
+    Cargando pantalla...
+  </div>
+);
+function perezosa<P extends object>(cargar: () => Promise<ComponentType<P>>) {
+  let promesa: Promise<ComponentType<P>> | null = null;
+  let lista: ComponentType<P> | null = null;
+  const cargarUnaVez = () => {
+    if (!promesa) {
+      promesa = cargar().then((c) => (lista = c));
+      promesa.catch(() => {
+        promesa = null; // si falló la red, se reintenta la próxima vez
+      });
+    }
+    return promesa;
+  };
+  const Comp = lazy(() => cargarUnaVez().then((c) => ({ default: c })));
+  const Envuelta = (p: P) => {
+    // Si ya se descargó (precarga), se muestra directo, sin pasar por "Cargando".
+    // Se decide una sola vez por pantalla montada para no reiniciar su estado.
+    const [Directa] = useState(() => lista);
+    if (Directa) return <Directa {...p} />;
+    return (
+      <Suspense fallback={<CargandoPantalla />}>
+        <Comp {...p} />
+      </Suspense>
+    );
+  };
+  return Object.assign(Envuelta, { precargar: cargarUnaVez });
+}
+const DashboardView = perezosa(() => import('./components/DashboardView').then((m) => m.DashboardView));
+const LiquidatedBoardView = perezosa(() => import('./components/LiquidatedBoardView').then((m) => m.LiquidatedBoardView));
+const ResourcesView = perezosa(() => import('./components/ResourcesView').then((m) => m.ResourcesView));
+const BatchImportView = perezosa(() => import('./components/BatchImportView').then((m) => m.BatchImportView));
+const ClientesImportView = perezosa(() => import('./components/ClientesImportView').then((m) => m.ClientesImportView));
+const ContingenciaImportView = perezosa(() => import('./components/ContingenciaImportView').then((m) => m.ContingenciaImportView));
+const RecargasView = perezosa(() => import('./components/RecargasView').then((m) => m.RecargasView));
+const DashboardCostos = perezosa(() => import('./components/DashboardCostos').then((m) => m.DashboardCostos));
+const ZRView = perezosa(() => import('./components/ZRView').then((m) => m.ZRView));
+const PrestamosView = perezosa(() => import('./components/PrestamosView').then((m) => m.PrestamosView));
+const UsersView = perezosa(() => import('./components/UsersView').then((m) => m.UsersView));
+const PANTALLAS = [DashboardView, LiquidatedBoardView, ResourcesView, RecargasView, PrestamosView, BatchImportView, ClientesImportView, ContingenciaImportView, DashboardCostos, ZRView, UsersView];
+
 // Optimización (análisis, punto 13): el Resumen Diario (y su generador de PDF)
 // es la pantalla más pesada; se descarga solo la primera vez que se abre.
 const DailySummaryModal = lazy(() =>
@@ -116,10 +159,6 @@ import { ACTION_ICONS } from './components/ui/actionIcons';
 import { UnassignedResourcesModal } from './components/modals/UnassignedResourcesModal';
 import { ToastContainer } from './components/ToastContainer';
 import { LoginScreen } from './components/auth/LoginScreen';
-import { UsersView } from './components/UsersView';
-import { DashboardView } from './components/DashboardView';
-import { RecargasView } from './components/RecargasView';
-import { PrestamosView } from './components/PrestamosView';
 import { leerPrestamos, suscribirPrestamos } from './services/prestamos';
 import { prestamosVigentes, infoDePrestamo } from './utils/prestamos';
 import { registrarRecargaAuto, idRecargaAuto, crearSituacionRecargas } from './services/recargas';
@@ -201,6 +240,22 @@ function writeLocal(key: string, value: unknown) {
   } catch (e) {
     console.error(e);
   }
+}
+
+// Rendimiento: JSON de cada registro guardado por referencia. Los estados de
+// la app son inmutables (un cambio crea un objeto nuevo), así que un registro
+// que no cambió conserva su referencia y no se vuelve a convertir a texto en
+// cada sincronización. Por seguridad, el caché se vacía cada 3 minutos y se
+// hace una comparación completa (ver "revisión completa" en App).
+let cacheJson = new WeakMap<object, string>();
+function jsonDe(x: unknown): string {
+  if (!x || typeof x !== 'object') return JSON.stringify(x);
+  let j = cacheJson.get(x as object);
+  if (j === undefined) {
+    j = JSON.stringify(x);
+    cacheJson.set(x as object, j);
+  }
+  return j;
 }
 
 export default function App() {
@@ -429,8 +484,12 @@ export default function App() {
   // `blocked`: la lectura inicial de esa tabla falló. En ese caso NO se sube
   // nada de esa tabla (la copia local puede estar desactualizada y pisaría
   // los datos reales de todos) hasta que el usuario recargue la página.
-  type SyncRef = { json: string; byKey: Map<string, string>; blocked: boolean };
-  const emptySyncRef = (): SyncRef => ({ json: '', byKey: new Map(), blocked: false });
+  // `ultimo`: la última lista (misma referencia) que ya se comparó/sincronizó.
+  // Rendimiento: antes aquí se guardaba JSON.stringify de la colección COMPLETA
+  // y se recalculaba en cada cambio (varios MB con el historial), lo que
+  // trababa la pantalla unos cientos de ms en cada acción o cambio en vivo.
+  type SyncRef = { ultimo: unknown[] | null; byKey: Map<string, string>; blocked: boolean };
+  const emptySyncRef = (): SyncRef => ({ ultimo: null, byKey: new Map(), blocked: false });
   const routesSyncRef = useRef<SyncRef>(emptySyncRef());
   const historySyncRef = useRef<SyncRef>(emptySyncRef());
   const trucksSyncRef = useRef<SyncRef>(emptySyncRef());
@@ -440,7 +499,7 @@ export default function App() {
   // Construye el mapa clave → JSON de una colección completa.
   const buildSyncedMap = <T,>(items: T[], getKey: SyncKeyFn<T>) => {
     const map = new Map<string, string>();
-    items.forEach((item) => map.set(getKey(item), JSON.stringify(item)));
+    items.forEach((item) => map.set(getKey(item), jsonDe(item)));
     return map;
   };
 
@@ -460,12 +519,12 @@ export default function App() {
     next.forEach((item) => {
       const k = getKey(item);
       nextKeys.add(k);
-      if (prevByKey.get(k) !== item) byKey.set(k, JSON.stringify(item));
+      if (prevByKey.get(k) !== item) byKey.set(k, jsonDe(item));
     });
     prevByKey.forEach((_, k) => {
       if (!nextKeys.has(k)) byKey.delete(k);
     });
-    ref.current = { json: JSON.stringify(next), byKey, blocked: ref.current.blocked };
+    ref.current = { ultimo: next, byKey, blocked: ref.current.blocked };
   };
   // Corrección: cada sincronización hacia Supabase de una colección sube (hace
   // upsert de) los registros actuales — ver pushSharedCollection en
@@ -516,8 +575,8 @@ export default function App() {
       if (sessionLostRef.current) return;
       // Lectura inicial fallida: no subir nada de esta tabla (ver `blocked`).
       if (ref.current.blocked) return;
-      const json = JSON.stringify(items);
-      if (json === ref.current.json) return;
+      // Misma lista que la última vez: nada que comparar.
+      if (items === ref.current.ultimo) return;
 
       // Solo los registros nuevos o modificados desde la última sincronización.
       // Si por error hubiera dos registros con la misma clave, se sube solo el
@@ -528,12 +587,12 @@ export default function App() {
       const changedByKey = new Map<string, T>();
       items.forEach((item) => {
         const k = getKey(item);
-        const itemJson = JSON.stringify(item);
+        const itemJson = jsonDe(item);
         nextByKey.set(k, itemJson);
         if (prevByKey.get(k) !== itemJson) changedByKey.set(k, item);
         else changedByKey.delete(k);
       });
-      ref.current = { json, byKey: nextByKey, blocked: false };
+      ref.current = { ultimo: items, byKey: nextByKey, blocked: false };
       const changed = Array.from(changedByKey.values());
       if (changed.length === 0) return;
 
@@ -556,7 +615,7 @@ export default function App() {
             // No se guardó: se "olvida" que estaban sincronizados para que el
             // próximo cambio en esta colección los vuelva a intentar subir.
             changed.forEach((item) => ref.current.byKey.delete(getKey(item)));
-            ref.current.json = '';
+            ref.current.ultimo = null;
             onRejected?.(changed.map((item) => getKey(item)));
           }
         });
@@ -576,8 +635,8 @@ export default function App() {
           return keys.includes(k) && serverRows.has(k) ? (serverRows.get(k) as Route) : r;
         });
         routesSyncRef.current = {
-          json: JSON.stringify(next),
-          byKey: new Map(next.map((r) => [getRouteKey(r), JSON.stringify(r)])),
+          ultimo: next,
+          byKey: new Map(next.map((r) => [getRouteKey(r), jsonDe(r)])),
           blocked: routesSyncRef.current.blocked,
         };
         return next;
@@ -602,8 +661,8 @@ export default function App() {
       const next = Array.from(byKey.values());
       // Lo recién descargado ya está guardado en la base: no se vuelve a subir.
       historySyncRef.current = {
-        json: JSON.stringify(next),
-        byKey: new Map(next.map((r) => [getRouteKey(r), JSON.stringify(r)])),
+        ultimo: next,
+        byKey: new Map(next.map((r) => [getRouteKey(r), jsonDe(r)])),
         blocked: historySyncRef.current.blocked,
       };
       return next;
@@ -683,7 +742,7 @@ export default function App() {
             // quedaba "lista" la sincronización normal subía la copia local
             // (posiblemente vieja o de ejemplo) y PISABA los datos reales en
             // Supabase. Ahora esta tabla queda bloqueada para escritura.
-            ref.current = { json: '', byKey: new Map(), blocked: true };
+            ref.current = { ultimo: null, byKey: new Map(), blocked: true };
             console.error(
               `No se pudo leer "${table}" de Supabase; no se subirán cambios de esta tabla hasta recargar la página.`
             );
@@ -710,7 +769,7 @@ export default function App() {
           const finalList = remoteList;
           setter(finalList);
           ref.current = {
-            json: JSON.stringify(finalList),
+            ultimo: finalList,
             byKey: buildSyncedMap(finalList, getKey),
             blocked: false,
           };
@@ -753,6 +812,29 @@ export default function App() {
     // routes/trucks/staff/etc. (se usan solo como semilla si Supabase está vacío).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUserId, currentUser]);
+
+  // Ya con los datos en pantalla, se descargan en segundo plano (cuando el
+  // navegador está libre) las demás pantallas, para que abrirlas sea inmediato.
+  useEffect(() => {
+    if (!isRemoteReady || !currentUser) return;
+    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+    let i = 0;
+    let cancelado = false;
+    const siguiente = () => {
+      if (cancelado || i >= PANTALLAS.length) return;
+      const p = PANTALLAS[i++];
+      void p.precargar().catch(() => {}).finally(() => {
+        if (ric) ric(siguiente, { timeout: 4000 });
+        else window.setTimeout(siguiente, 300);
+      });
+    };
+    const t = window.setTimeout(siguiente, 1500);
+    return () => {
+      cancelado = true;
+      window.clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRemoteReady, !!currentUser]);
 
   // Suscripción en tiempo real: refleja cambios hechos por otros usuarios de
   // prueba (en otra computadora) sin necesidad de recargar la página.
@@ -1375,6 +1457,23 @@ export default function App() {
     writeLocal(STORAGE_KEY_HISTORY, historicalRoutes);
     pushIfChanged('app_historical_routes', historicalRoutes, routeSyncKey, historySyncRef, historyPushQueueRef);
   }, [historicalRoutes, pushIfChanged, resyncTick]);
+
+  // Revisión completa cada 3 minutos (solo con la pestaña visible): se vacía el
+  // caché de JSON y se vuelven a comparar TODOS los registros contra lo último
+  // guardado. Es una red de seguridad del caché de rendimiento (jsonDe): si
+  // algún cambio no hubiera creado un objeto nuevo, igual se sube aquí.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      cacheJson = new WeakMap();
+      [routesSyncRef, historySyncRef, trucksSyncRef, staffSyncRef, usersSyncRef].forEach((r) => {
+        r.current.ultimo = null;
+      });
+      setResyncTick((t) => t + 1);
+    }, 3 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const showToast = useCallback(
     (
