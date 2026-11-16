@@ -147,8 +147,10 @@ export function tarifaStandbyPersonalDe(t: TarifarioDatos, agencia: string): Tar
   return null;
 }
 
+/** Aviso fijo de los viajes con menos de 3 personas (se costean como T3, la tarifa mínima). */
+export const AVISO_MENOS_T3 = 'Viaje con menos de 3 personas: costeado como T3';
 export const claseDe = (tripulacion: number): { clase: Clase; aviso?: string } => {
-  if (tripulacion <= 3) return { clase: 'T3', aviso: tripulacion < 3 ? `Tripulación de ${tripulacion}: se usó T3` : undefined };
+  if (tripulacion <= 3) return { clase: 'T3', aviso: tripulacion < 3 ? AVISO_MENOS_T3 : undefined };
   if (tripulacion === 4) return { clase: 'T4' };
   return { clase: 'T5', aviso: tripulacion > 5 ? `Tripulación de ${tripulacion}: se usó T5` : undefined };
 };
@@ -223,7 +225,10 @@ export function calcularSalidas(
         clase = c.clase;
         aviso = c.aviso;
         costo = c.clase === 'T3' ? tv.t3 : c.clase === 'T4' ? tv.t4 : tv.t5;
-        detalle = `Tarifa ${c.clase} (${tripulacion} personas)`;
+        detalle =
+          tripulacion < 3
+            ? `Tarifa T3 aplicada a ${tripulacion} persona(s): ${pilotos ? 'piloto' : 'sin piloto'} + ${s.auxiliares} APP`
+            : `Tarifa ${c.clase} (${tripulacion} personas)`;
       }
       if (!camion && tipo !== 'sin_costo') aviso = aviso || 'Camión no encontrado en el catálogo: se tomó como propio';
       out.push({
