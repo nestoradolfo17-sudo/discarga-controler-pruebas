@@ -226,7 +226,7 @@ export const RouteRowActions: React.FC<RouteRowActionsProps> = ({
           title={primary.hint ? `${primary.label}: ${primary.hint}` : primary.label}
           // Ancho fijo: todas las filas alinean sus botones en la misma columna
           // (los textos largos, p. ej. "Liquidar Self Service", pasan a 2 líneas).
-          className={`inline-flex items-center justify-center gap-1.5 w-[118px] min-h-[38px] px-2 ${primary.label.length > 14 ? 'text-xs' : 'text-xs sm:text-sm'} font-bold leading-tight rounded-xl border shadow-2xs transition-all cursor-pointer active:scale-95 outline-none focus-visible:ring-4 ${PRIMARY_BTN[primary.tone]}`}
+          className={`inline-flex items-center justify-center gap-1.5 w-[132px] min-h-[44px] px-2 ${primary.label.length > 14 ? 'text-xs' : 'text-xs sm:text-sm'} font-bold leading-tight rounded-xl border shadow-2xs transition-all cursor-pointer active:scale-95 outline-none focus-visible:ring-4 ${PRIMARY_BTN[primary.tone]}`}
         >
           <PrimaryIcon className="w-4 h-4 shrink-0" />
           <span className="whitespace-normal text-center">{primary.label}</span>
@@ -238,7 +238,7 @@ export const RouteRowActions: React.FC<RouteRowActionsProps> = ({
         onClick={onViewDetail}
         aria-label={`Ver detalle de la ruta ${route.id}`}
         title={detailTitle}
-        className={`inline-flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl border transition-all cursor-pointer active:scale-95 shrink-0 outline-none focus-visible:ring-4 focus-visible:ring-blue-200 ${detailCls}`}
+        className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] rounded-xl border transition-all cursor-pointer active:scale-95 shrink-0 outline-none focus-visible:ring-4 focus-visible:ring-blue-200 ${detailCls}`}
       >
         <DetailIcon className="w-5 h-5" />
       </button>
@@ -254,7 +254,7 @@ export const RouteRowActions: React.FC<RouteRowActionsProps> = ({
             aria-expanded={isMenuOpen}
             aria-label={`Más acciones para la ruta ${route.id}`}
             title="Más acciones"
-            className={`inline-flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl border transition-all cursor-pointer active:scale-95 outline-none focus-visible:ring-4 focus-visible:ring-blue-200 ${
+            className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] rounded-xl border transition-all cursor-pointer active:scale-95 outline-none focus-visible:ring-4 focus-visible:ring-blue-200 ${
               isMenuOpen ? 'bg-slate-900 text-white border-slate-900' : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
             }`}
           >
