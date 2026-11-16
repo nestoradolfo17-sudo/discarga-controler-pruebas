@@ -65,6 +65,14 @@ interface LiquidateModalProps {
 
 // Ruta Bolsón: se envía a rechazo y no sale a ruta (ver AssignModal).
 const MOTIVO_BOLSON = 'Ruta Bolsón (Rechazo)';
+// Caja Abierta: el valor en dinero (Q) es obligatorio, salvo con este motivo.
+const MOTIVO_SIN_Q = 'Pendiente Envase / Cajilla';
+const parseQ = (v: string | undefined) => {
+  const t = String(v ?? '').trim().replace(',', '.');
+  if (!t) return undefined;
+  const n = Number(t);
+  return isFinite(n) ? n : NaN;
+};
 const isBolsonRoute = (r: { esBolson?: boolean; tipoAsignacion?: string }) => !!(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
 
 export const LiquidateModal: React.FC<LiquidateModalProps> = ({
@@ -104,6 +112,8 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   // sentido cuando la ruta trae clientesRuta cargado (ver Route.clientesRuta) —
   // si no, esta sección ni siquiera se muestra y todo funciona como siempre.
   const [clientesMarcados, setClientesMarcados] = useState<Map<string, string>>(new Map());
+  // Caja Abierta: valor (Q) de cada cliente marcado (código -> texto del campo).
+  const [montosClientes, setMontosClientes] = useState<Map<string, string>>(new Map());
   const [clientesFiltro, setClientesFiltro] = useState('');
   const [clientesPendientesError, setClientesPendientesError] = useState('');
   // Ruta partida: las cajas devueltas pasan a los viajes pendientes del grupo.
@@ -131,6 +141,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       setJustificacionPase('');
       setPaseError('');
       setClientesMarcados(new Map());
+      setMontosClientes(new Map());
       setClientesFiltro('');
       setClientesPendientesError('');
       setTransferir(true);
@@ -142,6 +153,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   // tiene sentido arrastrar una selección hecha bajo la otra modalidad.
   useEffect(() => {
     setClientesMarcados(new Map());
+    setMontosClientes(new Map());
     setClientesPendientesError('');
     setMotivoGeneral(route && isBolsonRoute(route) && tipoResolucion === 'liquidada' ? MOTIVO_BOLSON : '');
     setMotivoGeneralError('');
@@ -216,10 +228,32 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   const clientesSinMotivo = Array.from(clientesMarcados.values()).some((m) => !m);
   const bloqueos: string[] = [];
   const avisos: string[] = [];
+  // Caja Abierta: con clientes marcados, cada uno lleva motivo y valor (Q);
+  // sin clientes, un motivo general (botones) y el valor total (Q). El valor
+  // es obligatorio salvo con el motivo "Pendiente Envase / Cajilla".
+  const cajaConClientes = tipoResolucion === 'cajaAbierta' && clientesMarcados.size > 0;
+  const qClienteInvalido = (codigo: string) => {
+    const motivo = clientesMarcados.get(codigo) || '';
+    const q = parseQ(montosClientes.get(codigo));
+    if (q !== undefined && (isNaN(q) || q < 0)) return true;
+    return motivo !== MOTIVO_SIN_Q && !(q !== undefined && q > 0);
+  };
+  const totalQClientes = cajaConClientes
+    ? (Array.from(clientesMarcados.keys()) as string[]).reduce((a: number, k: string) => {
+        const q = parseQ(montosClientes.get(k));
+        return a + (q && q > 0 ? q : 0);
+      }, 0)
+    : 0;
   if (tipoResolucion === 'cajaAbierta') {
-    if (!motivoCajaAbierta) bloqueos.push('El motivo de la caja abierta no está marcado.');
-    if (montoDiferencia.trim() === '') avisos.push('El valor de dinero (Q) de la diferencia está en blanco.');
-    else if (!(Number(montoDiferencia.replace(',', '.')) > 0)) avisos.push('El valor de dinero (Q) de la diferencia es 0.');
+    if (cajaConClientes) {
+      const faltanQ = (Array.from(clientesMarcados.keys()) as string[]).filter((k) => clientesMarcados.get(k) && qClienteInvalido(k)).length;
+      if (faltanQ) bloqueos.push(`Falta el valor en dinero (Q) de ${faltanQ} cliente(s) (solo "${MOTIVO_SIN_Q}" puede ir sin valor).`);
+    } else {
+      if (!motivoCajaAbierta) bloqueos.push('El motivo de la caja abierta no está marcado.');
+      const q = parseQ(montoDiferencia);
+      if (motivoCajaAbierta !== MOTIVO_SIN_Q && !(q !== undefined && q > 0)) bloqueos.push('Falta el valor total en dinero (Q) de la caja abierta.');
+      else if (q !== undefined && (isNaN(q) || q < 0)) bloqueos.push('El valor en dinero (Q) no es válido.');
+    }
   }
   if (tipoResolucion === 'liquidada' && hayDiferencia && clientesMarcados.size === 0 && !motivoGeneral) {
     bloqueos.push('Hay diferencia (cajas devueltas o paradas no entregadas) y no se marcó ningún motivo.');
@@ -237,14 +271,33 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
   const doSubmit = () => {
     setConfirmOpen(false);
     const isCajaAbierta = tipoResolucion === 'cajaAbierta';
-    if (isCajaAbierta && !motivoCajaAbierta) {
-      setCajaAbiertaError('Selecciona el motivo por el que la caja queda pendiente de validar.');
-      return;
-    }
-    const montoNum = montoDiferencia.trim() === '' ? undefined : Number(montoDiferencia.replace(',', '.'));
-    if (isCajaAbierta && montoNum !== undefined && (!isFinite(montoNum) || montoNum < 0)) {
-      setCajaAbiertaError('El valor de la diferencia debe ser un número mayor o igual a 0.');
-      return;
+    // Motivo de la caja: el general, o (con clientes marcados) el del cliente de
+    // mayor valor.
+    let motivoCaja: CajaAbiertaReason | null = motivoCajaAbierta;
+    let montoNum = parseQ(montoDiferencia);
+    if (isCajaAbierta && cajaConClientes) {
+      if ((Array.from(clientesMarcados.keys()) as string[]).some((k) => !clientesMarcados.get(k) || qClienteInvalido(k))) {
+        setClientesPendientesError(`Cada cliente marcado necesita su motivo y su valor en dinero (Q) (solo "${MOTIVO_SIN_Q}" puede ir sin valor).`);
+        return;
+      }
+      const orden = (Array.from(clientesMarcados.entries()) as [string, string][]).sort(
+        (a, b) => (parseQ(montosClientes.get(b[0])) || 0) - (parseQ(montosClientes.get(a[0])) || 0)
+      );
+      motivoCaja = (orden[0]?.[1] as CajaAbiertaReason) || null;
+      montoNum = totalQClientes > 0 ? totalQClientes : undefined;
+    } else if (isCajaAbierta) {
+      if (!motivoCajaAbierta) {
+        setCajaAbiertaError('Selecciona el motivo por el que la caja queda pendiente de validar.');
+        return;
+      }
+      if (montoNum !== undefined && (isNaN(montoNum) || montoNum < 0)) {
+        setCajaAbiertaError('El valor en dinero (Q) debe ser un número mayor a 0.');
+        return;
+      }
+      if (motivoCajaAbierta !== MOTIVO_SIN_Q && !(montoNum !== undefined && montoNum > 0)) {
+        setCajaAbiertaError(`Escribe el valor total en dinero (Q). Solo "${MOTIVO_SIN_Q}" permite liquidar sin valor.`);
+        return;
+      }
     }
     setCajaAbiertaError('');
 
@@ -260,11 +313,13 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       clientesMarcados.size > 0
         ? Array.from(clientesMarcados.entries()).map(([codigo, motivo]) => {
             const cliente = route.clientesRuta?.find((c) => c.codigo === codigo);
+            const q = isCajaAbierta ? parseQ(montosClientes.get(codigo)) : undefined;
             return {
               codigo,
               nombre: cliente?.nombre || '',
               motivo,
               cajas: cliente?.cajas,
+              ...(q !== undefined && !isNaN(q) && q > 0 ? { monto: Math.round(q * 100) / 100 } : {}),
             };
           })
         : undefined;
@@ -317,8 +372,8 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
       auditor: auditor.trim() || 'Auditor de Agencia',
       isRutaAbierta,
       isCajaAbierta,
-      motivoCajaAbierta: isCajaAbierta ? motivoCajaAbierta ?? undefined : undefined,
-      montoDiferenciaCaja: isCajaAbierta && montoNum !== undefined ? Math.round(montoNum * 100) / 100 : undefined,
+      motivoCajaAbierta: isCajaAbierta ? motivoCaja ?? undefined : undefined,
+      montoDiferenciaCaja: isCajaAbierta && montoNum !== undefined && !isNaN(montoNum) ? Math.round(montoNum * 100) / 100 : undefined,
       comentario: comentario.trim() || undefined,
       clientesPendientes,
       transferirDevueltas: transfiere || undefined,
@@ -663,10 +718,20 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
               </div>
             </div>
 
-            {tipoResolucion === 'cajaAbierta' && (
+            {tipoResolucion === 'cajaAbierta' && cajaConClientes && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  Marcaste <strong>{clientesMarcados.size} cliente(s)</strong>: el motivo y el valor (Q) se registran por cliente en la lista de abajo.
+                </span>
+                <span className="font-bold font-mono">Total Q {totalQClientes.toFixed(2)}</span>
+              </div>
+            )}
+
+            {tipoResolucion === 'cajaAbierta' && !cajaConClientes && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
                 <label className="block font-bold text-amber-900 text-[11px]">
                   Motivo por el que la caja queda pendiente de validar *
+                  {tieneClientes && <span className="font-normal"> (o marca clientes en la lista de abajo, cada uno con su motivo y valor)</span>}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {CAJA_ABIERTA_OPTIONS.map((opt) => {
@@ -692,7 +757,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                 </div>
                 <div className="pt-1">
                   <label htmlFor="montoDiferenciaCaja" className="block font-bold text-amber-900 text-[11px] mb-1">
-                    Valor de la diferencia de la ruta (Q)
+                    Valor total en dinero (Q){motivoCajaAbierta === MOTIVO_SIN_Q ? ' (opcional con Pendiente Envase / Cajilla)' : ' *'}
                   </label>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-amber-800">Q</span>
@@ -707,7 +772,9 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                       placeholder="0.00"
                       className="w-40 min-h-[44px] px-3 border border-amber-300 rounded-lg text-sm font-mono font-bold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-amber-400"
                     />
-                    <span className="text-[10px] text-amber-800">Monto por el que existe diferencia (opcional).</span>
+                    <span className="text-[10px] text-amber-800">
+                      {motivoCajaAbierta === MOTIVO_SIN_Q ? 'Con este motivo se puede liquidar sin valor.' : 'Obligatorio para liquidar con caja abierta.'}
+                    </span>
                   </div>
                 </div>
                 {cajaAbiertaError && (
@@ -802,6 +869,12 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                   else next.set(codigo, '');
                   return next;
                 });
+                setMontosClientes((prev) => {
+                  if (!prev.has(codigo)) return prev;
+                  const next = new Map(prev);
+                  next.delete(codigo);
+                  return next;
+                });
                 setClientesPendientesError('');
               };
 
@@ -840,7 +913,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                       ? hayDiferencia
                         ? 'Cierre con diferencia: marca los clientes no entregados y el motivo de cada uno (o elige abajo la razón del cierre con diferencia).'
                         : 'Si el cierre tiene diferencia, marca aquí los clientes no entregados y su motivo; las paradas y cajas devueltas se recalculan solas.'
-                      : 'Opcional: marca los clientes cuya caja/boleta queda pendiente y su motivo.'}
+                      : `Marca los clientes cuya caja/boleta queda pendiente: cada uno lleva su motivo y su valor en dinero (Q). Solo "${MOTIVO_SIN_Q}" puede ir sin valor. Si no marcas ninguno, elige arriba el motivo y el valor total.`}
                   </p>
 
                   <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
@@ -867,6 +940,7 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                             </span>
                           </label>
                           {isMarcado && (
+                            <div className="flex items-center gap-1.5 shrink-0">
                             <select
                               value={clientesMarcados.get(c.codigo) || ''}
                               onChange={(e) => setMotivoCliente(c.codigo, e.target.value)}
@@ -880,6 +954,29 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
                                 </option>
                               ))}
                             </select>
+                            {tipoResolucion === 'cajaAbierta' && (
+                              <label className="flex items-center gap-1">
+                                <span className="text-[11px] font-bold text-amber-800">Q</span>
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  min="0"
+                                  step="0.01"
+                                  value={montosClientes.get(c.codigo) || ''}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setMontosClientes((prev) => new Map(prev).set(c.codigo, v));
+                                    setClientesPendientesError('');
+                                  }}
+                                  placeholder={clientesMarcados.get(c.codigo) === MOTIVO_SIN_Q ? 'opcional' : '0.00'}
+                                  aria-label={`Valor en quetzales del cliente ${c.codigo}`}
+                                  className={`w-24 min-h-[40px] px-2 text-xs font-mono font-bold border rounded-lg outline-none focus:ring-2 focus:ring-amber-400 ${
+                                    clientesMarcados.get(c.codigo) && qClienteInvalido(c.codigo) ? 'border-rose-400 bg-rose-50' : 'border-amber-300 bg-white'
+                                  }`}
+                                />
+                              </label>
+                            )}
+                            </div>
                           )}
                         </div>
                       );
