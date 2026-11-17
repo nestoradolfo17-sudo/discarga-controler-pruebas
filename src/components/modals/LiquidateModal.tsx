@@ -10,6 +10,7 @@ import { MOTIVO_DEVOLUCION_OPTIONS, MOTIVO_REVISITA, MOTIVOS_RUTA_ABIERTA } from
 import { CAJA_ABIERTA_OPTIONS } from '../../data/motivosCajaAbierta';
 import { toNum, fmtNum } from '../../utils/number';
 import { repartirParejo, ResumenGrupo } from '../../utils/splitGroup';
+import { faltaTripulacionParaLiquidar } from '../../utils/tripulacion';
 
 const fmt3 = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 3 });
 
@@ -290,6 +291,10 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
     avisos.push('No se marcó motivo para dejar la ruta abierta (se registrará como Revisita).');
   }
   if (clientesSinMotivo) bloqueos.push('Hay clientes marcados como pendientes sin motivo.');
+  // Tripulación mínima para liquidar: camión y piloto (no aplica a Bolsón,
+  // Self Service ni a una reliquidación de una ruta ya liquidada).
+  const faltaTripulacion = reliquidar ? null : faltaTripulacionParaLiquidar(route);
+  if (faltaTripulacion) bloqueos.push(`${faltaTripulacion} No se puede liquidar sin camión y piloto: asígnalos primero.`);
   if (reliquidar && comentario.trim().length < 5) bloqueos.push('Escribe el motivo de la reliquidación (al menos 5 letras).');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -453,6 +458,12 @@ export const LiquidateModal: React.FC<LiquidateModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+          {faltaTripulacion && (
+            <div role="alert" className="p-3 rounded-xl border-2 border-rose-300 bg-rose-50 text-rose-800 text-xs font-semibold">
+              {faltaTripulacion} Para liquidar, la ruta debe tener como mínimo <strong>camión y piloto</strong> (los auxiliares son opcionales). Asígnalos desde el
+              Tablero de Asignación y vuelve a liquidar.
+            </div>
+          )}
           {/* Summary Banner */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 grid grid-cols-3 gap-2 text-center">
             <div className="border-r border-slate-200">
