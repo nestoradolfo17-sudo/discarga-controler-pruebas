@@ -171,6 +171,7 @@ import { leerPrestamos, suscribirPrestamos } from './services/prestamos';
 import { prestamosVigentes, infoDePrestamo } from './utils/prestamos';
 import { registrarRecargaAuto, idRecargaAuto, crearSituacionRecargas } from './services/recargas';
 import { apoyosActivos, cerrarApoyos } from './utils/apoyos';
+import { faltaTripulacionParaLiquidar } from './utils/tripulacion';
 import { ApoyoModal } from './components/modals/ApoyoModal';
 import { toNum, fmtNum } from './utils/number';
 import { viajesQueRecibenCajas, resumenGrupo, repartirParejo } from './utils/splitGroup';
@@ -3534,6 +3535,12 @@ export default function App() {
   ) => {
     const targetRoute = routes.find((r) => routeMatchesKey(r, routeId, fecha));
     if (!targetRoute) return;
+    // Tripulación mínima: no se liquida sin camión y piloto (auxiliares opcionales).
+    const faltaTrip = faltaTripulacionParaLiquidar(targetRoute);
+    if (faltaTrip) {
+      showToast(`Ruta ${routeId}: ${faltaTrip} No se puede liquidar sin camión y piloto.`, 'error');
+      return;
+    }
     registrarRecargaDelViaje(targetRoute, true);
 
     // Ruta partida (Cierre Definitivo): las cajas devueltas de este viaje pasan
