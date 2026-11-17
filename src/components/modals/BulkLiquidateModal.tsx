@@ -5,6 +5,7 @@ import { Button, IconButton } from '../ui/Button';
 import { ACTION_ICONS } from '../ui/actionIcons';
 import { toNum, fmtNum } from '../../utils/number';
 import { getRouteKey } from '../../utils/routeKey';
+import { faltaTripulacionParaLiquidar } from '../../utils/tripulacion';
 
 // --- Liquidación en lote (rutas entregadas al 100%, sin rechazos) ---
 // Liquida varias rutas a la vez con todas sus paradas exitosas y todas sus
@@ -19,7 +20,10 @@ export const motivoNoLiquidableEnLote = (r: Route): string | null => {
   if (r.estado === 'Abierta') return 'Ruta abierta: liquídala de forma individual';
   if (bolson) return 'Ruta Bolsón: se liquida como rechazo, hazlo de forma individual';
   if (r.liquidacion) return 'Ya está liquidada';
-  if (r.estado === 'En Tránsito') return null;
+  if (r.estado === 'En Tránsito') {
+    const falta = faltaTripulacionParaLiquidar(r);
+    return falta ? `${falta} Asigna camión y piloto antes de liquidar` : null;
+  }
   if (r.estado === 'Pendiente' && selfService) return null;
   return 'Aún no sale a ruta (sin camión asignado)';
 };
