@@ -285,7 +285,26 @@ export const DashboardCostos: React.FC<Props> = ({ routes, historicalRoutes, tru
   const [agSel, setAgSel] = useState('');
   const [verTodas, setVerTodas] = useState(false);
   const [verRentados, setVerRentados] = useState(false);
+  // Filtro de periodo dentro del mes: todo el mes, un día o un rango de días.
+  // Se aplica en memoria sobre los datos ya cargados (sin consultas nuevas).
+  const [periodo, setPeriodo] = useState<'mes' | 'dia' | 'rango'>('mes');
+  const [diaDesde, setDiaDesde] = useState(1);
+  const [diaHasta, setDiaHasta] = useState(1);
   const prev = mesAnterior(mes);
+  const diasMesSel = new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0).getDate();
+  const dIni = Math.min(Math.max(1, diaDesde), diasMesSel);
+  const dFin = Math.min(Math.max(1, diaHasta), diasMesSel);
+  const diasPeriodo = periodo === 'dia' ? 1 : Math.abs(dFin - dIni) + 1;
+  const etiquetaPeriodo = periodo === 'mes' ? '' : periodo === 'dia' ? ` · día ${dIni}` : ` · del ${Math.min(dIni, dFin)} al ${Math.max(dIni, dFin)}`;
+  const enPeriodo = useCallback(
+    (dia: string) => {
+      if (periodo === 'mes') return true;
+      const d = diaNum(dia);
+      if (periodo === 'dia') return d === dIni;
+      return d >= Math.min(dIni, dFin) && d <= Math.max(dIni, dFin);
+    },
+    [periodo, dIni, dFin]
+  );
 
   const recargar = useCallback(
     async (silencioso = false) => {
@@ -326,8 +345,10 @@ export const DashboardCostos: React.FC<Props> = ({ routes, historicalRoutes, tru
   const tarifPrev = useMemo(() => vigenteDe(tarifarios, prev).t, [tarifarios, prev]);
   const rutas = useMemo(() => [...routes, ...historicalRoutes].filter((r) => !enFiltro || enFiltro(r.agencia || '')), [routes, historicalRoutes, enFiltro]);
   const filtroStb = useCallback((d: StandbyDia[]) => d.filter((x) => !enFiltro || enFiltro(x.agencia)), [enFiltro]);
-  const salidas = useMemo(() => calcularSalidas(rutas, trucks, mes, tarifario, manuales), [rutas, trucks, mes, tarifario, manuales]);
-  const stb = useMemo(() => calcularStandby(filtroStb(standby), mes, tarifario), [standby, mes, tarifario, filtroStb]);
+  const salidasMes = useMemo(() => calcularSalidas(rutas, trucks, mes, tarifario, manuales), [rutas, trucks, mes, tarifario, manuales]);
+  const stbMes = useMemo(() => calcularStandby(filtroStb(standby), mes, tarifario), [standby, mes, tarifario, filtroStb]);
+  const salidas = useMemo(() => salidasMes.filter((s) => enPeriodo(s.dia)), [salidasMes, enPeriodo]);
+  const stb = useMemo(() => stbMes.filter((s) => enPeriodo(s.dia)), [stbMes, enPeriodo]);
   const salidasPrev = useMemo(() => calcularSalidas(rutas, trucks, prev, tarifPrev, manualesPrev), [rutas, trucks, prev, tarifPrev, manualesPrev]);
   const stbPrev = useMemo(() => calcularStandby(filtroStb(standbyPrev), prev, tarifPrev), [standbyPrev, prev, tarifPrev, filtroStb]);
 
@@ -344,9 +365,9 @@ export const DashboardCostos: React.FC<Props> = ({ routes, historicalRoutes, tru
 
   // Mes anterior a la misma fecha (para comparar a ritmo igual).
   const totPrev = useMemo(() => {
-    const corte = (dia: string) => diaNum(dia) <= diaHoy;
+    const corte = (dia: string) => (periodo === 'mes' ? diaNum(dia) <= diaHoy : enPeriodo(dia));
     return sumar(resumirPorAgencia(salidasPrev.filter((s) => corte(s.dia)), stbPrev.filter((s) => corte(s.dia))));
-  }, [salidasPrev, stbPrev, diaHoy]);
+  }, [salidasPrev, stbPrev, diaHoy, periodo, enPeriodo]);
   const variacion = totPrev.total > 0 ? (tot.total - totPrev.total) / totPrev.total : null;
 
   // Venta por día
@@ -419,11 +440,11 @@ export const DashboardCostos: React.FC<Props> = ({ routes, historicalRoutes, tru
     if (modo !== 'ventas') return;
     registrarReporte?.(() => ({
       titulo: 'Tablero Ventas',
-      periodo: `${nombreMes(mes)}${esMesActual ? ` · al día ${diaHoy}` : ''}`,
+      periodo: `${nombreMes(mes)}${etiquetaPeriodo}${periodo === 'mes' && esMesActual ? ` · al día ${diaHoy}` : ''}`,
       agencia: `${resumen.length} agencias`,
       kpis: [
         { label: 'Venta estimada', valor: Qk(tot.total), sub: tot.pendientes ? `${n0(tot.pendientes)} viaje(s) rentado(s) sin valor` : 'Todo con valor', tono: 'info' },
-        ...(esMesActual ? [{ label: 'Proyección al cierre', valor: Qk(proyeccion), sub: `Ritmo ${Qk(ritmo)} por día`, tono: 'info' as const }] : []),
+        ...(esMesActual && periodo === 'mes' ? [{ label: 'Proyección al cierre', valor: Qk(proyeccion), sub: `Ritmo ${Qk(ritmo)} por día`, tono: 'info' as const }] : []),
         { label: 'Vs mes anterior', valor: variacion == null ? '—' : `${variacion >= 0 ? '+' : ''}${(variacion * 100).toFixed(1)}%`, sub: `${nombreMes(prev)}${esMesActual ? ` al día ${diaHoy}` : ''}: ${Qk(totPrev.total)}`, tono: variacion == null ? 'info' : variacion >= 0 ? 'ok' : 'warn' },
         ...COMPONENTES.map((c) => ({ label: c.l, valor: Qk(tot[c.k]), sub: `${pct(tot[c.k], tot.total)} de la venta`, tono: 'info' as const })),
       ],
@@ -554,12 +575,52 @@ export const DashboardCostos: React.FC<Props> = ({ routes, historicalRoutes, tru
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-sky-200">TABLERO VENTAS · proyección de ventas</div>
-              <h2 className="text-xl sm:text-2xl font-black leading-tight">{nombreMes(mes)}</h2>
+              <h2 className="text-xl sm:text-2xl font-black leading-tight">
+                {nombreMes(mes)}
+                {etiquetaPeriodo}
+              </h2>
               <p className="text-xs text-sky-100/80 mt-0.5">
                 {origen} · actualizado {actualizado || '…'}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div role="group" aria-label="Periodo" className="inline-flex rounded-lg overflow-hidden border border-white/20">
+                {(['mes', 'dia', 'rango'] as const).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    aria-pressed={periodo === p}
+                    onClick={() => setPeriodo(p)}
+                    className={`min-h-[38px] px-3 text-xs font-semibold cursor-pointer ${periodo === p ? 'bg-white text-[#2C3790]' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                  >
+                    {p === 'mes' ? 'Mes' : p === 'dia' ? 'Día' : 'Rango'}
+                  </button>
+                ))}
+              </div>
+              {periodo !== 'mes' && (
+                <label className="flex items-center gap-2 text-xs font-semibold text-sky-100">
+                  {periodo === 'dia' ? 'Día' : 'Del'}
+                  <select value={dIni} onChange={(e) => setDiaDesde(Number(e.target.value))} aria-label="Día inicial" className="min-h-[38px] px-2 rounded-lg bg-white/10 border border-white/20 text-white">
+                    {Array.from({ length: diasMesSel }, (_, i) => i + 1).map((d) => (
+                      <option key={d} value={d} className="text-slate-900">
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {periodo === 'rango' && (
+                <label className="flex items-center gap-2 text-xs font-semibold text-sky-100">
+                  al
+                  <select value={dFin} onChange={(e) => setDiaHasta(Number(e.target.value))} aria-label="Día final" className="min-h-[38px] px-2 rounded-lg bg-white/10 border border-white/20 text-white">
+                    {Array.from({ length: diasMesSel }, (_, i) => i + 1).map((d) => (
+                      <option key={d} value={d} className="text-slate-900">
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label className="flex items-center gap-2 text-xs font-semibold text-sky-100 [color-scheme:dark]">
                 Mes
                 <input type="month" value={mes} max={mesActual()} onChange={(e) => e.target.value && setMes(e.target.value)} className="min-h-[38px] px-2 rounded-lg bg-white/10 border border-white/20 text-white" />
@@ -571,19 +632,25 @@ export const DashboardCostos: React.FC<Props> = ({ routes, historicalRoutes, tru
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-0 sm:divide-x sm:divide-white/15">
             <div className="sm:pr-6">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-sky-200">Venta estimada{esMesActual ? ' a la fecha' : ' del mes'}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-sky-200">Venta estimada{periodo !== 'mes' ? ' del periodo' : esMesActual ? ' a la fecha' : ' del mes'}</div>
               <div className="text-3xl sm:text-4xl font-black leading-none tabular-nums mt-1">{Q(tot.total)}</div>
               <div className="text-[11px] text-sky-100/80 mt-1">
-                {n0(tot.viajesN + tot.recargasN + tot.apoyosN)} salidas · {esMesActual ? `día ${diaHoy} de ${diasMes}` : `${diasMes} días`}
+                {n0(tot.viajesN + tot.recargasN + tot.apoyosN)} salidas ·{' '}
+                {periodo !== 'mes' ? `${diasPeriodo} ${diasPeriodo === 1 ? 'día' : 'días'} seleccionados` : esMesActual ? `día ${diaHoy} de ${diasMes}` : `${diasMes} días`}
               </div>
             </div>
             <div className="sm:px-6">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-sky-200">{esMesActual ? 'Proyección al cierre' : 'Venta promedio por día'}</div>
-              <div className="text-3xl font-black leading-none tabular-nums mt-1">{esMesActual ? Qk(proyeccion) : Qk(ritmo)}</div>
-              <div className="text-[11px] text-sky-100/80 mt-1">{esMesActual ? `Ritmo de ${Qk(ritmo)} por día × ${diasMes} días` : `${diasMes} días del mes`}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-sky-200">{periodo !== 'mes' ? 'Promedio por día' : esMesActual ? 'Proyección al cierre' : 'Venta promedio por día'}</div>
+              <div className="text-3xl font-black leading-none tabular-nums mt-1">{periodo !== 'mes' ? Qk(tot.total / diasPeriodo) : esMesActual ? Qk(proyeccion) : Qk(ritmo)}</div>
+              <div className="text-[11px] text-sky-100/80 mt-1">
+                {periodo !== 'mes' ? 'Venta del periodo entre los días seleccionados' : esMesActual ? `Ritmo de ${Qk(ritmo)} por día × ${diasMes} días` : `${diasMes} días del mes`}
+              </div>
             </div>
             <div className="sm:pl-6">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-sky-200">Vs {nombreMes(prev).toLowerCase()}{esMesActual ? ` al día ${diaHoy}` : ''}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-sky-200">
+                Vs {nombreMes(prev).toLowerCase()}
+                {periodo === 'mes' ? (esMesActual ? ` al día ${diaHoy}` : '') : ' · mismo periodo'}
+              </div>
               <div className="text-3xl font-black leading-none tabular-nums mt-1" style={{ color: variacion == null ? '#fff' : variacion >= 0 ? '#8fe3c4' : '#ffc2c4' }}>
                 {variacion == null ? '—' : `${variacion >= 0 ? '▲' : '▼'} ${Math.abs(variacion * 100).toFixed(1)}%`}
               </div>
@@ -624,7 +691,7 @@ export const DashboardCostos: React.FC<Props> = ({ routes, historicalRoutes, tru
               </div>
             )}
           </div>
-          <VentaDiaria dias={porDia} diasMes={diasMes} hoy={esMesActual ? diaHoy : null} total={tot.total} proyeccion={proyeccion} />
+          <VentaDiaria dias={porDia} diasMes={diasMes} hoy={esMesActual && periodo === 'mes' ? diaHoy : null} total={tot.total} proyeccion={proyeccion} />
         </section>
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 sm:p-5">
           <h3 className="text-sm font-bold text-slate-800">Composición de la venta</h3>
