@@ -5,6 +5,7 @@ import { getRouteKey } from '../utils/routeKey';
 import { toNum } from '../utils/number';
 import { asignadosEnFecha, camionesSinAsignar, personalSinAsignar, diaDe } from '../utils/recursosSinAsignar';
 import { FileSpreadsheet, Truck as TruckIcon, ClipboardCheck, CheckCircle2, Clock, AlertTriangle, Search, Building2 } from 'lucide-react';
+import { franjasAsignacion } from '../utils/horaAsignacion';
 import type { ReportePdf } from '../utils/dashboardPdf';
 
 // --- Status de Asignación (solo administradores) ---
@@ -81,6 +82,14 @@ const isPiso = (r: Route) => !!(r.aPiso || r.tipoAsignacion === 'Ruta a Piso' ||
 const isBolson = (r: Route) => !!(r.esBolson || r.tipoAsignacion === 'Ruta Bolsón');
 const isSelf = (r: Route) => !!(r.esSelfService || r.tipoAsignacion === 'Self Service');
 const despachada = (r: Route) => r.estado !== 'Pendiente' || !!r.liquidacion;
+// Rutas creadas a mano (ID M0000xxxxx o TL00000xxx): no cuentan en el status del Excel.
+const esManual = (r: Route) => /^(M0000\d{5}|TL00000\d{3})$/.test(String(r.id));
+const nombreLleno = (v?: string | null) => !!v && !!String(v).trim() && !['sin piloto', 'sin auxiliar'].includes(String(v).trim().toLowerCase());
+// Asignada para el status: camión, piloto y como mínimo un auxiliar.
+const conAuxiliar = (r: Route) => {
+  const a = r.asignacion || r.ultimoDespacho;
+  return !!a && [a.auxiliar1, a.auxiliar2, a.auxiliar3, a.auxiliar4].some(nombreLleno);
+};
 const hhmm = (t?: string | null) => /(\d{1,2}):(\d{2})/.exec(String(t || ''))?.[0]?.padStart(5, '0') || '';
 const n0 = (v: number) => Math.round(v).toLocaleString('en-US');
 // "dd/mm/aaaa hh:mm" → número ordenable.
@@ -151,6 +160,7 @@ export const DashboardStatusAsignacion: React.FC<Props> = ({ routes, historicalR
   const [dia, setDia] = useState(hoyDia);
   const [filtro, setFiltro] = useState<'todas' | 'pendientes' | 'completas'>('todas');
   const [buscar, setBuscar] = useState('');
+  const [horaActiva, setHoraActiva] = useState<string | null>(null);
   const esHoy = dia === hoyDia;
   const ahora = new Intl.DateTimeFormat('es-GT', { timeZone: 'America/Guatemala', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
 
@@ -178,10 +188,18 @@ export const DashboardStatusAsignacion: React.FC<Props> = ({ routes, historicalR
 
   const asignados = useMemo(() => asignadosEnFecha(todas, dia), [todas, dia]);
 
+  // Hora de asignación del día elegido (rutas de las agencias del filtro).
+  const horas = useMemo(
+    () => franjasAsignacion(todas.filter((r) => !esManual(r) && diaDe(r.fecha) === dia && (!enFiltro || enFiltro(r.agencia || '')))),
+    [todas, dia, enFiltro]
+  );
+  const horaAct = horas.franjas.find((h) => h.key === horaActiva);
+  const horaPico = horas.franjas.reduce<(typeof horas.franjas)[number] | null>((a, h) => (!a || h.n > a.n ? h : a), null);
+
   const filas: FilaAgencia[] = useMemo(() => {
     const mismaFecha = (t?: string) => diaDe(t) === dia;
     return agenciasEsperadas.map((ag) => {
-      const delAg = todas.filter((r) => r.agencia === ag);
+      const delAg = todas.filter((r) => r.agencia === ag && !esManual(r));
       // 1. Carga: rutas cuya fecha original es el día elegido.
       const cargadas = delAg.filter((r) => mismaFecha(r.fechaOriginalRuta || r.fecha));
       const primera = cargadas.map((r) => r.fechaCarga || r.fechaCreacion || '').filter(Boolean).sort((a, b) => orden(a) - orden(b))[0] || '';
@@ -190,7 +208,8 @@ export const DashboardStatusAsignacion: React.FC<Props> = ({ routes, historicalR
       const operan = delAg.filter((r) => mismaFecha(r.fecha) || (mismaFecha(r.fechaOriginalRuta) && !mismaFecha(r.fecha) && isPiso(r)));
       const desp = operan.filter(despachada);
       const piso = operan.filter((r) => !despachada(r) && isPiso(r));
-      const pend = operan.filter((r) => !despachada(r) && !isPiso(r) && !isBolson(r) && !isSelf(r));
+      // Pendiente: sin salir, o salió sin auxiliar (no cuenta como asignada completa).
+      const pend = operan.filter((r) => !isPiso(r) && !isBolson(r) && !isSelf(r) && (!despachada(r) || !conAuxiliar(r)));
       const ultima = desp
         .map((r) => r.fechaAsignacion || r.asignacion?.fechaAsignacion || r.ultimoDespacho?.fechaAsignacion || '')
         .filter((t) => mismaFecha(t) || diaDe(t) === '')
@@ -298,7 +317,7 @@ export const DashboardStatusAsignacion: React.FC<Props> = ({ routes, historicalR
         },
       ],
       notas: [
-        'Excel cargado: la agencia tiene rutas con fecha del día. Asignación completa: todas sus rutas salieron con camión y tripulación, o quedaron a piso, en bolsón o son Self Service. Fin de asignación: todos sus camiones y personal que no salieron tienen motivo.',
+        'Excel cargado: la agencia tiene rutas con fecha del día. Asignación completa: todas sus rutas salieron con camión y tripulación, o quedaron a piso, en bolsón o son Self Service. Para contar como asignada debe llevar camión, piloto y como mínimo un auxiliar. Las rutas creadas a mano no se cuentan. Fin de asignación: todos sus camiones y personal que no salieron tienen motivo.',
         ...(esHoy ? [] : ['Para días anteriores, el fin de asignación usa el estado y los motivos actuales de camiones y personal.']),
       ],
     }));
@@ -696,9 +715,116 @@ export const DashboardStatusAsignacion: React.FC<Props> = ({ routes, historicalR
         </div>
         <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
           <strong>Carga de Excel:</strong> la agencia tiene rutas con fecha del día. <strong>Asignación:</strong> rutas que ya salieron con camión y tripulación, o que
-          quedaron a piso, en bolsón o son Self Service. <strong>Fin de asignación:</strong> todos los camiones y el personal de la agencia que no salieron ese día
+          quedaron a piso, en bolsón o son Self Service. Para contar como asignada debe llevar camión, piloto y como mínimo un auxiliar. Las rutas creadas a mano no se cuentan. <strong>Fin de asignación:</strong> todos los camiones y el personal de la agencia que no salieron ese día
           tienen motivo (la misma regla del botón "Fin de Asignación"). Se siguen las agencias con camiones o personal activos, o con rutas en los últimos 14 días (no se incluyen CMI, Lif Brands, Mercadeo Operativo, Monte María, Otros Proyectos, Proyecto Huracán, SSO ni Zona Pradera).
         </p>
+      </section>
+
+      {/* Hora de asignación: % de las rutas asignadas en cada horario */}
+      <section className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 sm:p-5">
+        <div className="mb-3">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <Clock className="w-4 h-4 text-slate-500" />
+            Hora de asignación
+          </h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            % de las rutas asignadas en cada horario
+            {horaPico ? ` · pico ${horaPico.label} (${horaPico.n} rutas)` : ''}
+            {horas.sinHora ? ` · ${horas.sinHora} despachada(s) sin hora registrada` : ''}
+          </p>
+        </div>
+        {horas.franjas.length === 0 ? (
+          <p className="py-6 text-center text-xs text-slate-400">Sin asignaciones registradas en el día.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-5 md:gap-8 items-center">
+            <div className="flex justify-center">
+              {(() => {
+                const size = 190,
+                  grosor = 26,
+                  r = (size - grosor - 8) / 2,
+                  circ = 2 * Math.PI * r;
+                let acum = 0;
+                return (
+                  <div className="relative shrink-0" style={{ width: size, height: size }}>
+                    <svg width={size} height={size} role="img" aria-label="Hora de asignación">
+                      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#eef2f7" strokeWidth={grosor} />
+                      {horas.franjas.map((h) => {
+                        const largo = (h.n / horas.total) * circ;
+                        const dash = Math.max(0.5, largo - 2);
+                        const off = -acum;
+                        acum += largo;
+                        return (
+                          <circle
+                            key={h.key}
+                            cx={size / 2}
+                            cy={size / 2}
+                            r={r}
+                            fill="none"
+                            stroke={h.color}
+                            strokeWidth={horaActiva === h.key ? grosor + 7 : grosor}
+                            strokeDasharray={`${dash} ${circ - dash}`}
+                            strokeDashoffset={off}
+                            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+                            style={{ opacity: horaActiva && horaActiva !== h.key ? 0.4 : 1, transition: 'opacity .15s, stroke-width .15s', cursor: 'pointer' }}
+                            onMouseEnter={() => setHoraActiva(h.key)}
+                            onMouseLeave={() => setHoraActiva(null)}
+                            onClick={() => setHoraActiva(horaActiva === h.key ? null : h.key)}
+                          />
+                        );
+                      })}
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                      {horaAct ? (
+                        <>
+                          <div className="text-2xl font-black text-slate-900 leading-none tabular-nums">{horaAct.pct.toFixed(1)}%</div>
+                          <div className="text-[11px] font-semibold text-slate-700 mt-1">{horaAct.label}</div>
+                          <div className="text-[10.5px] text-slate-500">{horaAct.n} rutas</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-3xl font-black text-slate-900 leading-none tabular-nums">{horas.total}</div>
+                          <div className="text-[11px] text-slate-500 mt-1">rutas asignadas</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="min-w-0">
+              <div className="grid gap-2 px-1.5 pb-2 border-b border-slate-200 text-[10.5px] font-bold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: 'minmax(0, 1fr) 2.75rem 3.5rem 4rem' }}>
+                <span>Horario</span>
+                <span className="text-right">Rutas</span>
+                <span className="text-right">%</span>
+                <span className="text-right">CJ</span>
+              </div>
+              {horas.franjas.map((h) => (
+                <div
+                  key={h.key}
+                  className={`grid gap-2 items-center px-1.5 py-2 text-xs border-b border-slate-100 rounded-md transition-opacity ${horaActiva === h.key ? 'bg-slate-50' : ''}`}
+                  style={{ gridTemplateColumns: 'minmax(0, 1fr) 2.75rem 3.5rem 4rem', opacity: horaActiva && horaActiva !== h.key ? 0.5 : 1 }}
+                  onMouseEnter={() => setHoraActiva(h.key)}
+                  onMouseLeave={() => setHoraActiva(null)}
+                  title={`${h.rango} · ${h.n} ruta(s) · ${h.cj.toLocaleString('en-US')} CJ`}
+                >
+                  <span className="flex items-center gap-2 font-semibold text-slate-800 truncate">
+                    <span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ backgroundColor: h.color }} />
+                    {h.rango}
+                  </span>
+                  <span className="text-right font-bold tabular-nums">{h.n}</span>
+                  <span className="text-right tabular-nums">{h.pct.toFixed(1)}%</span>
+                  <span className="text-right tabular-nums">{h.cj.toLocaleString('en-US')}</span>
+                </div>
+              ))}
+              <div className="grid gap-2 items-center px-1.5 pt-2 text-xs font-bold text-slate-900" style={{ gridTemplateColumns: 'minmax(0, 1fr) 2.75rem 3.5rem 4rem' }}>
+                <span>Total</span>
+                <span className="text-right tabular-nums">{horas.total}</span>
+                <span className="text-right tabular-nums">100%</span>
+                <span className="text-right tabular-nums">{horas.cj.toLocaleString('en-US')}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
